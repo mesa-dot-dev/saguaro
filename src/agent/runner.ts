@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import * as readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import type { Config as OpencodeConfig } from '@opencode-ai/sdk';
 import { createOpencodeClient } from '@opencode-ai/sdk';
@@ -31,8 +32,62 @@ interface MesaConfig {
   };
 }
 
-const BATCH_SIZE = 15;
+const DEFAULT_BATCH_SIZE = 15;
 const BATCH_TIMEOUT_MS = 180_000;
+
+function createProcessingSpinner(enabled: boolean, initialMessage: string) {
+  const frames = ['-', '\\', '|', '/'];
+  let frameIndex = 0;
+  let message = initialMessage;
+  let timer: NodeJS.Timeout | null = null;
+
+  const render = () => {
+    if (!enabled) return;
+    readline.cursorTo(process.stdout, 0);
+    process.stdout.write(`${frames[frameIndex]} ${message}`);
+    frameIndex = (frameIndex + 1) % frames.length;
+  };
+
+  const start = () => {
+    if (!enabled || timer) return;
+    render();
+    timer = setInterval(render, 120);
+  };
+
+  const stop = () => {
+    if (!enabled) return;
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+    readline.clearLine(process.stdout, 0);
+    readline.cursorTo(process.stdout, 0);
+  };
+
+  const setMessage = (nextMessage: string) => {
+    message = nextMessage;
+  };
+
+  const log = (line: string) => {
+    stop();
+    console.log(line);
+    start();
+  };
+
+  const error = (line: string) => {
+    stop();
+    console.error(line);
+    start();
+  };
+
+  return {
+    start,
+    stop,
+    setMessage,
+    log,
+    error,
+  };
+}
 
 export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewResult> {
   const mesaConfig = loadMesaConfig(options.configPath);
@@ -70,10 +125,14 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
       console.log(chalk.gray(`Auth set for provider: ${provider}`));
     }
 
-    const batches = chunkFilesWithRules(options.filesWithRules, BATCH_SIZE);
+    const batchSize = resolveBatchSize();
+    const batches = chunkFilesWithRules(options.filesWithRules, batchSize);
 
     if (options.verbose) {
       console.log(chalk.gray(`Split ${options.filesWithRules.size} files into ${batches.length} batch(es)`));
+      if (batchSize !== DEFAULT_BATCH_SIZE) {
+        console.log(chalk.gray(`Using batch size override from MESA_BATCH_SIZE=${batchSize}`));
+      }
     }
 
     const sessionIds: string[] = [];
@@ -116,10 +175,17 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
     }
   } finally {
     if (proc) {
-      proc.kill();
+      await terminateProcess(proc, options.verbose);
     }
     if (tempDir) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch (error) {
+        if (options.verbose) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.log(chalk.yellow(`Failed to remove temp dir ${tempDir}: ${message}`));
+        }
+      }
     }
   }
 }
@@ -133,6 +199,18 @@ function chunkFilesWithRules(filesWithRules: Map<string, Rule[]>, batchSize: num
   return batches;
 }
 
+function resolveBatchSize(): number {
+  const raw = process.env.MESA_BATCH_SIZE;
+  if (!raw) return DEFAULT_BATCH_SIZE;
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return DEFAULT_BATCH_SIZE;
+  }
+
+  return parsed;
+}
+
 async function streamParallelReviews(
   client: ReturnType<typeof createOpencodeClient>,
   sessionIds: string[],
@@ -140,11 +218,16 @@ async function streamParallelReviews(
   verbose?: boolean
 ): Promise<string[]> {
   const events = await client.event.subscribe({ parseAs: 'stream' });
+  const spinner = createProcessingSpinner(
+    process.stdout.isTTY,
+    `Processing review... 0/${sessionIds.length} batch(es) complete`
+  );
 
   const sessionSet = new Set(sessionIds);
   const texts: Record<string, string> = {};
   const completed = new Set<string>();
   const errors: Record<string, string> = {};
+  let viewDiffFailureCount = 0;
 
   for (const id of sessionIds) {
     texts[id] = '';
@@ -169,10 +252,14 @@ async function streamParallelReviews(
   }
 
   const abortController = new AbortController();
+  let timedOut = false;
   const deadlineTimer = setTimeout(() => {
-    console.log(chalk.yellow(`\nTimeout: ${completed.size}/${sessionIds.length} batches completed`));
+    timedOut = true;
+    spinner.log(chalk.yellow(`Timeout: ${completed.size}/${sessionIds.length} batches completed`));
     abortController.abort();
   }, BATCH_TIMEOUT_MS);
+
+  spinner.start();
 
   try {
     for await (const event of events.stream) {
@@ -198,8 +285,15 @@ async function streamParallelReviews(
         if (part.type === 'tool' && part.state?.status === 'completed') {
           const batchIdx = sessionIds.indexOf(part.sessionID) + 1;
           const label = part.state.input?.filepath || part.state.title || 'done';
+          const toolOutput = typeof part.state.output === 'string' ? part.state.output : '';
+          if (part.tool === 'view_diff' && toolOutput.startsWith('[VIEW_DIFF_ERROR]')) {
+            viewDiffFailureCount++;
+            if (verbose) {
+              spinner.log(chalk.red(`  [${batchIdx}] ↳ ${part.tool} failed for ${label}: ${toolOutput}`));
+            }
+          }
           if (verbose) {
-            console.log(chalk.cyan(`  [${batchIdx}] ↳ ${part.tool}: ${label}`));
+            spinner.log(chalk.cyan(`  [${batchIdx}] ↳ ${part.tool}: ${label}`));
           }
         }
       }
@@ -211,7 +305,8 @@ async function streamParallelReviews(
           if (!completed.has(props.sessionID)) {
             completed.add(props.sessionID);
             const batchIdx = sessionIds.indexOf(props.sessionID) + 1;
-            console.log(chalk.green(`\n✓ Batch ${batchIdx}/${sessionIds.length} complete`));
+            spinner.setMessage(`Processing review... ${completed.size}/${sessionIds.length} batch(es) complete`);
+            spinner.log(chalk.green(`✓ Batch ${batchIdx}/${sessionIds.length} complete`));
           }
         }
       }
@@ -224,8 +319,9 @@ async function streamParallelReviews(
           const errMsg = err?.data?.message || err?.name || 'Unknown error';
           errors[errorSessionID] = errMsg;
           const batchIdx = sessionIds.indexOf(errorSessionID) + 1;
-          console.log(chalk.red(`\n✗ Batch ${batchIdx} error: ${errMsg}`));
+          spinner.log(chalk.red(`✗ Batch ${batchIdx} error: ${errMsg}`));
           completed.add(errorSessionID);
+          spinner.setMessage(`Processing review... ${completed.size}/${sessionIds.length} batch(es) complete`);
         }
       }
 
@@ -233,17 +329,32 @@ async function streamParallelReviews(
         const props = event.properties;
         if (sessionSet.has(props.sessionID)) {
           if (verbose) {
-            console.log(chalk.yellow(`  Auto-rejecting permission: ${props.type}`));
+            const patterns = Array.isArray(props.pattern) ? props.pattern.join(', ') : (props.pattern ?? '*');
+            spinner.log(chalk.yellow(`  Auto-rejecting permission: ${props.type} (${patterns})`));
           }
-          client.postSessionIdPermissionsPermissionId({
-            path: { id: props.sessionID, permissionID: props.id },
-            body: { response: 'reject' },
-          });
+          try {
+            await client.postSessionIdPermissionsPermissionId({
+              path: { id: props.sessionID, permissionID: props.id },
+              body: { response: 'reject' },
+            });
+          } catch (error) {
+            const batchIdx = sessionIds.indexOf(props.sessionID) + 1;
+            const message = error instanceof Error ? error.message : String(error);
+            spinner.error(chalk.red(`Failed to auto-reject permission for batch ${batchIdx}: ${message}`));
+          }
         }
       }
     }
   } finally {
     clearTimeout(deadlineTimer);
+    spinner.stop();
+  }
+
+  if (timedOut) {
+    const outstandingCount = sessionIds.length - completed.size;
+    if (outstandingCount > 0) {
+      console.log(chalk.yellow(`Marked ${outstandingCount} batch(es) incomplete due to timeout`));
+    }
   }
 
   for (const id of sessionIds) {
@@ -261,14 +372,16 @@ async function streamParallelReviews(
     }
   }
 
-  process.stdout.write('\n');
-
   const errorEntries = Object.entries(errors);
   if (errorEntries.length > 0) {
     for (const [id, err] of errorEntries) {
       const batchIdx = sessionIds.indexOf(id) + 1;
       console.error(chalk.red(`Batch ${batchIdx} failed: ${err}`));
     }
+  }
+
+  if (!verbose && viewDiffFailureCount > 0) {
+    console.log(chalk.yellow(`view_diff failed ${viewDiffFailureCount} time(s); rerun with --verbose for details`));
   }
 
   return sessionIds.map((id) => texts[id] ?? '');
@@ -411,7 +524,8 @@ export default {
       if (!output.trim()) return "No changes."
       return output
     } catch (e) {
-      return "No changes."
+      const message = e instanceof Error ? e.message : String(e)
+      return \`[VIEW_DIFF_ERROR] \${message}\`
     }
   },
 }
@@ -435,6 +549,51 @@ async function waitForHealthy(client: ReturnType<typeof createOpencodeClient>, v
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error('OpenCode server failed health check after 5s');
+}
+
+async function terminateProcess(proc: ChildProcess, verbose?: boolean): Promise<void> {
+  if (proc.exitCode !== null || proc.signalCode !== null) {
+    return;
+  }
+
+  const stopWith = (signal: NodeJS.Signals, timeoutMs: number) =>
+    new Promise<boolean>((resolve) => {
+      if (proc.exitCode !== null || proc.signalCode !== null) {
+        resolve(true);
+        return;
+      }
+
+      proc.kill(signal);
+
+      const timer = setTimeout(() => {
+        cleanup();
+        resolve(false);
+      }, timeoutMs);
+
+      const onExit = () => {
+        cleanup();
+        resolve(true);
+      };
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        proc.off('exit', onExit);
+      };
+
+      proc.on('exit', onExit);
+    });
+
+  if (await stopWith('SIGTERM', 3000)) {
+    return;
+  }
+
+  if (verbose) {
+    console.log(chalk.yellow('OpenCode server did not exit after SIGTERM, sending SIGKILL'));
+  }
+
+  if (!(await stopWith('SIGKILL', 2000)) && verbose) {
+    console.log(chalk.yellow('OpenCode server process did not confirm exit after SIGKILL'));
+  }
 }
 
 function loadMesaConfig(configPath?: string): MesaConfig {
