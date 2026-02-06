@@ -99,7 +99,7 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
 
     try {
       const batchResults = await streamParallelReviews(client, sessionIds, batchPrompts, options.verbose);
-      const allViolations = batchResults.flatMap((text) => parseViolations(text));
+      const allViolations = batchResults.flatMap((text) => parseViolations(text, options.filesWithRules));
 
       return {
         violations: allViolations,
@@ -188,15 +188,10 @@ async function streamParallelReviews(
         if (part.type === 'text') {
           const delta = props.delta;
           if (delta) {
-            process.stdout.write(chalk.gray(delta));
             texts[part.sessionID] = (texts[part.sessionID] ?? '') + delta;
           } else {
-            const prev = texts[part.sessionID] ?? '';
             const newText = part.text ?? '';
-            if (newText.length > prev.length) {
-              process.stdout.write(chalk.gray(newText.slice(prev.length)));
-              texts[part.sessionID] = newText;
-            }
+            texts[part.sessionID] = newText;
           }
         }
 
@@ -611,7 +606,7 @@ function formatRule(rule: Rule): string {
   return lines.join('\n');
 }
 
-function parseViolations(text: string): Violation[] {
+function parseViolations(text: string, filesWithRules: Map<string, Rule[]>): Violation[] {
   const violations: Violation[] = [];
   if (!text) return violations;
 
@@ -619,15 +614,25 @@ function parseViolations(text: string): Violation[] {
     return violations;
   }
 
-  // Parse [rule-id] file:line - message format
+  const rulesById = new Map<string, Rule>();
+  for (const rules of filesWithRules.values()) {
+    for (const rule of rules) {
+      if (!rulesById.has(rule.id)) {
+        rulesById.set(rule.id, rule);
+      }
+    }
+  }
+
   const lines = text.split('\n');
   for (const line of lines) {
     const match = line.match(/\[([^\]]+)\]\s+(\S+):(\d+)?\s*-\s*(.+)/);
     if (match) {
+      const ruleId = match[1];
+      const rule = rulesById.get(ruleId);
       violations.push({
-        ruleId: match[1],
-        ruleTitle: match[1],
-        severity: 'error',
+        ruleId,
+        ruleTitle: rule?.title ?? ruleId,
+        severity: rule?.severity ?? 'error',
         file: match[2],
         line: match[3] ? parseInt(match[3]) : undefined,
         message: match[4],

@@ -95,6 +95,25 @@ const ask = (rl: ReturnType<typeof createReadline>, prompt: string): Promise<str
     rl.question(`${prompt}: `, (answer: string) => resolve(answer.trim()));
   });
 
+const buildInstructions = (templateType: string, answers: RuleAnswers): string => {
+  switch (templateType) {
+    case 'ban':
+      return [`Do not use: ${answers.pattern}`, `Reason: ${answers.reason}`, `Use instead: ${answers.instead}`].join(
+        '\n'
+      );
+    case 'require':
+      return [`Required pattern: ${answers.pattern}`, `When: ${answers.when}`, `Reason: ${answers.reason}`].join('\n');
+    case 'structure':
+      return [`Files must contain: ${answers.must_contain}`, `Reason: ${answers.reason}`].join('\n');
+    case 'custom':
+      return answers.instructions;
+    default:
+      return Object.entries(answers)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join('\n');
+  }
+};
+
 const toKebabCase = (str: string): string =>
   str
     .toLowerCase()
@@ -300,13 +319,15 @@ const createRule = async (argv: CreateRuleArgv) => {
     const globHint = await ask(rl, 'Language or glob pattern (e.g., rust, **/*.rs)');
     const globs = GLOB_HINTS[globHint.toLowerCase()] || globHint || '**/*';
 
+    const templateType = types[parseInt(type) - 1];
+    const instructions = buildInstructions(templateType, answers);
+
     const rule = {
       id,
-      type: types[parseInt(type) - 1],
       title,
       severity,
       globs: Array.isArray(globs) ? globs : [globs],
-      [types[parseInt(type) - 1]]: answers,
+      instructions,
     };
 
     const filename = buildUniqueFilename(rulesDir || '', id);

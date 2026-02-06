@@ -17,10 +17,11 @@ export function printViolations(result: ReviewResult, format: 'console' | 'json'
   const duration = durationMs ? formatDuration(durationMs) : null;
 
   if (result.violations.length === 0) {
-    console.log(chalk.green('No rule violations found'));
-    const parts = [`${filesReviewed} files reviewed`, `${rulesChecked} rules checked`];
-    if (duration) parts.push(duration);
-    console.log(chalk.gray(parts.join(' · ')));
+    console.log(chalk.green('No rule violations found\n'));
+    console.log(chalk.gray(`  Files reviewed: ${filesReviewed}`));
+    console.log(chalk.gray(`  Rules checked:  ${rulesChecked}`));
+    if (duration) console.log(chalk.gray(`  Duration:       ${duration}`));
+    console.log();
     return;
   }
 
@@ -37,10 +38,9 @@ export function printViolations(result: ReviewResult, format: 'console' | 'json'
   }
 
   const { errors, warnings, infos } = result.summary;
-  const parts = [
-    `${result.violations.length} violation(s) found (${errors} errors, ${warnings} warnings, ${infos} infos)`,
-    `${filesReviewed} files · ${rulesChecked} rules`,
-  ];
-  if (duration) parts.push(duration);
-  console.log(parts.join(' · '));
+  console.log(`${result.violations.length} violation(s): ${errors} errors, ${warnings} warnings, ${infos} infos\n`);
+  console.log(chalk.gray(`  Files reviewed: ${filesReviewed}`));
+  console.log(chalk.gray(`  Rules checked:  ${rulesChecked}`));
+  if (duration) console.log(chalk.gray(`  Duration:       ${duration}`));
+  console.log();
 }
