@@ -2,13 +2,15 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import * as readline from 'node:readline';
-import { fileURLToPath } from 'node:url';
 import type { Config as OpencodeConfig } from '@opencode-ai/sdk';
 import { createOpencodeClient } from '@opencode-ai/sdk/v2';
 import chalk from 'chalk';
-import yaml from 'js-yaml';
 import type { ReviewResult, Rule, Violation } from '../types/types.js';
+import { loadMesaConfig, loadOpencodeConfig, resolveApiKey, validateConfig } from './config.js';
+import { parseViolationsDetailed } from './parse.js';
+import { buildPrompt } from './prompt.js';
+import { createProcessingSpinner } from './spinner.js';
+import { VIEW_DIFF_TOOL_TEMPLATE } from './view-diff-tool-template.js';
 
 export interface RunReviewOptions {
   baseBranch: string;
@@ -17,77 +19,8 @@ export interface RunReviewOptions {
   verbose?: boolean;
 }
 
-interface MesaConfig {
-  model?: {
-    provider?: string;
-    name?: string;
-  };
-  api_keys?: {
-    anthropic?: string;
-    openai?: string;
-    google?: string;
-  };
-  opencode?: {
-    url?: string;
-  };
-}
-
 const FILES_PER_WORKER = 3;
 const REVIEW_TIMEOUT_MS = 600_000;
-
-function createProcessingSpinner(enabled: boolean, initialMessage: string) {
-  const frames = ['-', '\\', '|', '/'];
-  let frameIndex = 0;
-  let message = initialMessage;
-  let timer: NodeJS.Timeout | null = null;
-
-  const render = () => {
-    if (!enabled) return;
-    readline.cursorTo(process.stdout, 0);
-    process.stdout.write(`${frames[frameIndex]} ${message}`);
-    frameIndex = (frameIndex + 1) % frames.length;
-  };
-
-  const start = () => {
-    if (!enabled || timer) return;
-    render();
-    timer = setInterval(render, 120);
-  };
-
-  const stop = () => {
-    if (!enabled) return;
-    if (timer) {
-      clearInterval(timer);
-      timer = null;
-    }
-    readline.clearLine(process.stdout, 0);
-    readline.cursorTo(process.stdout, 0);
-  };
-
-  const setMessage = (nextMessage: string) => {
-    message = nextMessage;
-  };
-
-  const log = (line: string) => {
-    stop();
-    console.log(line);
-    start();
-  };
-
-  const error = (line: string) => {
-    stop();
-    console.error(line);
-    start();
-  };
-
-  return {
-    start,
-    stop,
-    setMessage,
-    log,
-    error,
-  };
-}
 
 export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewResult> {
   const mesaConfig = loadMesaConfig(options.configPath);
@@ -156,7 +89,26 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
 
     try {
       const sessionResults = await streamParallelReviews(client, sessionIds, sessionPrompts, options.verbose);
-      const allViolations = sessionResults.flatMap((text) => parseViolations(text, options.filesWithRules));
+      const parseResults = sessionResults.map((text) => parseViolationsDetailed(text, options.filesWithRules));
+      const allViolations = parseResults.flatMap((result) => result.violations);
+
+      if (options.verbose) {
+        for (let i = 0; i < parseResults.length; i++) {
+          const result = parseResults[i];
+          const workerIndex = i + 1;
+          console.log(
+            chalk.gray(
+              `Parse worker ${workerIndex}/${parseResults.length}: matched=${result.matchedLines}, ignored=${result.ignoredLines}, violations=${result.violations.length}`
+            )
+          );
+
+          if (result.shortCircuitedNoViolations) {
+            console.log(chalk.yellow(`  Worker ${workerIndex} parser short-circuited on "no violations found" text`));
+          } else if (result.totalLines > 0 && result.matchedLines === 0) {
+            console.log(chalk.yellow(`  Worker ${workerIndex} returned text but no lines matched violation format`));
+          }
+        }
+      }
 
       return {
         violations: allViolations,
@@ -507,34 +459,7 @@ function tryStartServer({
 function writeCustomTools(tempDir: string): void {
   const toolsDir = path.join(tempDir, '.opencode', 'tools');
   fs.mkdirSync(toolsDir, { recursive: true });
-
-  const viewDiffTool = `
-import { z } from "zod"
-import { execSync } from "child_process"
-
-export default {
-  description: "View the git diff for a specific file between a base branch and HEAD. Returns only the diff output. If the file has no changes, returns 'No changes.'",
-  args: {
-    filepath: z.string().describe("The file path to diff"),
-    base: z.string().describe("The base branch to diff against"),
-  },
-  async execute(args, ctx) {
-    try {
-      const output = execSync(
-        \`git diff \${args.base}...HEAD -- \${args.filepath}\`,
-        { encoding: "utf8", cwd: ctx.directory, maxBuffer: 1024 * 1024 }
-      )
-      if (!output.trim()) return "No changes."
-      return output
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e)
-      return \`[VIEW_DIFF_ERROR] \${message}\`
-    }
-  },
-}
-`;
-
-  fs.writeFileSync(path.join(toolsDir, 'view_diff.ts'), viewDiffTool.trim());
+  fs.writeFileSync(path.join(toolsDir, 'view_diff.ts'), VIEW_DIFF_TOOL_TEMPLATE.trim());
 }
 
 async function waitForHealthy(client: ReturnType<typeof createOpencodeClient>, verbose?: boolean): Promise<void> {
@@ -607,212 +532,6 @@ async function terminateProcess(proc: ChildProcess, verbose?: boolean): Promise<
   if (!(await stopWith('SIGKILL', 2000)) && verbose) {
     console.log(chalk.yellow('OpenCode server process did not confirm exit after SIGKILL'));
   }
-}
-
-function loadMesaConfig(configPath?: string): MesaConfig {
-  const resolvedPath = resolveMesaConfigPath(configPath);
-  if (!resolvedPath) {
-    throw new Error('Mesa config not found. Run "mesa init" or pass --config.');
-  }
-
-  const contents = fs.readFileSync(resolvedPath, 'utf8');
-  const parsed = yaml.load(contents);
-  if (!parsed || typeof parsed !== 'object') {
-    throw new Error(`Invalid Mesa config at ${resolvedPath}`);
-  }
-  return parsed as MesaConfig;
-}
-
-const VALID_PROVIDERS = ['anthropic', 'openai', 'google', 'openrouter'];
-
-function validateConfig(config: MesaConfig): void {
-  const provider = config.model?.provider;
-  const name = config.model?.name;
-
-  if (!provider || !name) {
-    throw new Error(
-      'Invalid config: model.provider and model.name are required.\n' +
-        '  Edit .mesa/config.yaml to set your model configuration.'
-    );
-  }
-
-  if (!VALID_PROVIDERS.includes(provider)) {
-    throw new Error(
-      `Invalid config: model.provider "${provider}" is not valid.\n` +
-        `  Valid providers: ${VALID_PROVIDERS.join(', ')}\n` +
-        '  Edit .mesa/config.yaml to fix this.'
-    );
-  }
-
-  if (name === 'MODEL_NAME' || provider === 'PROVIDER') {
-    throw new Error(
-      'Invalid config: placeholder values detected.\n' +
-        '  Edit .mesa/config.yaml and replace MODEL_NAME/PROVIDER with real values.\n' +
-        '  Example: provider: anthropic, name: claude-sonnet-4-5'
-    );
-  }
-}
-
-function resolveMesaConfigPath(configPath?: string): string | null {
-  if (configPath && fs.existsSync(configPath)) return configPath;
-
-  const envPath = process.env.MESA_CONFIG;
-  if (envPath && fs.existsSync(envPath)) return envPath;
-
-  const defaultPath = path.resolve(process.cwd(), '.mesa', 'config.yaml');
-  if (fs.existsSync(defaultPath)) return defaultPath;
-
-  return null;
-}
-
-function resolveApiKey(config: MesaConfig): string {
-  const provider = config.model?.provider ?? 'anthropic';
-
-  const envKeys: Record<string, string | undefined> = {
-    anthropic: process.env.ANTHROPIC_API_KEY,
-    openai: process.env.OPENAI_API_KEY,
-    google: process.env.GOOGLE_API_KEY,
-  };
-
-  const envKey = envKeys[provider];
-  if (envKey) return envKey;
-
-  const configKeys = config.api_keys ?? {};
-  const configKey = configKeys[provider as keyof typeof configKeys];
-  if (configKey) return configKey;
-
-  throw new Error(
-    `No API key found for provider "${provider}". Set one via:\n` +
-      `  1. export ${provider.toUpperCase()}_API_KEY=<key>\n` +
-      '  2. Set api_keys in .mesa/config.yaml'
-  );
-}
-
-function loadOpencodeConfig(mesaConfig: MesaConfig): OpencodeConfig {
-  const opencodeConfigPath = resolveOpencodeConfigPath();
-  const baseConfig = JSON.parse(fs.readFileSync(opencodeConfigPath, 'utf8')) as OpencodeConfig;
-
-  // Override model from Mesa config
-  const model = resolveModel(mesaConfig);
-  if (model) {
-    baseConfig.model = model;
-    const agentConfig = baseConfig.agent?.['code-reviewer'];
-    if (agentConfig) {
-      agentConfig.model = model;
-    }
-  }
-  // Mesa config should not be updated automatically by opencode
-  baseConfig.autoupdate = false;
-  baseConfig.share = 'disabled';
-  if (!baseConfig.disabled_providers) {
-    baseConfig.disabled_providers = [];
-  }
-
-  return baseConfig;
-}
-
-function resolveOpencodeConfigPath(): string {
-  const currentDir = path.dirname(fileURLToPath(import.meta.url));
-  const candidate = path.resolve(currentDir, '..', '..', 'opencode.json');
-  if (!fs.existsSync(candidate)) {
-    throw new Error(`OpenCode config not found at ${candidate}`);
-  }
-  return candidate;
-}
-
-function resolveModel(config: MesaConfig): string | null {
-  const provider = config.model?.provider;
-  const name = config.model?.name;
-  if (!provider || !name) return null;
-  return `${provider}/${name}`;
-}
-
-function buildPrompt(options: RunReviewOptions): string {
-  const lines: string[] = [];
-
-  lines.push(`Base branch: ${options.baseBranch}`);
-  lines.push('');
-  lines.push('For each file below, call view_diff with the filepath and base="' + options.baseBranch + '".');
-  lines.push('Then check ONLY the added lines ("+") against the listed rules.');
-  lines.push('');
-
-  for (const [file, rules] of options.filesWithRules) {
-    lines.push(`${file}`);
-    for (const rule of rules) {
-      lines.push(`  → ${rule.id} (${rule.severity})`);
-    }
-  }
-
-  lines.push('');
-  lines.push('---');
-  lines.push('');
-
-  const uniqueRules = new Set<Rule>(Array.from(options.filesWithRules.values()).flat());
-  for (const rule of uniqueRules) {
-    lines.push(formatRule(rule));
-    lines.push('');
-  }
-
-  return lines.join('\n');
-}
-
-function formatRule(rule: Rule): string {
-  const lines: string[] = [
-    `### Rule ID: ${rule.id}`,
-    `**Severity:** ${rule.severity}`,
-    `**Applies to:** ${rule.globs.join(', ')}`,
-    '',
-    rule.instructions,
-  ];
-
-  if (rule.examples) {
-    lines.push('');
-    if (rule.examples.violations?.length) {
-      lines.push(`**Violations:** ${rule.examples.violations.join(', ')}`);
-    }
-    if (rule.examples.compliant?.length) {
-      lines.push(`**Compliant:** ${rule.examples.compliant.join(', ')}`);
-    }
-  }
-
-  return lines.join('\n');
-}
-
-function parseViolations(text: string, filesWithRules: Map<string, Rule[]>): Violation[] {
-  const violations: Violation[] = [];
-  if (!text) return violations;
-
-  if (text.toLowerCase().includes('no violations found')) {
-    return violations;
-  }
-
-  const rulesById = new Map<string, Rule>();
-  for (const rules of filesWithRules.values()) {
-    for (const rule of rules) {
-      if (!rulesById.has(rule.id)) {
-        rulesById.set(rule.id, rule);
-      }
-    }
-  }
-
-  const lines = text.split('\n');
-  for (const line of lines) {
-    const match = line.match(/\[([^\]]+)\]\s+(\S+):(\d+)?\s*-\s*(.+)/);
-    if (match) {
-      const ruleId = match[1];
-      const rule = rulesById.get(ruleId);
-      violations.push({
-        ruleId,
-        ruleTitle: rule?.title ?? ruleId,
-        severity: rule?.severity ?? 'error',
-        file: match[2],
-        line: match[3] ? parseInt(match[3]) : undefined,
-        message: match[4],
-      });
-    }
-  }
-
-  return violations;
 }
 
 function countRules(filesWithRules: Map<string, Rule[]>): number {
