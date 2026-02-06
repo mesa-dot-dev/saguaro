@@ -1,0 +1,37 @@
+{
+  "name": "@mesa/code-review",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "mesa": "./dist/cli/bin/index.js"
+  },
+  "scripts": {
+    "prebuild": "echo \"export const BUILD_TIME = '$(date -u +%Y-%m-%dT%H:%M:%SZ)';\" > src/build-info.ts",
+    "build": "tsc -p tsconfig.json",
+    "prepack": "bun run build",
+    "link": "bun install && bun run build && chmod +x dist/cli/bin/index.js && npm link",
+    "relink": "rm -rf dist && bun run link",
+    "review": "bun run src/cli/index.ts review",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opencode-ai/sdk": "^1.1.51",
+    "boxen": "^5.1.2",
+    "chalk": "^4.1.2",
+    "figlet": "^1.10.0",
+    "js-yaml": "^4.1.1",
+    "minimatch": "^10.1.2",
+    "opencode-ai": "^1.1.51",
+    "yargs": "^18.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/figlet": "^1.7.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^25.2.0",
+    "@types/yargs": "^17.0.35",
+    "bun-types": "latest",
+    "typescript": "^5.9.3"
+  }
+}

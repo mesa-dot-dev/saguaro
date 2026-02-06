@@ -1,0 +1,76 @@
+# Rule: No Console.log in Production Code
+
+id: no-console-log
+title: "No console.log in production code"
+severity: warning
+
+globs:
+  - "src/**/*.ts"
+  - "src/**/*.tsx"
+  - "!src/**/*.test.ts"
+  - "!src/**/*.test.tsx"
+  - "!src/**/*.spec.ts"
+  - "!src/**/*.spec.tsx"
+
+instructions: |
+  console.log, console.warn, and console.debug statements should not 
+  appear in production code. Use a proper logging library instead.
+  
+  ## Why This Matters
+  
+  - Console statements are not structured (can't query/filter)
+  - No log levels in production
+  - May leak sensitive information
+  - Can't be sent to logging services
+  - Pollutes browser console in frontend apps
+  
+  ## Exceptions
+  
+  - Test files (excluded via globs)
+  - console.error in error boundaries (acceptable)
+  - Explicit debug utilities that check environment
+  
+  ## Violations
+  
+  ```typescript
+  // BAD: Direct console usage
+  function handleLogin(user: User) {
+      console.log("User logged in:", user.email);
+      console.warn("Session will expire soon");
+      console.debug("Auth token:", token);
+  }
+  ```
+  
+  ## Correct Implementation
+  
+  ```typescript
+  import { logger } from '@/lib/logger';
+  
+  // GOOD: Structured logging
+  function handleLogin(user: User) {
+      logger.info("User logged in", { userId: user.id });
+      logger.warn("Session expiring", { expiresAt });
+  }
+  
+  // GOOD: Environment-aware debug
+  if (process.env.NODE_ENV === 'development') {
+      console.log("Debug info:", data);
+  }
+  ```
+
+examples:
+  violations:
+    - "console.log("
+    - "console.warn("
+    - "console.debug("
+    - "console.info("
+  compliant:
+    - "logger.info("
+    - "logger.warn("
+    - "logger.error("
+    - "logger.debug("
+
+tags:
+  - typescript
+  - logging
+  - production

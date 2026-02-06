@@ -1,0 +1,82 @@
+# Mesa Local Review Agent Configuration
+# Place this file at .mesa/config.yaml in your repository
+
+# =============================================================================
+# Model Configuration
+# =============================================================================
+# The AI model to use for reviews. User must provide their own API key
+# via environment variable (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
+
+model:
+  provider: anthropic  # anthropic | openai | google
+  name: claude-sonnet-4-20250514
+
+# =============================================================================
+# Output Configuration
+# =============================================================================
+
+output:
+  # Default output format: console | json | markdown
+  format: console
+  
+  # Show detailed progress (useful for debugging)
+  verbose: false
+
+# =============================================================================
+# Review Settings
+# =============================================================================
+
+review:
+  # Maximum number of files to review in a single run
+  # Prevents runaway reviews on massive PRs
+  max_files: 50
+  
+  # Timeout per file in seconds
+  timeout_per_file: 60
+  
+  # Skip files larger than this (in bytes)
+  # Large files often cause issues and rarely need line-by-line review
+  max_file_size: 100000
+
+  # Default to 50 steps. 
+  max_steps_size: 50 
+
+# =============================================================================
+# MCP Context Providers (Optional)
+# =============================================================================
+# Connect to external MCP servers to provide additional context during review.
+# The agent can query these servers to understand linked issues, RFCs, etc.
+
+# mcp:
+#   servers:
+#     # Linear integration - look up linked issues
+#     linear:
+#       command: "npx"
+#       args: ["@anthropic/mcp-server-linear"]
+#       env:
+#         LINEAR_API_KEY: "${LINEAR_API_KEY}"
+#     
+#     # Notion integration - look up RFCs and ADRs
+#     notion:
+#       command: "npx"
+#       args: ["@anthropic/mcp-server-notion"]
+#       env:
+#         NOTION_API_KEY: "${NOTION_API_KEY}"
+#     
+#     # Custom internal documentation server
+#     internal-docs:
+#       command: "/usr/local/bin/docs-server"
+#       args: ["--port", "0"]
+
+# =============================================================================
+# Rule Overrides (Optional)
+# =============================================================================
+# Override rule settings without modifying the rule files themselves.
+# Useful for temporarily disabling rules or changing severity.
+
+# rule_overrides:
+#   no-console-log:
+#     enabled: false  # Temporarily disable
+#   
+#   no-wall-clock:
+#     severity: warning  # Downgrade from error
