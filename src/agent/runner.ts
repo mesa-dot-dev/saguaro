@@ -35,8 +35,7 @@ interface MesaConfig {
   };
 }
 
-const DEFAULT_FILES_PER_WORKER = 15;
-const REVIEW_TIMEOUT_MS = 180_000;
+const REVIEW_TIMEOUT_MS = 600_000;
 
 function createProcessingSpinner(enabled: boolean, initialMessage: string) {
   const frames = ['-', '\\', '|', '/'];
@@ -180,7 +179,22 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
         },
       };
     } finally {
-      await Promise.all(sessionIds.map((id) => client.session.delete({ path: { id } }).catch(() => {})));
+      const cleanupErrors: string[] = [];
+      await Promise.all(
+        sessionIds.map(async (id) => {
+          try {
+            await client.session.delete({ path: { id } });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            cleanupErrors.push(`Failed to delete session ${id}: ${message}`);
+          }
+        })
+      );
+      if (cleanupErrors.length > 0 && options.verbose) {
+        for (const message of cleanupErrors) {
+          console.log(chalk.yellow(message));
+        }
+      }
     }
   } finally {
     if (proc) {
@@ -210,7 +224,7 @@ function splitFilesForWorkers(filesWithRules: Map<string, Rule[]>, filesPerWorke
 
 function resolveFilesPerWorker(config: MesaConfig): {
   filesPerWorker: number;
-  source: 'default' | 'config' | 'env';
+  source: 'config' | 'env';
 } {
   const rawEnv = process.env.MESA_FILES_PER_WORKER;
   if (rawEnv) {
@@ -218,6 +232,7 @@ function resolveFilesPerWorker(config: MesaConfig): {
     if (Number.isFinite(parsed) && parsed >= 1) {
       return { filesPerWorker: parsed, source: 'env' };
     }
+    throw new Error(`Invalid MESA_FILES_PER_WORKER="${rawEnv}". Expected an integer >= 1.`);
   }
 
   const fromConfig = config.review?.files_per_worker;
@@ -225,7 +240,9 @@ function resolveFilesPerWorker(config: MesaConfig): {
     return { filesPerWorker: Math.floor(fromConfig), source: 'config' };
   }
 
-  return { filesPerWorker: DEFAULT_FILES_PER_WORKER, source: 'default' };
+  throw new Error(
+    'Missing required config: review.files_per_worker must be set in .mesa/config.yaml (integer >= 1). Run "mesa init --force" to regenerate config.'
+  );
 }
 
 async function streamParallelReviews(
@@ -553,6 +570,7 @@ export default {
 
 async function waitForHealthy(client: ReturnType<typeof createOpencodeClient>, verbose?: boolean): Promise<void> {
   const maxAttempts = 10;
+  let lastError: unknown;
   for (let i = 0; i < maxAttempts; i++) {
     try {
       const { data, error } = await client.app.agents();
@@ -562,8 +580,17 @@ async function waitForHealthy(client: ReturnType<typeof createOpencodeClient>, v
         }
         return;
       }
-    } catch {}
+      if (error) {
+        lastError = error;
+      }
+    } catch (error) {
+      lastError = error;
+    }
     await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (lastError) {
+    const message = lastError instanceof Error ? lastError.message : String(lastError);
+    throw new Error(`OpenCode server failed health check after 5s: ${message}`);
   }
   throw new Error('OpenCode server failed health check after 5s');
 }

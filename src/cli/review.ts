@@ -23,12 +23,18 @@ interface ReviewOptions {
 interface MesaOutputConfig {
   output?: {
     fix_prompt?: boolean;
+    cursor_deeplink?: boolean;
   };
+}
+
+interface OutputSettings {
+  fixPrompt: boolean;
+  cursorDeeplink: boolean;
 }
 
 export async function reviewCommand(options: ReviewOptions): Promise<void> {
   const startTime = Date.now();
-  const showFixPrompt = resolveFixPromptSetting(options.config);
+  const outputSettings = resolveOutputSettings(options.config);
 
   // 1. Get changed files and load rules in parallel (they're independent operations)
   let changedFiles: string[];
@@ -87,7 +93,7 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
     result.summary.durationMs = Date.now() - startTime;
 
     // 4. Output results
-    printViolations(result, options.output, showFixPrompt);
+    printViolations(result, options.output, outputSettings.fixPrompt, outputSettings.cursorDeeplink, !!options.verbose);
 
     // Exit with appropriate code
     const hasErrors = result.violations.some((v) => v.severity === 'error');
@@ -98,21 +104,34 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
   }
 }
 
-function resolveFixPromptSetting(configPath?: string): boolean {
+function resolveOutputSettings(configPath?: string): OutputSettings {
   const resolvedPath = configPath ?? '.mesa/config.yaml';
   if (!fs.existsSync(resolvedPath)) {
-    return true;
+    throw new Error('No config file found. Run "mesa init --force" to regenerate .mesa/config.yaml.');
   }
 
   try {
     const parsed = yaml.load(fs.readFileSync(resolvedPath, 'utf8')) as MesaOutputConfig | null;
-    const value = parsed?.output?.fix_prompt;
-    if (typeof value === 'boolean') {
-      return value;
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error('expected YAML object');
     }
-  } catch {
-    return true;
-  }
 
-  return true;
+    const fixPrompt = parsed.output?.fix_prompt;
+    const cursorDeeplink = parsed.output?.cursor_deeplink;
+
+    if (typeof fixPrompt !== 'boolean') {
+      throw new Error('output.fix_prompt is required and must be true or false');
+    }
+    if (typeof cursorDeeplink !== 'boolean') {
+      throw new Error('output.cursor_deeplink is required and must be true or false');
+    }
+
+    return {
+      fixPrompt,
+      cursorDeeplink,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse ${resolvedPath}: ${message}`);
+  }
 }

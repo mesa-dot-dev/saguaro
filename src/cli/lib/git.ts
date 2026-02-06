@@ -14,7 +14,7 @@ const getChangedFiles = (baseBranch: string | undefined): string[] => {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9/_.\-^~]*$/.test(baseRef)) {
       throw new Error('Invalid branch name');
     }
-    const cmd = `git diff --name-only --diff-filter=ACMR ${baseRef}`;
+    const cmd = `git diff --name-only --diff-filter=ACMR ${baseRef}...HEAD`;
     const output = execSync(cmd, { encoding: 'utf8' });
 
     return output.split('\n').filter((line: string) => line.trim().length > 0);
