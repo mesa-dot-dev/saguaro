@@ -5,7 +5,7 @@ import path from 'node:path';
 import * as readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import type { Config as OpencodeConfig } from '@opencode-ai/sdk';
-import { createOpencodeClient } from '@opencode-ai/sdk';
+import { createOpencodeClient } from '@opencode-ai/sdk/v2';
 import chalk from 'chalk';
 import yaml from 'js-yaml';
 import type { ReviewResult, Rule, Violation } from '../types/types.js';
@@ -119,8 +119,8 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
 
     const provider = mesaConfig.model?.provider ?? 'anthropic';
     await client.auth.set({
-      path: { id: provider },
-      body: { type: 'api', key: apiKey },
+      providerID: provider,
+      auth: { type: 'api', key: apiKey },
     });
 
     if (options.verbose) {
@@ -150,7 +150,7 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
       sessionPrompts.push(prompt);
 
       const sessionRes = await client.session.create({
-        body: { title: `Review worker ${i + 1}/${fileGroups.length}` },
+        title: `Review worker ${i + 1}/${fileGroups.length}`,
       });
       if (!sessionRes.data) {
         throw new Error(`Failed to create session ${i + 1}: ${JSON.stringify(sessionRes.error)}`);
@@ -183,7 +183,7 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
       await Promise.all(
         sessionIds.map(async (id) => {
           try {
-            await client.session.delete({ path: { id } });
+            await client.session.delete({ sessionID: id });
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             cleanupErrors.push(`Failed to delete session ${id}: ${message}`);
@@ -251,29 +251,23 @@ async function streamParallelReviews(
   prompts: string[],
   verbose?: boolean
 ): Promise<string[]> {
-  const events = await client.event.subscribe({ parseAs: 'stream' });
+  const events = await client.event.subscribe();
   const spinner = createProcessingSpinner(
     process.stdout.isTTY,
     `Processing review... 0/${sessionIds.length} worker(s) complete`
   );
 
   const sessionSet = new Set(sessionIds);
-  const texts: Record<string, string> = {};
+  const texts: Record<string, string> = Object.fromEntries(sessionIds.map((id) => [id, '']));
   const completed = new Set<string>();
   const errors: Record<string, string> = {};
   let viewDiffFailureCount = 0;
 
-  for (const id of sessionIds) {
-    texts[id] = '';
-  }
-
   for (let i = 0; i < sessionIds.length; i++) {
     const promptRes = await client.session.promptAsync({
-      path: { id: sessionIds[i] },
-      body: {
-        agent: 'code-reviewer',
-        parts: [{ type: 'text', text: prompts[i] }],
-      },
+      sessionID: sessionIds[i],
+      agent: 'code-reviewer',
+      parts: [{ type: 'text', text: prompts[i] }],
     });
 
     if (promptRes.error) {
@@ -300,82 +294,75 @@ async function streamParallelReviews(
       if (abortController.signal.aborted) break;
       if (completed.size === sessionIds.length) break;
 
-      // Stream text and tool call output
-      if (event.type === 'message.part.updated') {
-        const props = event.properties as any;
-        const part = props?.part;
-        if (!part || !sessionSet.has(part.sessionID)) continue;
-
-        if (part.type === 'text') {
-          const delta = props.delta;
-          if (delta) {
-            texts[part.sessionID] = (texts[part.sessionID] ?? '') + delta;
-          } else {
-            const newText = part.text ?? '';
-            texts[part.sessionID] = newText;
-          }
-        }
-
-        if (part.type === 'tool' && part.state?.status === 'completed') {
-          const sessionIndex = sessionIds.indexOf(part.sessionID) + 1;
-          const label = part.state.input?.filepath || part.state.title || 'done';
-          const toolOutput = typeof part.state.output === 'string' ? part.state.output : '';
-          if (part.tool === 'view_diff' && toolOutput.startsWith('[VIEW_DIFF_ERROR]')) {
-            viewDiffFailureCount++;
+      switch (event.type) {
+        case 'message.part.updated': {
+          const part = event.properties.part;
+          if (!sessionSet.has(part.sessionID)) continue;
+          if (part.type === 'tool' && part.state?.status === 'completed') {
+            const sessionIndex = sessionIds.indexOf(part.sessionID) + 1;
+            const label = part.state.input?.filepath || part.state.title || 'done';
+            const toolOutput = typeof part.state.output === 'string' ? part.state.output : '';
+            if (part.tool === 'view_diff' && toolOutput.startsWith('[VIEW_DIFF_ERROR]')) {
+              viewDiffFailureCount++;
+              if (verbose) {
+                spinner.log(chalk.red(`  [${sessionIndex}] ↳ ${part.tool} failed for ${label}: ${toolOutput}`));
+              }
+            }
             if (verbose) {
-              spinner.log(chalk.red(`  [${sessionIndex}] ↳ ${part.tool} failed for ${label}: ${toolOutput}`));
+              spinner.log(chalk.cyan(`  [${sessionIndex}] ↳ ${part.tool}: ${label}`));
             }
           }
-          if (verbose) {
-            spinner.log(chalk.cyan(`  [${sessionIndex}] ↳ ${part.tool}: ${label}`));
-          }
+          break;
         }
-      }
-
-      // Completion detection — matches OpenCode CLI's own approach (run.ts:490-496)
-      if (event.type === 'session.status') {
-        const props = event.properties;
-        if (sessionSet.has(props.sessionID) && props.status.type === 'idle') {
+        case 'session.status': {
+          const props = event.properties;
+          if (!sessionSet.has(props.sessionID) || props.status.type !== 'idle') {
+            break;
+          }
           if (!completed.has(props.sessionID)) {
             completed.add(props.sessionID);
             const sessionIndex = sessionIds.indexOf(props.sessionID) + 1;
             spinner.setMessage(`Processing review... ${completed.size}/${sessionIds.length} worker(s) complete`);
             spinner.log(chalk.green(`✓ Worker ${sessionIndex}/${sessionIds.length} complete`));
           }
+          break;
         }
-      }
-
-      if (event.type === 'session.error') {
-        const props = event.properties;
-        const errorSessionID = props.sessionID;
-        if (errorSessionID && sessionSet.has(errorSessionID) && props.error) {
-          const err = props.error as any;
-          const errMsg = err?.data?.message || err?.name || 'Unknown error';
+        case 'session.error': {
+          const props = event.properties;
+          const errorSessionID = props.sessionID;
+          if (!errorSessionID || !sessionSet.has(errorSessionID) || !props.error) {
+            break;
+          }
+          const errorValue = props.error as { data?: { message?: string }; name?: string };
+          const errMsg = errorValue.data?.message || errorValue.name || 'Unknown error';
           errors[errorSessionID] = errMsg;
           const sessionIndex = sessionIds.indexOf(errorSessionID) + 1;
           spinner.log(chalk.red(`✗ Worker ${sessionIndex} error: ${errMsg}`));
           completed.add(errorSessionID);
           spinner.setMessage(`Processing review... ${completed.size}/${sessionIds.length} worker(s) complete`);
+          break;
         }
-      }
-
-      if (event.type === 'permission.updated') {
-        const props = event.properties;
-        if (sessionSet.has(props.sessionID)) {
+        case 'permission.asked': {
+          const props = event.properties;
+          if (!sessionSet.has(props.sessionID)) {
+            break;
+          }
           if (verbose) {
-            const patterns = Array.isArray(props.pattern) ? props.pattern.join(', ') : (props.pattern ?? '*');
-            spinner.log(chalk.yellow(`  Auto-rejecting permission: ${props.type} (${patterns})`));
+            spinner.log(
+              chalk.yellow(`  Auto-rejecting permission: ${props.permission} (${props.patterns.join(', ')})`)
+            );
           }
           try {
-            await client.postSessionIdPermissionsPermissionId({
-              path: { id: props.sessionID, permissionID: props.id },
-              body: { response: 'reject' },
+            await client.permission.reply({
+              requestID: props.id,
+              reply: 'reject',
             });
           } catch (error) {
             const sessionIndex = sessionIds.indexOf(props.sessionID) + 1;
             const message = error instanceof Error ? error.message : String(error);
             spinner.error(chalk.red(`Failed to auto-reject permission for worker ${sessionIndex}: ${message}`));
           }
+          break;
         }
       }
     }
@@ -392,18 +379,32 @@ async function streamParallelReviews(
   }
 
   for (const id of sessionIds) {
-    if (texts[id]) continue;
-    const messagesRes = await client.session.messages({ path: { id } });
-    const messages = messagesRes.data as any[];
-    const lastAssistant = messages?.filter((m: any) => m.role === 'assistant' || m.info?.role === 'assistant').pop();
-    if (lastAssistant) {
-      const parts = lastAssistant.parts ?? lastAssistant.info?.parts;
-      texts[id] =
-        parts
-          ?.filter((p: any) => p.type === 'text')
-          .map((p: any) => p.text)
-          .join('\n') ?? '';
+    const messagesRes = await client.session.messages({ sessionID: id });
+    const messages = Array.isArray(messagesRes.data) ? messagesRes.data : [];
+    let text = '';
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i] as {
+        role?: string;
+        info?: { role?: string; parts?: Array<{ type?: string; text?: string }> };
+        parts?: Array<{ type?: string; text?: string }>;
+      };
+      if (message.role !== 'assistant' && message.info?.role !== 'assistant') {
+        continue;
+      }
+
+      const parts = message.parts ?? message.info?.parts ?? [];
+      text = parts
+        .filter((part) => part.type === 'text' && typeof part.text === 'string')
+        .map((part) => part.text as string)
+        .join('\n');
+
+      if (text) {
+        break;
+      }
     }
+
+    texts[id] = text;
   }
 
   const errorEntries = Object.entries(errors);
@@ -483,6 +484,7 @@ function tryStartServer({
       XDG_CONFIG_HOME: tempDir,
       XDG_DATA_HOME: tempDir,
       OPENCODE_CONFIG_CONTENT: JSON.stringify(opencodeConfig),
+      OPENCODE_DISABLE_PROJECT_CONFIG: 'true',
       OPENCODE_DISABLE_DEFAULT_PLUGINS: 'true',
       OPENCODE_DISABLE_LSP_DOWNLOAD: 'true',
       OPENCODE_DISABLE_AUTOUPDATE: 'true',

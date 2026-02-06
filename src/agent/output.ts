@@ -3,11 +3,6 @@ import type { ReviewResult } from '../types/types.js';
 
 const CURSOR_PROMPT_URL_MAX_LENGTH = 8000;
 
-interface CursorPromptLinks {
-  native: string;
-  web: string;
-}
-
 function terminalLink(label: string, url: string): string {
   if (!process.stdout.isTTY) {
     return `${label}: ${url}`;
@@ -55,11 +50,10 @@ export function printViolations(
     console.log();
 
     if (showCursorDeepLink) {
-      const links = buildCursorPromptLinks(buildCursorPromptText(result));
-      if (links) {
+      const link = buildCursorPromptLink(buildCursorPromptText(result));
+      if (link) {
         console.log(chalk.bold('Open in Cursor with prefilled prompt:\n'));
-        console.log(`  ${terminalLink('Open in Cursor (Web)', links.web)}`);
-        console.log(`  ${terminalLink('Open in Cursor (Native)', links.native)}`);
+        console.log(`  ${terminalLink('Open in Cursor', link)}`);
         console.log();
       } else {
         console.log(chalk.yellow('Cursor deeplink skipped: generated prompt exceeds URL length limit.'));
@@ -96,11 +90,10 @@ export function printViolations(
   }
 
   if (showCursorDeepLink && result.violations.length > 0) {
-    const links = buildCursorPromptLinks(buildCursorPromptText(result));
-    if (links) {
+    const link = buildCursorPromptLink(buildCursorPromptText(result));
+    if (link) {
       console.log(chalk.bold('Open in Cursor with prefilled prompt:\n'));
-      console.log(`  ${terminalLink('Open in Cursor (Web)', links.web)}`);
-      console.log(`  ${terminalLink('Open in Cursor (Native)', links.native)}`);
+      console.log(`  ${terminalLink('Open in Cursor', link)}`);
       console.log();
     } else {
       console.log(chalk.yellow('Cursor deeplink skipped: generated prompt exceeds URL length limit.'));
@@ -162,19 +155,15 @@ function buildCursorPromptText(result: ReviewResult): string {
   return lines.join('\n');
 }
 
-function buildCursorPromptLinks(promptText: string): CursorPromptLinks | null {
+function buildCursorPromptLink(promptText: string): string | null {
   const native = new URL('cursor://anysphere.cursor-deeplink/prompt');
   native.searchParams.set('text', promptText);
 
-  const web = new URL('https://cursor.com/link/prompt');
-  web.searchParams.set('text', promptText);
-
   const nativeLink = native.toString();
-  const webLink = web.toString();
 
-  if (nativeLink.length > CURSOR_PROMPT_URL_MAX_LENGTH || webLink.length > CURSOR_PROMPT_URL_MAX_LENGTH) {
+  if (nativeLink.length > CURSOR_PROMPT_URL_MAX_LENGTH) {
     return null;
   }
 
-  return { native: nativeLink, web: webLink };
+  return nativeLink;
 }

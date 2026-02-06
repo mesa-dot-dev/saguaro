@@ -103,7 +103,7 @@ review:
   max_files: 50
   
   # Timeout per file in seconds
-  timeout_per_file: 60
+  timeout_per_file: 120
   
   # Skip files larger than this (in bytes)
   max_file_size: 100000
