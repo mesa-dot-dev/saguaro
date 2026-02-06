@@ -284,7 +284,9 @@ interface IsolatedServerResult {
   url: string;
 }
 
-function startIsolatedServer({
+const MAX_PORT_RETRIES = 3;
+
+async function startIsolatedServer({
   opencodeConfig,
   tempDir,
   verbose,
@@ -296,13 +298,41 @@ function startIsolatedServer({
   fs.mkdirSync(path.join(tempDir, 'opencode'), { recursive: true });
   writeCustomTools(tempDir);
 
-  const port = 19456 + Math.floor(Math.random() * 100);
-  const hostname = '127.0.0.1';
-  const args = ['serve', `--hostname=${hostname}`, `--port=${port}`];
-  if (verbose) {
-    args.push('--print-logs', '--log-level=WARN');
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < MAX_PORT_RETRIES; attempt++) {
+    const port = 19456 + Math.floor(Math.random() * 1000);
+    const hostname = '127.0.0.1';
+    const args = ['serve', `--hostname=${hostname}`, `--port=${port}`];
+    if (verbose) {
+      args.push('--print-logs', '--log-level=WARN');
+    }
+
+    try {
+      const result = await tryStartServer({ args, tempDir, opencodeConfig, verbose });
+      return result;
+    } catch (err: any) {
+      lastError = err;
+      if (verbose) {
+        console.log(chalk.gray(`Port ${port} unavailable, trying next...`));
+      }
+    }
   }
 
+  throw lastError ?? new Error('Failed to start OpenCode server');
+}
+
+function tryStartServer({
+  args,
+  tempDir,
+  opencodeConfig,
+  verbose,
+}: {
+  args: string[];
+  tempDir: string;
+  opencodeConfig: OpencodeConfig;
+  verbose?: boolean;
+}): Promise<IsolatedServerResult> {
   const proc = spawn('opencode', args, {
     cwd: process.cwd(),
     env: {

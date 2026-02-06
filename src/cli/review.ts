@@ -1,9 +1,15 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { printViolations } from '../agent/output.js';
 import { runReviewAgent } from '../agent/runner.js';
-import { BUILD_TIME } from '../build-info.js';
 import type { Rule } from '../types/types.js';
 import { getChangedFiles } from './lib/git.js';
 import { loadAllRules, selectRulesForFiles } from './lib/selector.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', '..', 'package.json'), 'utf8'));
+const VERSION: string = pkg.version;
 
 interface ReviewOptions {
   base: string;
@@ -29,7 +35,7 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
   }
 
   if (options.verbose) {
-    console.log(`Build: ${BUILD_TIME}`);
+    console.log(`Mesa v${VERSION}`);
     console.log(`\nFound ${changedFiles.length} changed files:`);
     changedFiles.forEach((f) => console.log(`  ${f}`));
   }
