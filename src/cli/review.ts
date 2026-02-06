@@ -20,6 +20,8 @@ interface ReviewOptions {
 }
 
 export async function reviewCommand(options: ReviewOptions): Promise<void> {
+  const startTime = Date.now();
+
   // 1. Get changed files and load rules in parallel (they're independent operations)
   let changedFiles: string[];
   let rules: Rule[];
@@ -73,6 +75,8 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
       configPath: options.config,
       verbose: options.verbose,
     });
+
+    result.summary.durationMs = Date.now() - startTime;
 
     // 4. Output results
     printViolations(result, options.output);
