@@ -84,10 +84,7 @@ output:
   # Show detailed progress (useful for debugging)
   verbose: false
 
-  # Print a copy/paste fix prompt when violations are found
-  fix_prompt: true
-
-  # Print Cursor deeplinks with a prefilled fix prompt
+  # Print Cursor deeplink when violations are found
   cursor_deeplink: true
 
 # =============================================================================

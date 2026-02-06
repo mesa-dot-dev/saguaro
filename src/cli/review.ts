@@ -22,13 +22,11 @@ interface ReviewOptions {
 
 interface MesaOutputConfig {
   output?: {
-    fix_prompt?: boolean;
     cursor_deeplink?: boolean;
   };
 }
 
 interface OutputSettings {
-  fixPrompt: boolean;
   cursorDeeplink: boolean;
 }
 
@@ -93,7 +91,7 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
     result.summary.durationMs = Date.now() - startTime;
 
     // 4. Output results
-    printViolations(result, options.output, outputSettings.fixPrompt, outputSettings.cursorDeeplink, !!options.verbose);
+    printViolations(result, options.output, outputSettings.cursorDeeplink, !!options.verbose);
 
     // Exit with appropriate code
     const hasErrors = result.violations.some((v) => v.severity === 'error');
@@ -116,18 +114,13 @@ function resolveOutputSettings(configPath?: string): OutputSettings {
       throw new Error('expected YAML object');
     }
 
-    const fixPrompt = parsed.output?.fix_prompt;
     const cursorDeeplink = parsed.output?.cursor_deeplink;
 
-    if (typeof fixPrompt !== 'boolean') {
-      throw new Error('output.fix_prompt is required and must be true or false');
-    }
     if (typeof cursorDeeplink !== 'boolean') {
       throw new Error('output.cursor_deeplink is required and must be true or false');
     }
 
     return {
-      fixPrompt,
       cursorDeeplink,
     };
   } catch (error) {

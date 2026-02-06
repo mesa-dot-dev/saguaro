@@ -21,7 +21,6 @@ function formatDuration(ms: number): string {
 export function printViolations(
   result: ReviewResult,
   format: 'console' | 'json' = 'console',
-  showFixPrompt = true,
   showCursorDeepLink = true,
   verbose = false
 ): void {
@@ -83,12 +82,6 @@ export function printViolations(
   if (duration) console.log(chalk.gray(`  Duration:       ${duration}`));
   console.log();
 
-  if (showFixPrompt && result.violations.length > 0) {
-    console.log(chalk.bold('Copy/paste fix prompt:\n'));
-    console.log(buildFixPrompt(result));
-    console.log();
-  }
-
   if (showCursorDeepLink && result.violations.length > 0) {
     const link = buildCursorPromptLink(buildCursorPromptText(result));
     if (link) {
@@ -100,43 +93,6 @@ export function printViolations(
       console.log();
     }
   }
-}
-
-function buildFixPrompt(result: ReviewResult): string {
-  return ['```text', buildFixPromptText(result), '```'].join('\n');
-}
-
-function buildFixPromptText(result: ReviewResult): string {
-  const lines: string[] = [];
-  lines.push('Fix the following code review violations in this repository.');
-  lines.push('');
-  lines.push('Constraints:');
-  lines.push('- Follow existing project patterns.');
-  lines.push('- Make minimal changes that resolve violations.');
-  lines.push('- Do not suppress lint/type errors.');
-  lines.push('- Preserve behavior unless a rule-compliant change requires it.');
-  lines.push('- After edits, run typecheck and report results.');
-  lines.push('');
-  lines.push('Violations:');
-
-  result.violations.forEach((violation, index) => {
-    const loc = `${violation.file}${violation.line ? `:${violation.line}` : ''}`;
-    lines.push(`${index + 1}) ${loc}`);
-    lines.push(`   Rule: ${violation.ruleId}`);
-    lines.push(`   Severity: ${violation.severity}`);
-    lines.push(`   Message: ${violation.message}`);
-    if (violation.suggestion) {
-      lines.push(`   Suggestion: ${violation.suggestion}`);
-    }
-    lines.push('');
-  });
-
-  lines.push('Output format:');
-  lines.push('- List changed files.');
-  lines.push('- Summarize each fix by file.');
-  lines.push('- Include typecheck result.');
-
-  return lines.join('\n');
 }
 
 function buildCursorPromptText(result: ReviewResult): string {
