@@ -84,11 +84,18 @@ output:
   # Show detailed progress (useful for debugging)
   verbose: false
 
+  # Print a copy/paste fix prompt when violations are found
+  fix_prompt: true
+
 # =============================================================================
 # Review Settings
 # =============================================================================
 
 review:
+  # Files reviewed by each worker.
+  # Set to 1 for one-worker-per-file parallelism.
+  files_per_worker: 15
+
   # Maximum number of files to review in a single run
   max_files: 50
   

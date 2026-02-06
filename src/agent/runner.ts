@@ -30,10 +30,13 @@ interface MesaConfig {
   opencode?: {
     url?: string;
   };
+  review?: {
+    files_per_worker?: number;
+  };
 }
 
-const DEFAULT_BATCH_SIZE = 15;
-const BATCH_TIMEOUT_MS = 180_000;
+const DEFAULT_FILES_PER_WORKER = 15;
+const REVIEW_TIMEOUT_MS = 180_000;
 
 function createProcessingSpinner(enabled: boolean, initialMessage: string) {
   const frames = ['-', '\\', '|', '/'];
@@ -125,40 +128,46 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
       console.log(chalk.gray(`Auth set for provider: ${provider}`));
     }
 
-    const batchSize = resolveBatchSize();
-    const batches = chunkFilesWithRules(options.filesWithRules, batchSize);
+    const { filesPerWorker, source } = resolveFilesPerWorker(mesaConfig);
+    const fileGroups = splitFilesForWorkers(options.filesWithRules, filesPerWorker);
 
     if (options.verbose) {
-      console.log(chalk.gray(`Split ${options.filesWithRules.size} files into ${batches.length} batch(es)`));
-      if (batchSize !== DEFAULT_BATCH_SIZE) {
-        console.log(chalk.gray(`Using batch size override from MESA_BATCH_SIZE=${batchSize}`));
+      console.log(chalk.gray(`Split ${options.filesWithRules.size} files into ${fileGroups.length} worker group(s)`));
+      if (source === 'env') {
+        console.log(chalk.gray(`Using files per worker override from MESA_FILES_PER_WORKER=${filesPerWorker}`));
+      } else if (source === 'config') {
+        console.log(
+          chalk.gray(`Using files per worker from .mesa/config.yaml review.files_per_worker=${filesPerWorker}`)
+        );
       }
     }
 
     const sessionIds: string[] = [];
-    const batchPrompts: string[] = [];
+    const sessionPrompts: string[] = [];
 
-    for (let i = 0; i < batches.length; i++) {
-      const batchOptions = { ...options, filesWithRules: batches[i] };
-      const prompt = buildPrompt(batchOptions);
-      batchPrompts.push(prompt);
+    for (let i = 0; i < fileGroups.length; i++) {
+      const sessionOptions = { ...options, filesWithRules: fileGroups[i] };
+      const prompt = buildPrompt(sessionOptions);
+      sessionPrompts.push(prompt);
 
       const sessionRes = await client.session.create({
-        body: { title: `Review batch ${i + 1}/${batches.length}: ${options.baseBranch}...HEAD` },
+        body: { title: `Review worker ${i + 1}/${fileGroups.length}` },
       });
       if (!sessionRes.data) {
-        throw new Error(`Failed to create session for batch ${i + 1}: ${JSON.stringify(sessionRes.error)}`);
+        throw new Error(`Failed to create session ${i + 1}: ${JSON.stringify(sessionRes.error)}`);
       }
       sessionIds.push(sessionRes.data.id);
     }
 
     if (options.verbose) {
-      console.log(chalk.gray(`Created ${sessionIds.length} session(s): ${sessionIds.join(', ')}`));
+      console.log(
+        chalk.gray(`Created ${sessionIds.length} worker(s) (OpenCode session IDs): ${sessionIds.join(', ')}`)
+      );
     }
 
     try {
-      const batchResults = await streamParallelReviews(client, sessionIds, batchPrompts, options.verbose);
-      const allViolations = batchResults.flatMap((text) => parseViolations(text, options.filesWithRules));
+      const sessionResults = await streamParallelReviews(client, sessionIds, sessionPrompts, options.verbose);
+      const allViolations = sessionResults.flatMap((text) => parseViolations(text, options.filesWithRules));
 
       return {
         violations: allViolations,
@@ -190,25 +199,33 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
   }
 }
 
-function chunkFilesWithRules(filesWithRules: Map<string, Rule[]>, batchSize: number): Map<string, Rule[]>[] {
+function splitFilesForWorkers(filesWithRules: Map<string, Rule[]>, filesPerWorker: number): Map<string, Rule[]>[] {
   const entries = Array.from(filesWithRules.entries());
-  const batches: Map<string, Rule[]>[] = [];
-  for (let i = 0; i < entries.length; i += batchSize) {
-    batches.push(new Map(entries.slice(i, i + batchSize)));
+  const groups: Map<string, Rule[]>[] = [];
+  for (let i = 0; i < entries.length; i += filesPerWorker) {
+    groups.push(new Map(entries.slice(i, i + filesPerWorker)));
   }
-  return batches;
+  return groups;
 }
 
-function resolveBatchSize(): number {
-  const raw = process.env.MESA_BATCH_SIZE;
-  if (!raw) return DEFAULT_BATCH_SIZE;
-
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return DEFAULT_BATCH_SIZE;
+function resolveFilesPerWorker(config: MesaConfig): {
+  filesPerWorker: number;
+  source: 'default' | 'config' | 'env';
+} {
+  const rawEnv = process.env.MESA_FILES_PER_WORKER;
+  if (rawEnv) {
+    const parsed = Number.parseInt(rawEnv, 10);
+    if (Number.isFinite(parsed) && parsed >= 1) {
+      return { filesPerWorker: parsed, source: 'env' };
+    }
   }
 
-  return parsed;
+  const fromConfig = config.review?.files_per_worker;
+  if (Number.isFinite(fromConfig) && fromConfig !== undefined && fromConfig >= 1) {
+    return { filesPerWorker: Math.floor(fromConfig), source: 'config' };
+  }
+
+  return { filesPerWorker: DEFAULT_FILES_PER_WORKER, source: 'default' };
 }
 
 async function streamParallelReviews(
@@ -220,7 +237,7 @@ async function streamParallelReviews(
   const events = await client.event.subscribe({ parseAs: 'stream' });
   const spinner = createProcessingSpinner(
     process.stdout.isTTY,
-    `Processing review... 0/${sessionIds.length} batch(es) complete`
+    `Processing review... 0/${sessionIds.length} worker(s) complete`
   );
 
   const sessionSet = new Set(sessionIds);
@@ -243,11 +260,11 @@ async function streamParallelReviews(
     });
 
     if (promptRes.error) {
-      throw new Error(`Prompt failed for batch ${i + 1}: ${JSON.stringify(promptRes.error)}`);
+      throw new Error(`Prompt failed for session ${i + 1}: ${JSON.stringify(promptRes.error)}`);
     }
 
     if (verbose) {
-      console.log(chalk.gray(`Batch ${i + 1}/${sessionIds.length} sent (${prompts[i].length} chars)`));
+      console.log(chalk.gray(`Worker ${i + 1}/${sessionIds.length} sent (${prompts[i].length} chars)`));
     }
   }
 
@@ -255,9 +272,9 @@ async function streamParallelReviews(
   let timedOut = false;
   const deadlineTimer = setTimeout(() => {
     timedOut = true;
-    spinner.log(chalk.yellow(`Timeout: ${completed.size}/${sessionIds.length} batches completed`));
+    spinner.log(chalk.yellow(`Timeout: ${completed.size}/${sessionIds.length} worker(s) completed`));
     abortController.abort();
-  }, BATCH_TIMEOUT_MS);
+  }, REVIEW_TIMEOUT_MS);
 
   spinner.start();
 
@@ -283,17 +300,17 @@ async function streamParallelReviews(
         }
 
         if (part.type === 'tool' && part.state?.status === 'completed') {
-          const batchIdx = sessionIds.indexOf(part.sessionID) + 1;
+          const sessionIndex = sessionIds.indexOf(part.sessionID) + 1;
           const label = part.state.input?.filepath || part.state.title || 'done';
           const toolOutput = typeof part.state.output === 'string' ? part.state.output : '';
           if (part.tool === 'view_diff' && toolOutput.startsWith('[VIEW_DIFF_ERROR]')) {
             viewDiffFailureCount++;
             if (verbose) {
-              spinner.log(chalk.red(`  [${batchIdx}] ↳ ${part.tool} failed for ${label}: ${toolOutput}`));
+              spinner.log(chalk.red(`  [${sessionIndex}] ↳ ${part.tool} failed for ${label}: ${toolOutput}`));
             }
           }
           if (verbose) {
-            spinner.log(chalk.cyan(`  [${batchIdx}] ↳ ${part.tool}: ${label}`));
+            spinner.log(chalk.cyan(`  [${sessionIndex}] ↳ ${part.tool}: ${label}`));
           }
         }
       }
@@ -304,9 +321,9 @@ async function streamParallelReviews(
         if (sessionSet.has(props.sessionID) && props.status.type === 'idle') {
           if (!completed.has(props.sessionID)) {
             completed.add(props.sessionID);
-            const batchIdx = sessionIds.indexOf(props.sessionID) + 1;
-            spinner.setMessage(`Processing review... ${completed.size}/${sessionIds.length} batch(es) complete`);
-            spinner.log(chalk.green(`✓ Batch ${batchIdx}/${sessionIds.length} complete`));
+            const sessionIndex = sessionIds.indexOf(props.sessionID) + 1;
+            spinner.setMessage(`Processing review... ${completed.size}/${sessionIds.length} worker(s) complete`);
+            spinner.log(chalk.green(`✓ Worker ${sessionIndex}/${sessionIds.length} complete`));
           }
         }
       }
@@ -318,10 +335,10 @@ async function streamParallelReviews(
           const err = props.error as any;
           const errMsg = err?.data?.message || err?.name || 'Unknown error';
           errors[errorSessionID] = errMsg;
-          const batchIdx = sessionIds.indexOf(errorSessionID) + 1;
-          spinner.log(chalk.red(`✗ Batch ${batchIdx} error: ${errMsg}`));
+          const sessionIndex = sessionIds.indexOf(errorSessionID) + 1;
+          spinner.log(chalk.red(`✗ Worker ${sessionIndex} error: ${errMsg}`));
           completed.add(errorSessionID);
-          spinner.setMessage(`Processing review... ${completed.size}/${sessionIds.length} batch(es) complete`);
+          spinner.setMessage(`Processing review... ${completed.size}/${sessionIds.length} worker(s) complete`);
         }
       }
 
@@ -338,9 +355,9 @@ async function streamParallelReviews(
               body: { response: 'reject' },
             });
           } catch (error) {
-            const batchIdx = sessionIds.indexOf(props.sessionID) + 1;
+            const sessionIndex = sessionIds.indexOf(props.sessionID) + 1;
             const message = error instanceof Error ? error.message : String(error);
-            spinner.error(chalk.red(`Failed to auto-reject permission for batch ${batchIdx}: ${message}`));
+            spinner.error(chalk.red(`Failed to auto-reject permission for worker ${sessionIndex}: ${message}`));
           }
         }
       }
@@ -353,7 +370,7 @@ async function streamParallelReviews(
   if (timedOut) {
     const outstandingCount = sessionIds.length - completed.size;
     if (outstandingCount > 0) {
-      console.log(chalk.yellow(`Marked ${outstandingCount} batch(es) incomplete due to timeout`));
+      console.log(chalk.yellow(`Marked ${outstandingCount} worker(s) incomplete due to timeout`));
     }
   }
 
@@ -375,8 +392,8 @@ async function streamParallelReviews(
   const errorEntries = Object.entries(errors);
   if (errorEntries.length > 0) {
     for (const [id, err] of errorEntries) {
-      const batchIdx = sessionIds.indexOf(id) + 1;
-      console.error(chalk.red(`Batch ${batchIdx} failed: ${err}`));
+      const sessionIndex = sessionIds.indexOf(id) + 1;
+      console.error(chalk.red(`Worker ${sessionIndex} failed: ${err}`));
     }
   }
 

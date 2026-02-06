@@ -1,4 +1,5 @@
 import fs from 'fs';
+import yaml from 'js-yaml';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { printViolations } from '../agent/output.js';
@@ -19,8 +20,15 @@ interface ReviewOptions {
   config?: string;
 }
 
+interface MesaOutputConfig {
+  output?: {
+    fix_prompt?: boolean;
+  };
+}
+
 export async function reviewCommand(options: ReviewOptions): Promise<void> {
   const startTime = Date.now();
+  const showFixPrompt = resolveFixPromptSetting(options.config);
 
   // 1. Get changed files and load rules in parallel (they're independent operations)
   let changedFiles: string[];
@@ -79,7 +87,7 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
     result.summary.durationMs = Date.now() - startTime;
 
     // 4. Output results
-    printViolations(result, options.output);
+    printViolations(result, options.output, showFixPrompt);
 
     // Exit with appropriate code
     const hasErrors = result.violations.some((v) => v.severity === 'error');
@@ -88,4 +96,23 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
     console.error(`Agent error: ${e instanceof Error ? e.message : String(e)}`);
     process.exit(3);
   }
+}
+
+function resolveFixPromptSetting(configPath?: string): boolean {
+  const resolvedPath = configPath ?? '.mesa/config.yaml';
+  if (!fs.existsSync(resolvedPath)) {
+    return true;
+  }
+
+  try {
+    const parsed = yaml.load(fs.readFileSync(resolvedPath, 'utf8')) as MesaOutputConfig | null;
+    const value = parsed?.output?.fix_prompt;
+    if (typeof value === 'boolean') {
+      return value;
+    }
+  } catch {
+    return true;
+  }
+
+  return true;
 }
