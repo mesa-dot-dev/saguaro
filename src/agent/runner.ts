@@ -30,11 +30,9 @@ interface MesaConfig {
   opencode?: {
     url?: string;
   };
-  review?: {
-    files_per_worker?: number;
-  };
 }
 
+const FILES_PER_WORKER = 3;
 const REVIEW_TIMEOUT_MS = 600_000;
 
 function createProcessingSpinner(enabled: boolean, initialMessage: string) {
@@ -127,18 +125,10 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
       console.log(chalk.gray(`Auth set for provider: ${provider}`));
     }
 
-    const { filesPerWorker, source } = resolveFilesPerWorker(mesaConfig);
-    const fileGroups = splitFilesForWorkers(options.filesWithRules, filesPerWorker);
+    const fileGroups = splitFilesForWorkers(options.filesWithRules);
 
     if (options.verbose) {
       console.log(chalk.gray(`Split ${options.filesWithRules.size} files into ${fileGroups.length} worker group(s)`));
-      if (source === 'env') {
-        console.log(chalk.gray(`Using files per worker override from MESA_FILES_PER_WORKER=${filesPerWorker}`));
-      } else if (source === 'config') {
-        console.log(
-          chalk.gray(`Using files per worker from .mesa/config.yaml review.files_per_worker=${filesPerWorker}`)
-        );
-      }
     }
 
     const sessionIds: string[] = [];
@@ -213,36 +203,13 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
   }
 }
 
-function splitFilesForWorkers(filesWithRules: Map<string, Rule[]>, filesPerWorker: number): Map<string, Rule[]>[] {
+function splitFilesForWorkers(filesWithRules: Map<string, Rule[]>): Map<string, Rule[]>[] {
   const entries = Array.from(filesWithRules.entries());
   const groups: Map<string, Rule[]>[] = [];
-  for (let i = 0; i < entries.length; i += filesPerWorker) {
-    groups.push(new Map(entries.slice(i, i + filesPerWorker)));
+  for (let i = 0; i < entries.length; i += FILES_PER_WORKER) {
+    groups.push(new Map(entries.slice(i, i + FILES_PER_WORKER)));
   }
   return groups;
-}
-
-function resolveFilesPerWorker(config: MesaConfig): {
-  filesPerWorker: number;
-  source: 'config' | 'env';
-} {
-  const rawEnv = process.env.MESA_FILES_PER_WORKER;
-  if (rawEnv) {
-    const parsed = Number.parseInt(rawEnv, 10);
-    if (Number.isFinite(parsed) && parsed >= 1) {
-      return { filesPerWorker: parsed, source: 'env' };
-    }
-    throw new Error(`Invalid MESA_FILES_PER_WORKER="${rawEnv}". Expected an integer >= 1.`);
-  }
-
-  const fromConfig = config.review?.files_per_worker;
-  if (Number.isFinite(fromConfig) && fromConfig !== undefined && fromConfig >= 1) {
-    return { filesPerWorker: Math.floor(fromConfig), source: 'config' };
-  }
-
-  throw new Error(
-    'Missing required config: review.files_per_worker must be set in .mesa/config.yaml (integer >= 1). Run "mesa init --force" to regenerate config.'
-  );
 }
 
 async function streamParallelReviews(
