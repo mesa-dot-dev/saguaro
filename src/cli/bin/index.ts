@@ -2,7 +2,7 @@
 
 import chalk from 'chalk';
 import figlet from 'figlet';
-import yargs from 'yargs';
+import yargs, { type Argv } from 'yargs';
 import checkHandler from '../lib/check.js';
 import initHandler from '../lib/init.js';
 import reviewHandler from '../lib/review.js';
@@ -17,8 +17,8 @@ const showBanner = () => {
 };
 
 // Wrapper to handle async handlers and errors
-const wrapHandler = (handlerName: string, handler: (argv: any) => Promise<void> | void) => {
-  return async (argv: any) => {
+const wrapHandler = <T>(handlerName: string, handler: (argv: T) => Promise<void> | void) => {
+  return async (argv: T) => {
     try {
       await handler(argv);
     } catch (error) {
@@ -50,14 +50,13 @@ yargs(argv)
   .command(
     'review',
     'Run an AI-assisted code review',
-    (yargs: any) => {
-      yargs
-        .option('b', {
-          alias: 'base',
-          describe: 'Base branch to diff against',
-          type: 'string',
-          default: 'main',
-        })
+    (y: Argv) => {
+      y.option('b', {
+        alias: 'base',
+        describe: 'Base branch to diff against',
+        type: 'string',
+        default: 'main',
+      })
         .option('o', {
           alias: 'output',
           describe: 'Output format: console, json, markdown',
@@ -75,35 +74,48 @@ yargs(argv)
           describe: 'Path to config file',
           type: 'string',
           default: '.mesa/config.yaml',
+        })
+        .option('rules', {
+          describe: 'Path or glob to rule files',
+          type: 'string',
         });
     },
-    wrapHandler('review', reviewHandler)
+    wrapHandler('review', reviewHandler as (argv: unknown) => Promise<void>)
   )
   .command(
     'init',
     'Initialize Mesa in a repository',
-    (yargs: any) => {
-      yargs.option('force', {
+    (y: Argv) => {
+      y.option('force', {
         describe: 'Overwrite existing configuration',
         type: 'boolean',
         default: false,
       });
     },
-    wrapHandler('init', initHandler)
+    wrapHandler('init', initHandler as (argv: unknown) => Promise<void>)
   )
   .command(
     'rules <command>',
     'Manage and inspect rules',
-    (yargs: any) => {
-      yargs
-        .command('list', 'List all defined rules', {}, wrapHandler('rules-list', listRules))
+    (y: Argv) => {
+      y.command('list', 'List all defined rules', {}, wrapHandler('rules-list', listRules as (argv: unknown) => void))
         .command(
           'explain <ruleId>',
           'Show detailed information about a rule',
-          {},
-          wrapHandler('rules-explain', explainRule)
+          (y: Argv) => {
+            y.positional('ruleId', {
+              describe: 'Rule ID',
+              type: 'string',
+            });
+          },
+          wrapHandler('rules-explain', explainRule as (argv: unknown) => void)
         )
-        .command('validate', 'Validate rule files', {}, wrapHandler('rules-validate', validateRules))
+        .command(
+          'validate',
+          'Validate rule files',
+          {},
+          wrapHandler('rules-validate', validateRules as (argv: unknown) => void)
+        )
         .command('locate', 'Locate the rules directory', {}, () => {
           try {
             locateRulesDirectory();
@@ -112,18 +124,31 @@ yargs(argv)
             process.exit(1);
           }
         })
-        .command('delete <ruleId>', 'Delete a rule', {}, wrapHandler('rules-delete', deleteRule))
+        .command(
+          'delete <ruleId>',
+          'Delete a rule',
+          (y: Argv) => {
+            y.positional('ruleId', {
+              describe: 'Rule ID',
+              type: 'string',
+            });
+          },
+          wrapHandler('rules-delete', deleteRule as (argv: unknown) => void)
+        )
         .command(
           'create [title]',
           'Create a new rule file',
-          (yargs: any) => {
-            yargs
+          (y: Argv) => {
+            y.positional('title', {
+              describe: 'Rule title',
+              type: 'string',
+            })
               .option('id', { describe: 'Rule ID (kebab-case)' })
               .option('severity', { describe: 'Rule severity', default: 'error' })
               .option('globs', { describe: 'Comma-separated glob patterns' })
               .option('instructions', { describe: 'Rule instructions' });
           },
-          wrapHandler('rules-create', createRule)
+          wrapHandler('rules-create', createRule as (argv: unknown) => Promise<void>)
         );
     },
     () => {} // Default handler if no subcommand
@@ -131,13 +156,21 @@ yargs(argv)
   .command(
     'check <rule-id> [file]',
     'Check a specific rule against a file or code snippet',
-    () => {},
-    wrapHandler('check', checkHandler)
+    (y: Argv) => {
+      y.positional('rule-id', {
+        describe: 'Rule ID to check',
+        type: 'string',
+      }).positional('file', {
+        describe: 'File to check',
+        type: 'string',
+      });
+    },
+    wrapHandler('check', checkHandler as (argv: unknown) => Promise<void>)
   )
   .command(
     'serve',
     'Run Mesa as an MCP server for Claude/Cursor integration',
     () => {},
-    wrapHandler('serve', serveHandler)
+    wrapHandler('serve', serveHandler as (argv: unknown) => Promise<void>)
   )
   .parse();

@@ -1,7 +1,7 @@
-import fs from 'fs';
+import fs from 'node:fs';
+import path from 'node:path';
 import yaml from 'js-yaml';
 import { minimatch } from 'minimatch';
-import path from 'path';
 import type { Rule } from '../../types/types.js';
 
 const findMesaDir = (): string | null => {
@@ -37,9 +37,10 @@ const loadAllRules = (rulesDir?: string): Rule[] => {
     .map((f: string) => {
       try {
         const content = fs.readFileSync(path.join(dir, f), 'utf8');
-        const rule = yaml.load(content) as Rule;
+        const rule = yaml.load(content, { schema: yaml.DEFAULT_SCHEMA }) as Rule;
         return rule;
-      } catch (e) {
+      } catch (e: unknown) {
+        console.error(`Error loading rule ${f}: ${e instanceof Error ? e.message : String(e as Error)}`);
         return null;
       }
     })

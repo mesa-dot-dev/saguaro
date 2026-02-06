@@ -1,9 +1,9 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import readline from 'node:readline';
 import boxen from 'boxen';
 import chalk from 'chalk';
-import fs from 'fs';
 import yaml from 'js-yaml';
-import path from 'path';
-import readline from 'readline';
 import type { Rule, Severity } from '../../types/types.js';
 import { findMesaDir } from './selector.js';
 
@@ -78,10 +78,11 @@ const loadRules = (rulesDir: string): (Rule & { _filename: string })[] => {
     .map((f: string): (Rule & { _filename: string }) | null => {
       try {
         const content = fs.readFileSync(path.join(rulesDir, f), 'utf8');
-        const rule = yaml.load(content) as Rule | null;
+        const rule = yaml.load(content, { schema: yaml.DEFAULT_SCHEMA }) as Rule | null;
         if (!rule) return null;
         return { ...rule, _filename: f } as Rule & { _filename: string };
       } catch (e) {
+        console.error(`Error loading rule ${f}: ${e instanceof Error ? e.message : String(e as Error)}`);
         return null;
       }
     })
@@ -229,7 +230,7 @@ const validateRules = (argv: ValidateRulesArgv) => {
   files.forEach((file: string) => {
     const filePath = path.join(rulesDir, file);
     try {
-      const rule = yaml.load(fs.readFileSync(filePath, 'utf8')) as Rule;
+      const rule = yaml.load(fs.readFileSync(filePath, 'utf8'), { schema: yaml.DEFAULT_SCHEMA }) as Rule;
       const ruleErrors: string[] = [];
 
       if (!rule.id) ruleErrors.push('missing id');
@@ -288,7 +289,7 @@ const createRule = async (argv: CreateRuleArgv) => {
 
   try {
     console.log(chalk.bold('\nWhat kind of rule?'));
-    Object.entries(RULE_TEMPLATES).forEach(([key, val], i) => {
+    Object.entries(RULE_TEMPLATES).forEach(([_, val], i) => {
       console.log(`  ${i + 1}. ${chalk.bold(val.name)}`);
     });
 

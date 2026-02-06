@@ -12,7 +12,7 @@ const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', '..', 'pack
 const VERSION: string = pkg.version;
 
 interface ReviewOptions {
-  base: string;
+  base?: string;
   output: 'console' | 'json';
   rules?: string;
   verbose?: boolean;
@@ -20,12 +20,17 @@ interface ReviewOptions {
 }
 
 export async function reviewCommand(options: ReviewOptions): Promise<void> {
-  // 1. Get changed files
+  // 1. Get changed files and load rules in parallel (they're independent operations)
   let changedFiles: string[];
+  let rules: Rule[];
+
   try {
-    changedFiles = getChangedFiles(options.base);
-  } catch (e: any) {
-    console.error(`Error: ${e.message}`);
+    [changedFiles, rules] = await Promise.all([
+      Promise.resolve(getChangedFiles(options.base ?? 'main')),
+      Promise.resolve(loadAllRules(options.rules)),
+    ]);
+  } catch (e) {
+    console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
     process.exit(1);
   }
 
@@ -40,8 +45,7 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
     changedFiles.forEach((f) => console.log(`  ${f}`));
   }
 
-  // 2. Load and select rules
-  const rules = loadAllRules(options.rules);
+  // 2. Select applicable rules for files
   const filesWithRules: Map<string, Rule[]> = selectRulesForFiles(changedFiles, rules);
 
   const totalRulesToCheck = Array.from(filesWithRules.values()).reduce((acc, r) => acc + r.length, 0);
@@ -63,22 +67,21 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
   }
 
   try {
-    const startTime = Date.now();
     const result = await runReviewAgent({
-      baseBranch: options.base,
+      baseBranch: options.base ?? 'main',
       filesWithRules: filesWithRules as Map<string, Rule[]>,
       configPath: options.config,
       verbose: options.verbose,
     });
-    result.summary.durationMs = Date.now() - startTime;
 
+    // 4. Output results
     printViolations(result, options.output);
 
     // Exit with appropriate code
     const hasErrors = result.violations.some((v) => v.severity === 'error');
     process.exit(hasErrors ? 1 : 0);
-  } catch (e: any) {
-    console.error(`Agent error: ${e.message}`);
+  } catch (e) {
+    console.error(`Agent error: ${e instanceof Error ? e.message : String(e)}`);
     process.exit(3);
   }
 }

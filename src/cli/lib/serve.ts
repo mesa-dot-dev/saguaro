@@ -1,10 +1,10 @@
 import chalk from 'chalk';
 
-interface ServeArgv {
-  [key: string]: unknown;
-}
+// interface ServeArgv {
+//   [key: string]: unknown;
+// }
 
-const serveHandler = async (argv: ServeArgv) => {
+const serveHandler = async () => {
   console.log(chalk.red('Serve command not implemented'));
   process.exit(1);
 };

@@ -1,7 +1,7 @@
 import { reviewCommand } from '../review.js';
 
 interface ReviewArgv {
-  base: string;
+  base?: string;
   output?: string;
   rules?: string;
   verbose?: boolean;
