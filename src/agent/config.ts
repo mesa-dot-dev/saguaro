@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import type { Config as OpencodeConfig } from '@opencode-ai/sdk';
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createOpenAI } from '@ai-sdk/openai';
+import type { LanguageModel } from 'ai';
 import yaml from 'js-yaml';
 
 export interface MesaConfig {
@@ -14,12 +16,9 @@ export interface MesaConfig {
     openai?: string;
     google?: string;
   };
-  opencode?: {
-    url?: string;
-  };
 }
 
-const VALID_PROVIDERS = ['anthropic', 'openai', 'google', 'openrouter'];
+const VALID_PROVIDERS = ['anthropic', 'openai', 'google'];
 
 export function loadMesaConfig(configPath?: string): MesaConfig {
   const resolvedPath = resolveMesaConfigPath(configPath);
@@ -86,26 +85,21 @@ export function resolveApiKey(config: MesaConfig): string {
   );
 }
 
-export function loadOpencodeConfig(mesaConfig: MesaConfig): OpencodeConfig {
-  const opencodeConfigPath = resolveOpencodeConfigPath();
-  const baseConfig = JSON.parse(fs.readFileSync(opencodeConfigPath, 'utf8')) as OpencodeConfig;
+export function resolveModel(config: MesaConfig): LanguageModel {
+  const provider = config.model?.provider ?? 'anthropic';
+  const name = config.model?.name ?? 'claude-sonnet-4-5';
+  const apiKey = resolveApiKey(config);
 
-  const model = resolveModel(mesaConfig);
-  if (model) {
-    baseConfig.model = model;
-    const agentConfig = baseConfig.agent?.['code-reviewer'];
-    if (agentConfig) {
-      agentConfig.model = model;
-    }
+  switch (provider) {
+    case 'anthropic':
+      return createAnthropic({ apiKey })(name);
+    case 'openai':
+      return createOpenAI({ apiKey })(name);
+    case 'google':
+      return createGoogleGenerativeAI({ apiKey })(name);
+    default:
+      throw new Error(`Unsupported provider: ${provider}`);
   }
-
-  baseConfig.autoupdate = false;
-  baseConfig.share = 'disabled';
-  if (!baseConfig.disabled_providers) {
-    baseConfig.disabled_providers = [];
-  }
-
-  return baseConfig;
 }
 
 function resolveMesaConfigPath(configPath?: string): string | null {
@@ -118,20 +112,4 @@ function resolveMesaConfigPath(configPath?: string): string | null {
   if (fs.existsSync(defaultPath)) return defaultPath;
 
   return null;
-}
-
-function resolveOpencodeConfigPath(): string {
-  const currentDir = path.dirname(fileURLToPath(import.meta.url));
-  const candidate = path.resolve(currentDir, '..', '..', 'opencode.json');
-  if (!fs.existsSync(candidate)) {
-    throw new Error(`OpenCode config not found at ${candidate}`);
-  }
-  return candidate;
-}
-
-function resolveModel(config: MesaConfig): string | null {
-  const provider = config.model?.provider;
-  const name = config.model?.name;
-  if (!provider || !name) return null;
-  return `${provider}/${name}`;
 }

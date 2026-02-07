@@ -57,6 +57,11 @@ yargs(argv)
         type: 'string',
         default: 'main',
       })
+        .option('head', {
+          describe: 'Head ref to diff against',
+          type: 'string',
+          default: 'HEAD',
+        })
         .option('o', {
           alias: 'output',
           describe: 'Output format: console, json, markdown',

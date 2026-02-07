@@ -14,6 +14,7 @@ const VERSION: string = pkg.version;
 
 interface ReviewOptions {
   base?: string;
+  head?: string;
   output: 'console' | 'json';
   rules?: string;
   verbose?: boolean;
@@ -40,7 +41,7 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
 
   try {
     [changedFiles, rules] = await Promise.all([
-      Promise.resolve(getChangedFiles(options.base ?? 'main')),
+      Promise.resolve(getChangedFiles(options.base ?? 'main', options.head ?? 'HEAD')),
       Promise.resolve(loadAllRules(options.rules)),
     ]);
   } catch (e) {
@@ -83,6 +84,7 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
   try {
     const result = await runReviewAgent({
       baseBranch: options.base ?? 'main',
+      headRef: options.head ?? 'HEAD',
       filesWithRules: filesWithRules as Map<string, Rule[]>,
       configPath: options.config,
       verbose: options.verbose,

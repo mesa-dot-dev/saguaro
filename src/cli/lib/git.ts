@@ -1,7 +1,9 @@
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 
-const getChangedFiles = (baseBranch: string | undefined): string[] => {
+const isValidGitRef = (ref: string): boolean => /^[a-zA-Z0-9][a-zA-Z0-9/_.\-^~]*$/.test(ref);
+
+const getChangedFiles = (baseBranch: string | undefined, headRef: string | undefined): string[] => {
   try {
     execSync('git rev-parse --is-inside-work-tree', { stdio: 'ignore' });
   } catch (e) {
@@ -11,10 +13,14 @@ const getChangedFiles = (baseBranch: string | undefined): string[] => {
 
   try {
     const baseRef = baseBranch ?? 'main';
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9/_.\-^~]*$/.test(baseRef)) {
+    const head = headRef ?? 'HEAD';
+    if (!isValidGitRef(baseRef)) {
       throw new Error('Invalid branch name');
     }
-    const cmd = `git diff --name-only --diff-filter=ACMR ${baseRef}...HEAD`;
+    if (!isValidGitRef(head)) {
+      throw new Error('Invalid head ref');
+    }
+    const cmd = `git diff --name-only --diff-filter=ACMR ${baseRef}...${head}`;
     const output = execSync(cmd, { encoding: 'utf8' });
 
     return output.split('\n').filter((line: string) => line.trim().length > 0);
