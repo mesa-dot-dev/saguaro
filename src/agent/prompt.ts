@@ -10,7 +10,7 @@ export function buildPrompt(options: {
   lines.push(`Base branch: ${options.baseBranch}`);
   lines.push(`Head ref: ${options.headRef}`);
   lines.push('');
-  lines.push('For each file below, call view_diff with the filepath and base="' + options.baseBranch + '".');
+  lines.push(`For each file below, call view_diff with the filepath and base="${options.baseBranch}".`);
   lines.push('Then check ONLY the added lines ("+") against the listed rules.');
   lines.push('');
 

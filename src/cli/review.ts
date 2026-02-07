@@ -1,7 +1,7 @@
-import fs from 'fs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { printViolations } from '../agent/output.js';
 import { runReviewAgent } from '../agent/runner.js';
 import type { Rule } from '../types/types.js';
