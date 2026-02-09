@@ -70,12 +70,6 @@ api_keys:
 # =============================================================================
 
 output:
-  # Default output format: console | json | markdown
-  format: console
-  
-  # Show detailed progress (useful for debugging)
-  verbose: false
-
   # Print Cursor deeplink when violations are found
   cursor_deeplink: true
 
@@ -84,17 +78,11 @@ output:
 # =============================================================================
 
 review:
-  # Maximum number of files to review in a single run
-  max_files: 50
-  
-  # Timeout per file in seconds
-  timeout_per_file: 120
-  
-  # Skip files larger than this (in bytes)
-  max_file_size: 100000
+  # Maximum tool-calling steps per worker
+  max_steps_size: 50
 
-  # Default to 50 steps. 
-  max_steps_size: 50 
+  # Number of files to include in each worker batch
+  files_per_worker: 3
 `;
 }
 
@@ -105,12 +93,12 @@ function writeBasicRules(dir: string) {
   }
 }
 
-const initHandler = async (argv: { force?: boolean }) => {
+const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   const { force } = argv;
 
   if (fs.existsSync(mesaDir) && !force) {
     console.log(chalk.red(`Mesa already initialized in this directory. Use ${secondary('--force')} to overwrite.`));
-    process.exit(1);
+    return 1;
   }
 
   fs.mkdirSync(rulesDir, { recursive: true });
@@ -165,7 +153,7 @@ const initHandler = async (argv: { force?: boolean }) => {
     rl2.close();
   }
 
-  process.exit(0);
+  return 0;
 };
 
 export default initHandler;

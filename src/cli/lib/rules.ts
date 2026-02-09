@@ -1,11 +1,15 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import readline from 'node:readline';
 import boxen from 'boxen';
 import chalk from 'chalk';
-import yaml from 'js-yaml';
-import type { Rule, Severity } from '../../types/types.js';
-import { findMesaDir } from './selector.js';
+import {
+  createRuleAdapter,
+  deleteRuleAdapter,
+  explainRuleAdapter,
+  listRulesAdapter,
+  locateRulesDirectoryAdapter,
+  validateRulesAdapter,
+} from '../../adapter/rules.js';
+import type { Severity } from '../../types/types.js';
+import { ask, createReadline } from './prompt.js';
 
 interface RuleTemplate {
   name: string;
@@ -13,11 +17,7 @@ interface RuleTemplate {
   fields: string[];
 }
 
-interface RuleTemplates {
-  [key: string]: RuleTemplate;
-}
-
-const RULE_TEMPLATES: RuleTemplates = {
+const RULE_TEMPLATES: Record<string, RuleTemplate> = {
   ban: {
     name: 'Ban a pattern',
     prompts: ['What pattern to ban?', 'Why is it bad?', 'What to use instead?'],
@@ -40,11 +40,7 @@ const RULE_TEMPLATES: RuleTemplates = {
   },
 };
 
-interface GlobHints {
-  [key: string]: string | string[];
-}
-
-const GLOB_HINTS: GlobHints = {
+const GLOB_HINTS: Record<string, string | string[]> = {
   rust: '**/*.rs',
   typescript: '**/*.{ts,tsx}',
   js: '**/*.js',
@@ -52,97 +48,34 @@ const GLOB_HINTS: GlobHints = {
   javascript: '**/*.js',
 };
 
-interface GetRulesDirOptions {
-  allowMissing?: boolean;
+interface RuleAnswers {
+  [key: string]: string;
 }
-
-const getRulesDir = ({ allowMissing = false }: GetRulesDirOptions = {}): string | undefined => {
-  const mesaDir = findMesaDir();
-  if (mesaDir) {
-    const rulesDir = path.join(mesaDir, 'rules');
-    if (fs.existsSync(rulesDir)) return rulesDir;
-    if (allowMissing) return rulesDir;
-  }
-  if (allowMissing) {
-    return path.resolve(process.cwd(), '.mesa/rules');
-  }
-  console.log(chalk.red('No rules directory found. Run "mesa init" first.'));
-  return;
-};
-
-const loadRules = (rulesDir: string): (Rule & { _filename: string })[] => {
-  if (!fs.existsSync(rulesDir)) return [];
-  return fs
-    .readdirSync(rulesDir)
-    .filter((f: string) => f.endsWith('.yaml') || f.endsWith('.yml'))
-    .map((f: string): (Rule & { _filename: string }) | null => {
-      try {
-        const content = fs.readFileSync(path.join(rulesDir, f), 'utf8');
-        const rule = yaml.load(content, { schema: yaml.DEFAULT_SCHEMA }) as Rule | null;
-        if (!rule) return null;
-        return { ...rule, _filename: f } as Rule & { _filename: string };
-      } catch (e) {
-        console.error(`Error loading rule ${f}: ${e instanceof Error ? e.message : String(e as Error)}`);
-        return null;
-      }
-    })
-    .filter((r): r is Rule & { _filename: string } => r !== null);
-};
-
-const createReadline = () => readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-
-const ask = (rl: ReturnType<typeof createReadline>, prompt: string): Promise<string> =>
-  new Promise((resolve) => {
-    rl.question(`${prompt}: `, (answer: string) => resolve(answer.trim()));
-  });
-
-const buildInstructions = (templateType: string, answers: RuleAnswers): string => {
-  switch (templateType) {
-    case 'ban':
-      return [`Do not use: ${answers.pattern}`, `Reason: ${answers.reason}`, `Use instead: ${answers.instead}`].join(
-        '\n'
-      );
-    case 'require':
-      return [`Required pattern: ${answers.pattern}`, `When: ${answers.when}`, `Reason: ${answers.reason}`].join('\n');
-    case 'structure':
-      return [`Files must contain: ${answers.must_contain}`, `Reason: ${answers.reason}`].join('\n');
-    case 'custom':
-      return answers.instructions;
-    default:
-      return Object.entries(answers)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join('\n');
-  }
-};
-
-const toKebabCase = (str: string): string =>
-  str
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-
-const buildUniqueFilename = (rulesDir: string, name: string): string => {
-  let candidate = `${name}.yaml`;
-  let i = 2;
-  while (fs.existsSync(path.join(rulesDir, candidate))) {
-    candidate = `${name}-${i}.yaml`;
-    i++;
-  }
-  return candidate;
-};
 
 interface ListRulesArgv {
   rules?: string;
 }
 
-const listRules = (argv: ListRulesArgv) => {
-  const rulesDir = argv.rules || getRulesDir();
-  if (!rulesDir || !fs.existsSync(rulesDir)) {
-    console.log(chalk.yellow('No rules found.'));
-    return;
-  }
+interface ExplainRuleArgv {
+  rules?: string;
+  ruleId: string;
+}
 
-  const rules = loadRules(rulesDir);
+interface DeleteRuleArgv {
+  ruleId: string;
+  rules?: string;
+}
+
+interface ValidateRulesArgv {
+  rules?: string;
+}
+
+interface CreateRuleArgv {
+  rules?: string;
+}
+
+const listRules = (argv: ListRulesArgv) => {
+  const { rules } = listRulesAdapter({ rulesDir: argv.rules });
   if (!rules.length) {
     console.log(chalk.gray('No rules found. Use "mesa rules create" to add one.'));
     return;
@@ -150,21 +83,15 @@ const listRules = (argv: ListRulesArgv) => {
 
   console.log(chalk.bold('ID').padEnd(25) + chalk.bold('TITLE').padEnd(40) + chalk.bold('SEVERITY'));
   console.log('─'.repeat(75));
-  rules.forEach((r) => {
-    const color = r.severity === 'error' ? chalk.red : r.severity === 'warning' ? chalk.yellow : chalk.blue;
-    console.log(chalk.cyan(r.id).padEnd(25) + r.title.substring(0, 38).padEnd(40) + color(r.severity));
+  rules.forEach((rule) => {
+    const color = rule.severity === 'error' ? chalk.red : rule.severity === 'warning' ? chalk.yellow : chalk.blue;
+    console.log(chalk.cyan(rule.id).padEnd(25) + rule.title.substring(0, 38).padEnd(40) + color(rule.severity));
   });
   console.log(chalk.gray(`\n${rules.length} rules`));
 };
 
-interface ExplainRuleArgv {
-  rules?: string;
-  ruleId: string;
-}
-
 const explainRule = (argv: ExplainRuleArgv) => {
-  const rulesDir = argv.rules || getRulesDir();
-  const rule = loadRules(rulesDir || '').find((r) => r.id === argv.ruleId);
+  const { rule } = explainRuleAdapter({ rulesDir: argv.rules, ruleId: argv.ruleId });
   if (!rule) {
     console.log(chalk.red(`Rule not found: ${argv.ruleId}`));
     return;
@@ -179,168 +106,127 @@ const explainRule = (argv: ExplainRuleArgv) => {
   );
   if (rule.globs) {
     console.log(chalk.bold('\nFiles:'));
-    rule.globs.forEach((g) => console.log(`  ${g}`));
+    rule.globs.forEach((glob) => console.log(`  ${glob}`));
   }
   if (rule.instructions) {
     console.log(chalk.bold('\nInstructions:'));
     console.log(rule.instructions);
   }
-  if (rule.examples) {
-    if (rule.examples.violations) {
-      console.log(chalk.red('\nViolations:'));
-      rule.examples.violations.forEach((v) => console.log(`  ${v}`));
-    }
-    if (rule.examples.compliant) {
-      console.log(chalk.green('\nCompliant:'));
-      rule.examples.compliant.forEach((c) => console.log(`  ${c}`));
-    }
+  if (rule.examples?.violations) {
+    console.log(chalk.red('\nViolations:'));
+    rule.examples.violations.forEach((value) => console.log(`  ${value}`));
+  }
+  if (rule.examples?.compliant) {
+    console.log(chalk.green('\nCompliant:'));
+    rule.examples.compliant.forEach((value) => console.log(`  ${value}`));
   }
 };
 
-interface DeleteRuleArgv {
-  ruleId: string;
-}
-
 const deleteRule = (argv: DeleteRuleArgv) => {
-  const rulesDir = getRulesDir();
-  const ruleFile = loadRules(rulesDir || '').find((r) => r.id === argv.ruleId)?._filename;
-  if (!ruleFile) {
+  const result = deleteRuleAdapter({ rulesDir: argv.rules, ruleId: argv.ruleId });
+  if (!result.deleted) {
     console.log(chalk.red(`Rule not found: ${argv.ruleId}`));
     return;
   }
-  fs.unlinkSync(path.join(rulesDir || '', ruleFile));
   console.log(chalk.green(`Deleted: ${argv.ruleId}`));
 };
 
-interface ValidateRulesArgv {
-  rules?: string;
-}
+const validateRules = (argv: ValidateRulesArgv): number => {
+  const result = validateRulesAdapter({ rulesDir: argv.rules });
+  result.validated.forEach((file) => console.log(chalk.green(`[OK] ${file}`)));
 
-const validateRules = (argv: ValidateRulesArgv) => {
-  const rulesDir = argv.rules || getRulesDir();
-  if (!rulesDir || !fs.existsSync(rulesDir)) {
-    console.log(chalk.red('Rules directory not found.'));
-    process.exit(1);
-  }
-
-  const files = fs.readdirSync(rulesDir).filter((f: string) => f.endsWith('.yaml') || f.endsWith('.yml'));
-  const errors: [string, string[]][] = [];
-  const ids = new Set<string>();
-
-  files.forEach((file: string) => {
-    const filePath = path.join(rulesDir, file);
-    try {
-      const rule = yaml.load(fs.readFileSync(filePath, 'utf8'), { schema: yaml.DEFAULT_SCHEMA }) as Rule;
-      const ruleErrors: string[] = [];
-
-      if (!rule.id) ruleErrors.push('missing id');
-      else if (!/^[a-z][a-z0-9-]*$/.test(rule.id)) ruleErrors.push('invalid id (kebab-case)');
-      else if (ids.has(rule.id)) ruleErrors.push(`duplicate id: ${rule.id}`);
-      else ids.add(rule.id);
-
-      if (!rule.title) ruleErrors.push('missing title');
-      if (!['error', 'warning', 'info'].includes(rule.severity)) ruleErrors.push('invalid severity');
-      if (rule.globs && !Array.isArray(rule.globs)) ruleErrors.push('globs must be an array');
-      if (!rule.instructions && (rule as { type?: string }).type === 'custom') ruleErrors.push('missing instructions');
-
-      if (ruleErrors.length) errors.push([file, ruleErrors]);
-      else console.log(chalk.green(`[OK] ${file}`));
-    } catch (e) {
-      errors.push([file, [(e as Error).message]]);
-    }
-  });
-
-  if (errors.length) {
+  if (result.errors.length > 0) {
     console.log('\nErrors:');
-    errors.forEach(([file, errs]) => {
-      console.log(chalk.red(`  ${file}:`));
-      errs.forEach((e) => console.log(chalk.red(`    - ${e}`)));
+    result.errors.forEach((entry) => {
+      console.log(chalk.red(`  ${entry.file}:`));
+      entry.errors.forEach((error) => console.log(chalk.red(`    - ${error}`)));
     });
-    process.exit(1);
+    return 1;
   }
+
+  return 0;
 };
 
-interface CreateRuleArgv {
-  rules?: string;
-  title?: string;
-  id?: string;
-  severity?: Severity;
-  globs?: string;
-  instructions?: string;
-}
-
-interface RuleAnswers {
-  [key: string]: string;
-}
-
-const createRule = async (argv: CreateRuleArgv) => {
-  const rulesDir = argv.rules || getRulesDir({ allowMissing: true });
-  const isInteractive = process.stdin.isTTY;
-
-  if (!isInteractive) {
+const createRule = async (argv: CreateRuleArgv): Promise<number> => {
+  if (!process.stdin.isTTY) {
     console.log(chalk.red('Interactive terminal required for rule creation.'));
-    process.exit(1);
+    return 1;
   }
 
-  if (!fs.existsSync(rulesDir || '')) fs.mkdirSync(rulesDir || '', { recursive: true });
-
-  const existingIds = new Set(loadRules(rulesDir || '').map((r) => r.id));
   const rl = createReadline();
-
   try {
     console.log(chalk.bold('\nWhat kind of rule?'));
-    Object.entries(RULE_TEMPLATES).forEach(([_, val], i) => {
-      console.log(`  ${i + 1}. ${chalk.bold(val.name)}`);
+    const templateKeys = Object.keys(RULE_TEMPLATES);
+    templateKeys.forEach((key, index) => {
+      console.log(`  ${index + 1}. ${chalk.bold(RULE_TEMPLATES[key].name)}`);
     });
 
-    const type = (await ask(rl, 'Choose (1-4)')).trim();
-    const types = Object.keys(RULE_TEMPLATES);
-    if (!['1', '2', '3', '4'].includes(type)) {
+    const typeRaw = (await ask(rl, 'Choose (1-4)')).trim();
+    if (!['1', '2', '3', '4'].includes(typeRaw)) {
       console.log(chalk.red('Choose 1-4'));
-      process.exit(1);
+      return 1;
     }
-    const template = RULE_TEMPLATES[types[parseInt(type) - 1]];
 
+    const template = RULE_TEMPLATES[templateKeys[parseInt(typeRaw, 10) - 1]];
     const answers: RuleAnswers = {};
-    for (let i = 0; i < template.prompts.length; i++) {
-      const ans = await ask(rl, template.prompts[i]);
-      answers[template.fields[i]] = ans;
+    for (let i = 0; i < template.prompts.length; i += 1) {
+      answers[template.fields[i]] = await ask(rl, template.prompts[i]);
     }
 
     const title = await ask(rl, 'Rule title');
-    const severity = ((await ask(rl, 'Severity (error/warning/info)')) as Severity) || 'error';
-    if (!['error', 'warning', 'info'].includes(severity)) {
+    const severityRaw = ((await ask(rl, 'Severity (error/warning/info)')) || 'error') as Severity;
+    if (!['error', 'warning', 'info'].includes(severityRaw)) {
       console.log(chalk.red('Severity must be: error, warning, or info'));
-      process.exit(1);
+      return 1;
     }
-
-    let id = toKebabCase(title);
-    if (existingIds.has(id)) id = await ask(rl, `ID "${id}" exists. New ID:`);
 
     const globHint = await ask(rl, 'Language or glob pattern (e.g., rust, **/*.rs)');
     const globs = GLOB_HINTS[globHint.toLowerCase()] || globHint || '**/*';
+    const instructions = buildInstructions(templateKeys[parseInt(typeRaw, 10) - 1], answers);
 
-    const templateType = types[parseInt(type) - 1];
-    const instructions = buildInstructions(templateType, answers);
-
-    const rule = {
-      id,
+    const created = createRuleAdapter({
+      rulesDir: argv.rules,
       title,
-      severity,
+      severity: severityRaw,
       globs: Array.isArray(globs) ? globs : [globs],
       instructions,
-    };
+    });
 
-    const filename = buildUniqueFilename(rulesDir || '', id);
-    const filePath = path.join(rulesDir || '', filename);
-    fs.writeFileSync(filePath, yaml.dump(rule, { lineWidth: 100 }));
-
-    console.log(chalk.green(`\nCreated: ${filePath}`));
+    console.log(chalk.green(`\nCreated: ${created.filePath}`));
+    return 0;
   } finally {
     rl.close();
   }
 };
 
-export { listRules, explainRule, validateRules, createRule, deleteRule };
+const locateRulesDirectory = (): number => {
+  const { rulesDir } = locateRulesDirectoryAdapter();
+  if (!rulesDir) {
+    console.log(chalk.red('No rules directory found. Run "mesa init" first.'));
+    return 1;
+  }
 
-export const locateRulesDirectory = () => console.log(chalk.gray(getRulesDir()));
+  console.log(chalk.gray(rulesDir));
+  return 0;
+};
+
+function buildInstructions(templateType: string, answers: RuleAnswers): string {
+  switch (templateType) {
+    case 'ban':
+      return [`Do not use: ${answers.pattern}`, `Reason: ${answers.reason}`, `Use instead: ${answers.instead}`].join(
+        '\n'
+      );
+    case 'require':
+      return [`Required pattern: ${answers.pattern}`, `When: ${answers.when}`, `Reason: ${answers.reason}`].join('\n');
+    case 'structure':
+      return [`Files must contain: ${answers.must_contain}`, `Reason: ${answers.reason}`].join('\n');
+    case 'custom':
+      return answers.instructions;
+    default:
+      return Object.entries(answers)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('\n');
+  }
+}
+
+export { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, validateRules };

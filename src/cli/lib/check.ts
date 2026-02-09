@@ -5,9 +5,9 @@ import chalk from 'chalk';
 //   file?: string;
 // }
 
-const checkHandler = async () => {
+const checkHandler = async (): Promise<number> => {
   console.log(chalk.red('Check command not implemented'));
-  process.exit(1);
+  return 1;
 };
 
 export default checkHandler;

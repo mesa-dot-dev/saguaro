@@ -1,22 +1,25 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import type { LanguageModel } from 'ai';
 import { generateText, stepCountIs, tool } from 'ai';
 import chalk from 'chalk';
 import { z } from 'zod';
 import type { ReviewResult, Rule } from '../types/types.js';
-import { loadMesaConfig, resolveModel, validateConfig } from './config.js';
-import { parseViolationsDetailed } from './parse.js';
-import { buildPrompt } from './prompt.js';
-import { createProcessingSpinner } from './spinner.js';
+import { parseViolationsDetailed } from './review-parse.js';
+import { buildPrompt } from './review-prompt.js';
+import { createProcessingSpinner } from './review-spinner.js';
 
 export interface RunReviewOptions {
   baseBranch: string;
   headRef: string;
   filesWithRules: Map<string, Rule[]>;
-  configPath?: string;
+  model: LanguageModel;
+  maxSteps?: number;
+  filesPerWorker?: number;
   verbose?: boolean;
 }
 
-const FILES_PER_WORKER = 3;
+const DEFAULT_FILES_PER_WORKER = 3;
+const DEFAULT_MAX_STEPS = 10;
 
 const SYSTEM_PROMPT = `You are a code reviewer. You review ONLY the new/changed lines in a git diff.
 
@@ -36,9 +39,7 @@ Rules:
 - If a rule does not apply to any added lines in a file, skip it silently.
 - When all files have been checked, output results immediately and stop.`;
 
-const GIT_ROOT = execSync('git rev-parse --show-toplevel', { encoding: 'utf8' }).trim();
-
-function createViewDiffTool(headRef: string) {
+function createViewDiffTool(headRef: string, gitRoot: string) {
   return tool({
     description:
       'View the git diff for a specific file between a base branch and configured head ref. Returns only the diff output. If the file has no changes, returns "No changes."',
@@ -48,9 +49,9 @@ function createViewDiffTool(headRef: string) {
     }),
     execute: async ({ filepath, base }) => {
       try {
-        const output = execSync(`git diff ${base}...${headRef} -- ${filepath}`, {
+        const output = execFileSync('git', ['diff', `${base}...${headRef}`, '--', filepath], {
           encoding: 'utf8',
-          cwd: GIT_ROOT,
+          cwd: gitRoot,
           maxBuffer: 1024 * 1024,
         });
         return output.trim() || 'No changes.';
@@ -62,12 +63,12 @@ function createViewDiffTool(headRef: string) {
 }
 
 export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewResult> {
-  const mesaConfig = loadMesaConfig(options.configPath);
-  validateConfig(mesaConfig);
-  const model = resolveModel(mesaConfig);
-  const viewDiffTool = createViewDiffTool(options.headRef);
+  const gitRoot = resolveGitRoot();
+  const viewDiffTool = createViewDiffTool(options.headRef, gitRoot);
 
-  const fileGroups = splitFilesForWorkers(options.filesWithRules);
+  const filesPerWorker = ensurePositiveInteger(options.filesPerWorker, DEFAULT_FILES_PER_WORKER, 'files_per_worker');
+  const maxSteps = ensurePositiveInteger(options.maxSteps, DEFAULT_MAX_STEPS, 'max_steps_size');
+  const fileGroups = splitFilesForWorkers(options.filesWithRules, filesPerWorker);
 
   if (options.verbose) {
     console.log(chalk.gray(`Split ${options.filesWithRules.size} files into ${fileGroups.length} worker group(s)`));
@@ -97,10 +98,10 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
         }
 
         return generateText({
-          model,
+          model: options.model,
           system: SYSTEM_PROMPT,
           tools: { view_diff: viewDiffTool },
-          stopWhen: stepCountIs(10),
+          stopWhen: stepCountIs(maxSteps),
           prompt,
           onStepFinish({ toolCalls }) {
             if (options.verbose) {
@@ -162,11 +163,11 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
   }
 }
 
-function splitFilesForWorkers(filesWithRules: Map<string, Rule[]>): Map<string, Rule[]>[] {
+function splitFilesForWorkers(filesWithRules: Map<string, Rule[]>, filesPerWorker: number): Map<string, Rule[]>[] {
   const entries = Array.from(filesWithRules.entries());
   const groups: Map<string, Rule[]>[] = [];
-  for (let i = 0; i < entries.length; i += FILES_PER_WORKER) {
-    groups.push(new Map(entries.slice(i, i + FILES_PER_WORKER)));
+  for (let i = 0; i < entries.length; i += filesPerWorker) {
+    groups.push(new Map(entries.slice(i, i + filesPerWorker)));
   }
   return groups;
 }
@@ -179,4 +180,24 @@ function countRules(filesWithRules: Map<string, Rule[]>): number {
     }
   }
   return uniqueRules.size;
+}
+
+function ensurePositiveInteger(value: number | undefined, fallback: number, field: string): number {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`Invalid ${field}: expected a positive integer`);
+  }
+
+  return value;
+}
+
+function resolveGitRoot(): string {
+  try {
+    return execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
+  } catch {
+    throw new Error('Not a git repository');
+  }
 }

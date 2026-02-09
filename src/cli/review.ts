@@ -1,16 +1,14 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import chalk from 'chalk';
+import fs from 'fs';
 import yaml from 'js-yaml';
-import { printViolations } from '../agent/output.js';
-import { runReviewAgent } from '../agent/runner.js';
-import type { Rule } from '../types/types.js';
-import { getChangedFiles } from './lib/git.js';
-import { loadAllRules, selectRulesForFiles } from './lib/selector.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { isReviewAdapterExecutionError, runReviewAdapter } from '../adapter/review.js';
+import type { ReviewResult } from '../types/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', '..', 'package.json'), 'utf8'));
-const VERSION: string = pkg.version;
+const VERSION = resolvePackageVersion();
+const CURSOR_PROMPT_URL_MAX_LENGTH = 8000;
 
 interface ReviewOptions {
   base?: string;
@@ -21,112 +19,249 @@ interface ReviewOptions {
   config?: string;
 }
 
-interface MesaOutputConfig {
+interface CliOutputConfig {
   output?: {
     cursor_deeplink?: boolean;
   };
 }
 
-interface OutputSettings {
-  cursorDeeplink: boolean;
-}
-
-export async function reviewCommand(options: ReviewOptions): Promise<void> {
-  const startTime = Date.now();
-  const outputSettings = resolveOutputSettings(options.config);
-
-  // 1. Get changed files and load rules in parallel (they're independent operations)
-  let changedFiles: string[];
-  let rules: Rule[];
+export async function reviewCommand(options: ReviewOptions): Promise<number> {
+  const baseRef = options.base ?? 'main';
+  const headRef = options.head ?? 'HEAD';
 
   try {
-    [changedFiles, rules] = await Promise.all([
-      Promise.resolve(getChangedFiles(options.base ?? 'main', options.head ?? 'HEAD')),
-      Promise.resolve(loadAllRules(options.rules)),
-    ]);
-  } catch (e) {
-    console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
-    process.exit(1);
-  }
-
-  if (changedFiles.length === 0) {
-    if (options.verbose) console.log('No changed files found.');
-    process.exit(0);
-  }
-
-  if (options.verbose) {
-    console.log(`Mesa v${VERSION}`);
-    console.log(`\nFound ${changedFiles.length} changed files:`);
-    changedFiles.forEach((f) => console.log(`  ${f}`));
-  }
-
-  // 2. Select applicable rules for files
-  const filesWithRules: Map<string, Rule[]> = selectRulesForFiles(changedFiles, rules);
-
-  const totalRulesToCheck = Array.from(filesWithRules.values()).reduce((acc, r) => acc + r.length, 0);
-
-  if (options.verbose || totalRulesToCheck > 0) {
-    console.log(`\nRule Selection:`);
-    console.log(`  ${rules.length} total rules loaded.`);
-    console.log(`  ${filesWithRules.size} files have applicable rules.`);
-    console.log(`  ${totalRulesToCheck} total checks to perform.`);
-  }
-
-  if (filesWithRules.size === 0) {
-    console.log('No rules matched the changed files. Review passed.');
-    process.exit(0);
-  }
-  // 3. Run agent
-  if (options.verbose) {
-    console.log('\nRunning code review agent...');
-  }
-
-  try {
-    const result = await runReviewAgent({
-      baseBranch: options.base ?? 'main',
-      headRef: options.head ?? 'HEAD',
-      filesWithRules: filesWithRules as Map<string, Rule[]>,
-      configPath: options.config,
+    const cursorDeeplink = loadCliCursorDeeplinkConfig(options.config);
+    const { outcome } = await runReviewAdapter({
+      baseRef,
+      headRef,
+      rulesDir: options.rules,
       verbose: options.verbose,
+      configPath: options.config,
     });
 
-    result.summary.durationMs = Date.now() - startTime;
+    if (outcome.kind === 'no-changed-files') {
+      if (options.verbose) {
+        console.log('No changed files found.');
+      }
+      return 0;
+    }
 
-    // 4. Output results
-    printViolations(result, options.output, outputSettings.cursorDeeplink, !!options.verbose);
+    if (options.verbose) {
+      console.log(`Mesa v${VERSION}`);
+      console.log(`\nFound ${outcome.changedFiles.length} changed files:`);
+      outcome.changedFiles.forEach((file) => console.log(`  ${file}`));
+      console.log(`\nRule Selection:`);
+      console.log(`  ${outcome.rulesLoaded} total rules loaded.`);
+      console.log(`  ${outcome.filesWithRules} files have applicable rules.`);
+      console.log(`  ${outcome.totalChecks} total checks to perform.`);
+    }
 
-    // Exit with appropriate code
-    const hasErrors = result.violations.some((v) => v.severity === 'error');
-    process.exit(hasErrors ? 1 : 0);
-  } catch (e) {
-    console.error(`Agent error: ${e instanceof Error ? e.message : String(e)}`);
-    process.exit(3);
+    if (outcome.kind === 'no-matching-rules') {
+      console.log('No rules matched the changed files. Review passed.');
+      return 0;
+    }
+
+    if (options.verbose) {
+      console.log('\nRunning code review agent...');
+    }
+
+    printViolations(outcome.result, options.output, cursorDeeplink, !!options.verbose);
+
+    const hasErrors = outcome.result.violations.some((violation) => violation.severity === 'error');
+    return hasErrors ? 1 : 0;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isReviewAdapterExecutionError(error)) {
+      console.error(message);
+      return 3;
+    }
+    console.error(`Error: ${message}`);
+    return 1;
   }
 }
 
-function resolveOutputSettings(configPath?: string): OutputSettings {
-  const resolvedPath = configPath ?? '.mesa/config.yaml';
-  if (!fs.existsSync(resolvedPath)) {
-    throw new Error('No config file found. Run "mesa init --force" to regenerate .mesa/config.yaml.');
-  }
+function resolvePackageVersion(): string {
+  const candidatePaths = [
+    path.resolve(__dirname, '..', '..', 'package.json'),
+    path.resolve(__dirname, '..', '..', '..', 'package.json'),
+  ];
 
-  try {
-    const parsed = yaml.load(fs.readFileSync(resolvedPath, 'utf8')) as MesaOutputConfig | null;
-    if (!parsed || typeof parsed !== 'object') {
-      throw new Error('expected YAML object');
+  for (const candidatePath of candidatePaths) {
+    if (!fs.existsSync(candidatePath)) {
+      continue;
     }
 
-    const cursorDeeplink = parsed.output?.cursor_deeplink;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(candidatePath, 'utf8')) as { version?: string };
+      if (typeof parsed.version === 'string' && parsed.version.length > 0) {
+        return parsed.version;
+      }
+    } catch (error) {
+      void error;
+    }
+  }
 
-    if (typeof cursorDeeplink !== 'boolean') {
-      throw new Error('output.cursor_deeplink is required and must be true or false');
+  return 'unknown';
+}
+
+function loadCliCursorDeeplinkConfig(configPath?: string): boolean {
+  const resolvedPath = resolveCliConfigPath(configPath);
+  if (!resolvedPath) {
+    throw new Error('Mesa config not found. Run "mesa init" or pass --config.');
+  }
+
+  const contents = fs.readFileSync(resolvedPath, 'utf8');
+  const parsed = yaml.load(contents);
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error(`Invalid Mesa config at ${resolvedPath}`);
+  }
+
+  const output = (parsed as CliOutputConfig).output;
+  if (typeof output?.cursor_deeplink !== 'boolean') {
+    throw new Error('Invalid config: output.cursor_deeplink is required and must be true or false.');
+  }
+
+  return output.cursor_deeplink;
+}
+
+function resolveCliConfigPath(configPath?: string): string | null {
+  if (configPath) {
+    if (fs.existsSync(configPath)) {
+      return configPath;
+    }
+    throw new Error(`Config file not found: ${configPath}`);
+  }
+
+  const envPath = process.env.MESA_CONFIG;
+  if (envPath && fs.existsSync(envPath)) {
+    return envPath;
+  }
+
+  const defaultPath = path.resolve(process.cwd(), '.mesa', 'config.yaml');
+  if (fs.existsSync(defaultPath)) {
+    return defaultPath;
+  }
+
+  return null;
+}
+
+function printViolations(
+  result: ReviewResult,
+  format: 'console' | 'json' = 'console',
+  showCursorDeepLink = true,
+  verbose = false
+): void {
+  if (format === 'json') {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  const { filesReviewed, rulesChecked, durationMs } = result.summary;
+  const duration = durationMs ? formatDuration(durationMs) : null;
+
+  if (result.violations.length === 0) {
+    console.log(chalk.green('No rule violations found\n'));
+    console.log(chalk.gray(`  Files reviewed: ${filesReviewed}`));
+    console.log(chalk.gray(`  Rules checked:  ${rulesChecked}`));
+    if (duration) console.log(chalk.gray(`  Duration:       ${duration}`));
+    console.log();
+    return;
+  }
+
+  if (!verbose) {
+    console.log(`${result.violations.length} violation(s):\n`);
+    console.log(chalk.gray(`  Files reviewed: ${filesReviewed}`));
+    console.log(chalk.gray(`  Rules checked:  ${rulesChecked}`));
+    if (duration) console.log(chalk.gray(`  Duration:       ${duration}`));
+    console.log();
+
+    if (showCursorDeepLink) {
+      const link = buildCursorPromptLink(buildCursorPromptText(result));
+      if (link) {
+        console.log(chalk.bold('Open in Cursor with prefilled prompt:\n'));
+        console.log(`  ${terminalLink('Open in Cursor', link)}`);
+        console.log();
+      } else {
+        console.log(chalk.yellow('Cursor deeplink skipped: generated prompt exceeds URL length limit.'));
+        console.log();
+      }
     }
 
-    return {
-      cursorDeeplink,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse ${resolvedPath}: ${message}`);
+    return;
   }
+
+  for (const v of result.violations) {
+    const icon = v.severity === 'error' ? '✗' : v.severity === 'warning' ? '⚠' : 'ℹ';
+    const lineInfo = v.line ? `:${v.line}` : '';
+    console.log(`${icon} ${v.file}${lineInfo} [${v.severity}]`);
+    console.log(`  Rule: ${v.ruleId}`);
+    console.log(`  ${v.message}`);
+    if (v.suggestion) {
+      console.log(`  Suggestion: ${v.suggestion}`);
+    }
+    console.log();
+  }
+
+  const { errors, warnings, infos } = result.summary;
+  console.log(`${result.violations.length} violation(s): ${errors} errors, ${warnings} warnings, ${infos} infos\n`);
+  console.log(chalk.gray(`  Files reviewed: ${filesReviewed}`));
+  console.log(chalk.gray(`  Rules checked:  ${rulesChecked}`));
+  if (duration) console.log(chalk.gray(`  Duration:       ${duration}`));
+  console.log();
+
+  if (showCursorDeepLink && result.violations.length > 0) {
+    const link = buildCursorPromptLink(buildCursorPromptText(result));
+    if (link) {
+      console.log(chalk.bold('Open in Cursor with prefilled prompt:\n'));
+      console.log(`  ${terminalLink('Open in Cursor', link)}`);
+      console.log();
+    } else {
+      console.log(chalk.yellow('Cursor deeplink skipped: generated prompt exceeds URL length limit.'));
+      console.log();
+    }
+  }
+}
+
+function terminalLink(label: string, url: string): string {
+  if (!process.stdout.isTTY) {
+    return `${label}: ${url}`;
+  }
+
+  const osc = '\u001B]8;;';
+  const st = '\u001B\\';
+  return `${osc}${url}${st}${label}${osc}${st}`;
+}
+
+function formatDuration(ms: number): string {
+  const seconds = (ms / 1000).toFixed(1);
+  return `${seconds}s`;
+}
+
+function buildCursorPromptText(result: ReviewResult): string {
+  const lines: string[] = [];
+  lines.push('Fix these code-review violations in this repository.');
+  lines.push('Use minimal changes, keep behavior, do not suppress lint/type errors.');
+  lines.push('Run typecheck after edits and summarize changed files.');
+  lines.push('');
+  lines.push('Violations:');
+
+  result.violations.forEach((violation, index) => {
+    const loc = `${violation.file}${violation.line ? `:${violation.line}` : ''}`;
+    lines.push(`${index + 1}. ${loc} [${violation.severity}] ${violation.ruleId} - ${violation.message}`);
+  });
+
+  return lines.join('\n');
+}
+
+function buildCursorPromptLink(promptText: string): string | null {
+  const native = new URL('cursor://anysphere.cursor-deeplink/prompt');
+  native.searchParams.set('text', promptText);
+
+  const nativeLink = native.toString();
+
+  if (nativeLink.length > CURSOR_PROMPT_URL_MAX_LENGTH) {
+    return null;
+  }
+
+  return nativeLink;
 }

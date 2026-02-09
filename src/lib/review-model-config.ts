@@ -6,6 +6,14 @@ import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModel } from 'ai';
 import yaml from 'js-yaml';
 
+export type ModelProvider = 'anthropic' | 'openai' | 'google';
+
+export interface ResolvedModelConfig {
+  provider: ModelProvider;
+  model: string;
+  apiKey: string;
+}
+
 export interface MesaConfig {
   model?: {
     provider?: string;
@@ -18,7 +26,20 @@ export interface MesaConfig {
   };
 }
 
-const VALID_PROVIDERS = ['anthropic', 'openai', 'google'];
+export interface LoadedReviewAdapterConfig {
+  modelConfig: ResolvedModelConfig;
+  maxSteps?: number;
+  filesPerWorker?: number;
+}
+
+interface MesaAdapterConfig extends MesaConfig {
+  review?: {
+    max_steps_size?: number;
+    files_per_worker?: number;
+  };
+}
+
+const VALID_PROVIDERS: ModelProvider[] = ['anthropic', 'openai', 'google'];
 
 export function loadMesaConfig(configPath?: string): MesaConfig {
   const resolvedPath = resolveMesaConfigPath(configPath);
@@ -45,7 +66,7 @@ export function validateConfig(config: MesaConfig): void {
     );
   }
 
-  if (!VALID_PROVIDERS.includes(provider)) {
+  if (!VALID_PROVIDERS.includes(provider as ModelProvider)) {
     throw new Error(
       `Invalid config: model.provider "${provider}" is not valid.\n` +
         `  Valid providers: ${VALID_PROVIDERS.join(', ')}\n` +
@@ -85,25 +106,51 @@ export function resolveApiKey(config: MesaConfig): string {
   );
 }
 
-export function resolveModel(config: MesaConfig): LanguageModel {
-  const provider = config.model?.provider ?? 'anthropic';
-  const name = config.model?.name ?? 'claude-sonnet-4-5';
-  const apiKey = resolveApiKey(config);
+export function resolveModelFromResolvedConfig(config: ResolvedModelConfig): LanguageModel {
+  return createLanguageModel(config);
+}
 
-  switch (provider) {
+function createLanguageModel(config: ResolvedModelConfig): LanguageModel {
+  switch (config.provider) {
     case 'anthropic':
-      return createAnthropic({ apiKey })(name);
+      return createAnthropic({ apiKey: config.apiKey })(config.model);
     case 'openai':
-      return createOpenAI({ apiKey })(name);
+      return createOpenAI({ apiKey: config.apiKey })(config.model);
     case 'google':
-      return createGoogleGenerativeAI({ apiKey })(name);
+      return createGoogleGenerativeAI({ apiKey: config.apiKey })(config.model);
     default:
-      throw new Error(`Unsupported provider: ${provider}`);
+      throw new Error(`Unsupported provider: ${config.provider}`);
   }
 }
 
+export function loadReviewAdapterConfig(configPath?: string): LoadedReviewAdapterConfig {
+  const parsed = loadMesaConfig(configPath) as MesaAdapterConfig;
+  validateConfig(parsed);
+
+  const provider = parsed.model?.provider as ModelProvider;
+  const model = parsed.model?.name as string;
+
+  const maxSteps = parsed.review?.max_steps_size;
+  const filesPerWorker = parsed.review?.files_per_worker;
+
+  return {
+    modelConfig: {
+      provider,
+      model,
+      apiKey: resolveApiKey(parsed),
+    },
+    maxSteps: typeof maxSteps === 'number' ? maxSteps : undefined,
+    filesPerWorker: typeof filesPerWorker === 'number' ? filesPerWorker : undefined,
+  };
+}
+
 function resolveMesaConfigPath(configPath?: string): string | null {
-  if (configPath && fs.existsSync(configPath)) return configPath;
+  if (configPath) {
+    if (fs.existsSync(configPath)) {
+      return configPath;
+    }
+    throw new Error(`Config file not found: ${configPath}`);
+  }
 
   const envPath = process.env.MESA_CONFIG;
   if (envPath && fs.existsSync(envPath)) return envPath;

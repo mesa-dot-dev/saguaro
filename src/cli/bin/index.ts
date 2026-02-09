@@ -5,9 +5,18 @@ import figlet from 'figlet';
 import yargs, { type Argv } from 'yargs';
 import checkHandler from '../lib/check.js';
 import initHandler from '../lib/init.js';
-import reviewHandler from '../lib/review.js';
 import { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, validateRules } from '../lib/rules.js';
 import serveHandler from '../lib/serve.js';
+import { reviewCommand } from '../review.js';
+
+interface ReviewArgv {
+  base?: string;
+  head?: string;
+  output?: 'console' | 'json';
+  rules?: string;
+  verbose?: boolean;
+  config?: string;
+}
 
 const secondary = chalk.hex('#be3c00');
 const tertiary = chalk.hex('#ffecba');
@@ -17,10 +26,13 @@ const showBanner = () => {
 };
 
 // Wrapper to handle async handlers and errors
-const wrapHandler = <T>(handlerName: string, handler: (argv: T) => Promise<void> | void) => {
+const wrapHandler = <T>(handlerName: string, handler: (argv: T) => Promise<number | void> | number | void) => {
   return async (argv: T) => {
     try {
-      await handler(argv);
+      const exitCode = await handler(argv);
+      if (typeof exitCode === 'number') {
+        process.exit(exitCode);
+      }
     } catch (error) {
       console.error(
         chalk.red(`\n[Mesa CLI] Error in '${handlerName}':`),
@@ -64,8 +76,9 @@ yargs(argv)
         })
         .option('o', {
           alias: 'output',
-          describe: 'Output format: console, json, markdown',
+          describe: 'Output format: console, json',
           type: 'string',
+          choices: ['console', 'json'] as const,
           default: 'console',
         })
         .option('v', {
@@ -81,11 +94,20 @@ yargs(argv)
           default: '.mesa/config.yaml',
         })
         .option('rules', {
-          describe: 'Path or glob to rule files',
+          describe: 'Path to rules directory',
           type: 'string',
         });
     },
-    wrapHandler('review', reviewHandler as (argv: unknown) => Promise<void>)
+    wrapHandler('review', (async (argv: ReviewArgv) => {
+      return reviewCommand({
+        base: argv.base,
+        head: argv.head,
+        output: argv.output ?? 'console',
+        rules: argv.rules,
+        verbose: argv.verbose,
+        config: argv.config,
+      });
+    }) as (argv: unknown) => Promise<number>)
   )
   .command(
     'init',
@@ -97,7 +119,7 @@ yargs(argv)
         default: false,
       });
     },
-    wrapHandler('init', initHandler as (argv: unknown) => Promise<void>)
+    wrapHandler('init', initHandler as (argv: unknown) => Promise<number>)
   )
   .command(
     'rules <command>',
@@ -119,16 +141,14 @@ yargs(argv)
           'validate',
           'Validate rule files',
           {},
-          wrapHandler('rules-validate', validateRules as (argv: unknown) => void)
+          wrapHandler('rules-validate', validateRules as (argv: unknown) => number)
         )
-        .command('locate', 'Locate the rules directory', {}, () => {
-          try {
-            locateRulesDirectory();
-          } catch (error) {
-            console.error(chalk.red('\nError:'), error instanceof Error ? error.message : String(error));
-            process.exit(1);
-          }
-        })
+        .command(
+          'locate',
+          'Locate the rules directory',
+          {},
+          wrapHandler('rules-locate', () => locateRulesDirectory()) as (argv: unknown) => Promise<void>
+        )
         .command(
           'delete <ruleId>',
           'Delete a rule',
@@ -153,7 +173,7 @@ yargs(argv)
               .option('globs', { describe: 'Comma-separated glob patterns' })
               .option('instructions', { describe: 'Rule instructions' });
           },
-          wrapHandler('rules-create', createRule as (argv: unknown) => Promise<void>)
+          wrapHandler('rules-create', createRule as (argv: unknown) => Promise<number>)
         );
     },
     () => {} // Default handler if no subcommand
@@ -170,12 +190,12 @@ yargs(argv)
         type: 'string',
       });
     },
-    wrapHandler('check', checkHandler as (argv: unknown) => Promise<void>)
+    wrapHandler('check', checkHandler as (argv: unknown) => Promise<number>)
   )
   .command(
     'serve',
     'Run Mesa as an MCP server for Claude/Cursor integration',
     () => {},
-    wrapHandler('serve', serveHandler as (argv: unknown) => Promise<void>)
+    wrapHandler('serve', serveHandler as (argv: unknown) => Promise<number>)
   )
   .parse();

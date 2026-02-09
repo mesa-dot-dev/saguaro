@@ -3,6 +3,9 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "bin": {
     "mesa": "./dist/cli/bin/index.js"
   },
@@ -11,7 +14,7 @@
     "prepack": "bun run build",
     "link": "bun install && bun run build && chmod +x dist/cli/bin/index.js && npm link",
     "relink": "rm -rf dist && bun run link",
-    "review": "bun run src/cli/index.ts review",
+    "review": "bun run build && node dist/cli/bin/index.js review",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

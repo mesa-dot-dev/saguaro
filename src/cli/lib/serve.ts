@@ -4,9 +4,9 @@ import chalk from 'chalk';
 //   [key: string]: unknown;
 // }
 
-const serveHandler = async () => {
+const serveHandler = async (): Promise<number> => {
   console.log(chalk.red('Serve command not implemented'));
-  process.exit(1);
+  return 1;
 };
 
 export default serveHandler;

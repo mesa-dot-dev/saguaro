@@ -24,17 +24,6 @@ export function parseViolationsDetailed(text: string, filesWithRules: Map<string
     };
   }
 
-  if (text.toLowerCase().includes('no violations found')) {
-    const totalLines = text.split('\n').length;
-    return {
-      violations,
-      totalLines,
-      matchedLines: 0,
-      ignoredLines: totalLines,
-      shortCircuitedNoViolations: true,
-    };
-  }
-
   const rulesById = new Map<string, Rule>();
   for (const rules of filesWithRules.values()) {
     for (const rule of rules) {
@@ -63,11 +52,18 @@ export function parseViolationsDetailed(text: string, filesWithRules: Map<string
     }
   }
 
+  const shortCircuitedNoViolations = violations.length === 0 && isNoViolationsSentinel(text);
+
   return {
     violations,
     totalLines: lines.length,
     matchedLines,
-    ignoredLines: Math.max(0, lines.length - matchedLines),
-    shortCircuitedNoViolations: false,
+    ignoredLines: shortCircuitedNoViolations ? lines.length : Math.max(0, lines.length - matchedLines),
+    shortCircuitedNoViolations,
   };
+}
+
+function isNoViolationsSentinel(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  return normalized === 'no violations found' || normalized === 'no violations found.';
 }
