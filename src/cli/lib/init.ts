@@ -2,68 +2,30 @@ import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
 import { STARTER_RULES } from '../../templates/starter-rules.js';
-import { ask, askChoice, askYesNo, createReadline } from './prompt.js';
+import { ask, askYesNo, createReadline } from './prompt.js';
 
 const mesaDir = '.mesa';
 const rulesDir = path.join(mesaDir, 'rules');
 const configPath = path.join(mesaDir, 'config.yaml');
 const rulesKeepPath = path.join(rulesDir, '.gitkeep');
+const envLocalPath = '.env.local';
+const apiKeyEnvName = 'ANTHROPIC_API_KEY';
 const secondary = chalk.hex('#be3c00');
 const tertiary = chalk.hex('#ffecba');
+const DEFAULT_PROVIDER = 'anthropic';
+const DEFAULT_MODEL = 'claude-opus-4-6';
 
-const PROVIDERS = [
-  { id: 'anthropic', label: 'Anthropic' },
-  { id: 'openai', label: 'OpenAI' },
-  { id: 'google', label: 'Google' },
-] as const;
-
-const MODELS_BY_PROVIDER: Record<string, { id: string; label: string }[]> = {
-  anthropic: [
-    { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
-    { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
-    { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
-  ],
-  openai: [
-    { id: 'gpt-5-2', label: 'GPT-5.2' },
-    { id: 'gpt-5.3-codex', label: 'GPT-5.3-CODEX' },
-  ],
-  google: [
-    { id: 'GEMINI-3-PRO-PREVIEW', label: 'Gemini 3 Pro' },
-    { id: 'GEMINI-3-FLASH-PREVIEW', label: 'Gemini 3 Flash' },
-  ],
-};
-
-function buildConfigContent(provider: string, modelName: string, apiKey: string): string {
-  const keys: Record<string, string> = {
-    anthropic: '""',
-    openai: '""',
-    google: '""',
-  };
-  if (apiKey && provider in keys) {
-    keys[provider] = `"${apiKey.replace(/"/g, '\\"')}"`;
-  }
-
+function buildConfigContent(): string {
   return `# Mesa Configuration
 # =============================================================================
 # Model Configuration
 # =============================================================================
-# The AI model to use for reviews. User must provide their own API key
-# via environment variable (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
+# The AI model to use for reviews. Set API keys in your environment
+# (.env.local, .env, or shell export).
 
 model:
-  provider: ${provider}
-  name: ${modelName}
-
-# =============================================================================
-# API Keys (Optional)
-# =============================================================================
-# Mesa will export these as environment variables 
-# Leave blank to use your shell environment instead.
-
-api_keys:
-  anthropic: ${keys.anthropic}
-  openai: ${keys.openai}
-  google: ${keys.google}
+  provider: ${DEFAULT_PROVIDER}
+  name: ${DEFAULT_MODEL}
 
 # =============================================================================
 # Output Configuration
@@ -84,6 +46,25 @@ review:
   # Number of files to include in each worker batch
   files_per_worker: 3
 `;
+}
+
+function upsertEnvValue(filePath: string, key: string, value: string): void {
+  const escapedValue = value.replace(/\n/g, '');
+  const nextLine = `${key}=${escapedValue}`;
+  const exists = fs.existsSync(filePath);
+  const content = exists ? fs.readFileSync(filePath, 'utf8') : '';
+  const lines = content === '' ? [] : content.split(/\r?\n/);
+  const keyPattern = new RegExp(`^\\s*${key}=`);
+  const matchIndex = lines.findIndex((line) => keyPattern.test(line));
+
+  if (matchIndex >= 0) {
+    lines[matchIndex] = nextLine;
+  } else {
+    lines.push(nextLine);
+  }
+
+  const normalized = `${lines.filter((line) => line.length > 0).join('\n')}\n`;
+  fs.writeFileSync(filePath, normalized);
 }
 
 function writeBasicRules(dir: string) {
@@ -115,39 +96,35 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
     console.log(chalk.gray(`Specify your rules with ${secondary('mesa rules create')}.`));
   }
 
-  // Prompt to set up API keys and model
+  // Prompt to set up API key
   const rl2 = createReadline();
   try {
-    console.log(
-      secondary('Choose a provider and model. You can enter an API key now or use environment variables later.')
+    const keyInput = await ask(
+      rl2,
+      secondary('Paste your Anthropic API key (or type "n" to skip and set ANTHROPIC_API_KEY in .env.local, .env)')
     );
+    const normalizedInput = keyInput.trim();
+    const skippedWithN = normalizedInput.toLowerCase() === 'n';
+    const apiKey = skippedWithN ? '' : normalizedInput;
+    const wroteApiKey = apiKey.length > 0;
 
-    const providerOption = await askChoice(rl2, 'Pick a provider', PROVIDERS);
-    const providerId = providerOption.id;
-
-    const models = MODELS_BY_PROVIDER[providerId];
-    const modelOption = models?.length
-      ? await askChoice(rl2, `Pick a model for ${providerOption.label}`, models)
-      : { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' };
-
-    let apiKey = '';
-    const enterKey = await askYesNo(rl2, 'Enter API key now? (otherwise set via environment variable later)');
-    if (enterKey) {
-      apiKey = await ask(rl2, secondary(`Paste your ${providerOption.label} API key`));
+    fs.writeFileSync(configPath, buildConfigContent());
+    if (wroteApiKey) {
+      upsertEnvValue(path.resolve(process.cwd(), envLocalPath), apiKeyEnvName, apiKey);
     }
-
-    fs.writeFileSync(configPath, buildConfigContent(providerId, modelOption.id, apiKey));
 
     console.log(secondary('\nMesa initialized successfully!'));
     console.log(chalk.gray(`  Created: ${configPath}`));
     console.log(chalk.gray(`  Created: ${rulesDir}/`));
+    if (wroteApiKey) {
+      console.log(chalk.gray(`  Updated: ${envLocalPath} (${apiKeyEnvName})`));
+    }
     console.log(secondary(`Specify more rules with ${tertiary('mesa rules create')}.`));
-    if (!apiKey && enterKey === false) {
-      console.log(
-        chalk.gray(
-          `  Set ${providerId.toUpperCase()}_API_KEY in your environment or edit ${configPath} to add your key.`
-        )
-      );
+    if (!wroteApiKey) {
+      console.log(chalk.gray(`  Add ${apiKeyEnvName} in your environment (.env.local, .env).`));
+      if (skippedWithN) {
+        console.log(chalk.gray('  You entered "n", so API key setup is manual.'));
+      }
     }
   } finally {
     rl2.close();

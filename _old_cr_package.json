@@ -1,6 +1,6 @@
 {
   "name": "@mesa/code-review",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "type": "module",
   "exports": {
@@ -24,6 +24,7 @@
     "ai": "^6.0.75",
     "boxen": "^5.1.2",
     "chalk": "^4.1.2",
+    "dotenv": "^17.2.4",
     "figlet": "^1.10.0",
     "js-yaml": "^4.1.1",
     "minimatch": "^10.1.2",

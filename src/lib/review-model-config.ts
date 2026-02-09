@@ -4,6 +4,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModel } from 'ai';
+import dotenv from 'dotenv';
 import yaml from 'js-yaml';
 
 export type ModelProvider = 'anthropic' | 'openai' | 'google';
@@ -18,11 +19,6 @@ export interface MesaConfig {
   model?: {
     provider?: string;
     name?: string;
-  };
-  api_keys?: {
-    anthropic?: string;
-    openai?: string;
-    google?: string;
   };
 }
 
@@ -84,6 +80,8 @@ export function validateConfig(config: MesaConfig): void {
 }
 
 export function resolveApiKey(config: MesaConfig): string {
+  loadLocalEnvFiles();
+
   const provider = config.model?.provider ?? 'anthropic';
 
   const envKeys: Record<string, string | undefined> = {
@@ -95,15 +93,18 @@ export function resolveApiKey(config: MesaConfig): string {
   const envKey = envKeys[provider];
   if (envKey) return envKey;
 
-  const configKeys = config.api_keys ?? {};
-  const configKey = configKeys[provider as keyof typeof configKeys];
-  if (configKey) return configKey;
-
   throw new Error(
-    `No API key found for provider "${provider}". Set one via:\n` +
-      `  1. export ${provider.toUpperCase()}_API_KEY=<key>\n` +
-      '  2. Set api_keys in .mesa/config.yaml'
+    `No API key found for provider "${provider}".\n` +
+      `  Set ${provider.toUpperCase()}_API_KEY in your environment (.env.local, .env).\n` +
+      `  Example:\n` +
+      `    ${provider.toUpperCase()}_API_KEY=<your-key>\n` +
+      '  Then run the review command again.'
   );
+}
+
+function loadLocalEnvFiles(): void {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), quiet: true });
+  dotenv.config({ path: path.resolve(process.cwd(), '.env'), quiet: true });
 }
 
 export function resolveModelFromResolvedConfig(config: ResolvedModelConfig): LanguageModel {
