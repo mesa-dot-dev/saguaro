@@ -26,3 +26,9 @@ mesa review
 ## License
 
 This CLI is licensed under `Apache-2.0`. See `LICENSE` for details.
+
+## Releasing
+
+Release workflow docs (including dry-run and Homebrew formula update steps):
+
+- `packages/code-review/RELEASING.md`
