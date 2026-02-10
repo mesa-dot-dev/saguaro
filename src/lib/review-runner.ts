@@ -2,20 +2,25 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { LanguageModel } from 'ai';
 import { generateText, stepCountIs, tool } from 'ai';
+import chalk from 'chalk';
 import { z } from 'zod';
 import type { ReviewProgressCallback, ReviewResult, Rule, Violation } from '../types/types.js';
+import { logger } from './logger.js';
 
 export interface RunReviewOptions {
   filesWithRules: Map<string, Rule[]>;
   diffs: Map<string, string>;
   model: LanguageModel;
   filesPerWorker?: number;
+  maxSteps?: number;
   verbose?: boolean;
   onProgress?: ReviewProgressCallback;
   /** Markdown section with import graph + blast radius context from the codebase indexer */
   codebaseContext?: string;
   /** Resolves a repo-relative file path to its content. Used by the read_file tool and line snapping. */
   resolveFile?: (path: string) => string | null;
+  /** Signal to abort in-flight LLM requests (e.g. on SIGINT) */
+  abortSignal?: AbortSignal;
 }
 
 const DEFAULT_FILES_PER_WORKER = 3;
@@ -73,16 +78,21 @@ If no violations are found across all files, respond with exactly: No violations
 - When a file's diff says "No diff available", skip that file entirely.`;
 
 export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewResult> {
-  void options.verbose;
   const runStartedAtMs = Date.now();
   const resolveFile = options.resolveFile ?? createDefaultFileResolver();
   const emitProgress = (event: Parameters<ReviewProgressCallback>[0]): void => {
     try {
       options.onProgress?.(event);
-    } catch {}
+    } catch (err) {
+      logger.debug(chalk.gray(`[debug] Progress callback error: ${err instanceof Error ? err.message : String(err)}`));
+    }
   };
   const filesPerWorker = ensurePositiveInteger(options.filesPerWorker, DEFAULT_FILES_PER_WORKER, 'files_per_worker');
+  const maxSteps = options.maxSteps ?? 10;
   const fileGroups = splitFilesForWorkers(options.filesWithRules, filesPerWorker);
+
+  logger.debug(chalk.gray(`[debug] Review config: filesPerWorker=${filesPerWorker}, maxSteps=${maxSteps}`));
+  logger.debug(chalk.gray(`[debug] System prompt (${SYSTEM_PROMPT.length} chars):\n${SYSTEM_PROMPT}\n`));
 
   emitProgress({
     type: 'run_split',
@@ -101,6 +111,10 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
         codebaseContext: options.codebaseContext,
       });
 
+      logger.debug(
+        chalk.gray(`\n[debug] Worker ${workerIndex}/${totalWorkers} prompt (${prompt.length} chars):\n${prompt}\n`)
+      );
+
       emitProgress({
         type: 'worker_started',
         workerIndex,
@@ -115,6 +129,7 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
         model: options.model,
         system: SYSTEM_PROMPT,
         prompt,
+        abortSignal: options.abortSignal,
         tools: {
           read_file: tool({
             description:
@@ -139,7 +154,7 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
             },
           }),
         },
-        stopWhen: stepCountIs(10),
+        stopWhen: stepCountIs(maxSteps),
         onStepFinish: ({ toolCalls: stepToolCalls }) => {
           const extractedToolCalls = extractToolCalls(stepToolCalls);
 
@@ -174,6 +189,17 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
         .map((step) => step.text)
         .filter(Boolean)
         .join('\n');
+
+      logger.debug(
+        chalk.gray(
+          `\n[debug] Worker ${workerIndex}/${totalWorkers} raw response (${text.length} chars, ${result.steps.length} steps):\n${text}\n`
+        )
+      );
+      logger.debug(
+        chalk.gray(
+          `[debug] Worker ${workerIndex}/${totalWorkers} usage: input=${result.totalUsage.inputTokens ?? 0}, output=${result.totalUsage.outputTokens ?? 0}`
+        )
+      );
 
       const parsed = parseViolationsDetailed(text, options.filesWithRules, resolveFile);
 

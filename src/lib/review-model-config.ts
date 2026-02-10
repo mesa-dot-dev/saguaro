@@ -6,20 +6,55 @@ import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModel } from 'ai';
 import dotenv from 'dotenv';
 import yaml from 'js-yaml';
+import { z } from 'zod';
+import { ApiKeyMissingError, ConfigInvalidError, ConfigMissingError } from './errors.js';
+import { logger } from './logger.js';
 
-export type ModelProvider = 'anthropic' | 'openai' | 'google';
+// ---------------------------------------------------------------------------
+// Zod config schema
+// ---------------------------------------------------------------------------
+
+const ModelProviderSchema = z.enum(['anthropic', 'openai', 'google']);
+
+const OutputSchema = z.object({
+  cursor_deeplink: z.boolean().default(true),
+});
+
+const IndexSchema = z.object({
+  enabled: z.boolean().default(true),
+  blast_radius_depth: z.number().int().positive().default(2),
+  context_token_budget: z.number().int().positive().default(4000),
+});
+
+const ReviewSchema = z.object({
+  max_steps_size: z.number().int().positive().default(10),
+  files_per_worker: z.number().int().positive().default(3),
+});
+
+export const MesaConfigSchema = z
+  .object({
+    model: z.object({
+      provider: ModelProviderSchema,
+      name: z.string().min(1, 'model.name must not be empty'),
+    }),
+    api_keys: z.record(z.string(), z.string()).optional(),
+    output: OutputSchema.default({ cursor_deeplink: true }),
+    index: IndexSchema.default({ enabled: true, blast_radius_depth: 2, context_token_budget: 4000 }),
+    review: ReviewSchema.default({ max_steps_size: 10, files_per_worker: 3 }),
+  })
+  .strict();
+
+export type MesaConfig = z.infer<typeof MesaConfigSchema>;
+export type ModelProvider = z.infer<typeof ModelProviderSchema>;
+
+// ---------------------------------------------------------------------------
+// Config loading
+// ---------------------------------------------------------------------------
 
 export interface ResolvedModelConfig {
   provider: ModelProvider;
   model: string;
   apiKey: string;
-}
-
-export interface MesaConfig {
-  model?: {
-    provider?: string;
-    name?: string;
-  };
 }
 
 export interface LoadedReviewAdapterConfig {
@@ -28,61 +63,40 @@ export interface LoadedReviewAdapterConfig {
   filesPerWorker?: number;
 }
 
-interface MesaAdapterConfig extends MesaConfig {
-  review?: {
-    max_steps_size?: number;
-    files_per_worker?: number;
-  };
-}
-
-const VALID_PROVIDERS: ModelProvider[] = ['anthropic', 'openai', 'google'];
-
-export function loadMesaConfig(configPath?: string): MesaConfig {
+export function loadValidatedConfig(configPath?: string): MesaConfig {
   const resolvedPath = resolveMesaConfigPath(configPath);
   if (!resolvedPath) {
-    throw new Error('Mesa config not found. Run "mesa init" or pass --config.');
+    throw new ConfigMissingError();
   }
 
   const contents = fs.readFileSync(resolvedPath, 'utf8');
-  const parsed = yaml.load(contents);
-  if (!parsed || typeof parsed !== 'object') {
-    throw new Error(`Invalid Mesa config at ${resolvedPath}`);
-  }
-  return parsed as MesaConfig;
-}
-
-export function validateConfig(config: MesaConfig): void {
-  const provider = config.model?.provider;
-  const name = config.model?.name;
-
-  if (!provider || !name) {
-    throw new Error(
-      'Invalid config: model.provider and model.name are required.\n' +
-        '  Edit .mesa/config.yaml to set your model configuration.'
-    );
+  const raw = yaml.load(contents);
+  if (!raw || typeof raw !== 'object') {
+    throw new ConfigInvalidError(`File at ${resolvedPath} is not a valid YAML object.`);
   }
 
-  if (!VALID_PROVIDERS.includes(provider as ModelProvider)) {
-    throw new Error(
-      `Invalid config: model.provider "${provider}" is not valid.\n` +
-        `  Valid providers: ${VALID_PROVIDERS.join(', ')}\n` +
-        '  Edit .mesa/config.yaml to fix this.'
-    );
+  const result = MesaConfigSchema.safeParse(raw);
+  if (!result.success) {
+    const issues = result.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');
+    throw new ConfigInvalidError(`\n${issues}`);
   }
 
-  if (name === 'MODEL_NAME' || provider === 'PROVIDER') {
-    throw new Error(
-      'Invalid config: placeholder values detected.\n' +
-        '  Edit .mesa/config.yaml and replace MODEL_NAME/PROVIDER with real values.\n' +
-        '  Example: provider: anthropic, name: claude-sonnet-4-5'
-    );
-  }
+  logger.debug(`[config] Loaded config from ${resolvedPath}`);
+  logger.debug(`[config] model: ${result.data.model.provider}/${result.data.model.name}`);
+  logger.debug(
+    `[config] review: maxSteps=${result.data.review.max_steps_size}, filesPerWorker=${result.data.review.files_per_worker}`
+  );
+  logger.debug(
+    `[config] index: enabled=${result.data.index.enabled}, blastRadius=${result.data.index.blast_radius_depth}, tokenBudget=${result.data.index.context_token_budget}`
+  );
+
+  return result.data;
 }
 
 export function resolveApiKey(config: MesaConfig): string {
   loadLocalEnvFiles();
 
-  const provider = config.model?.provider ?? 'anthropic';
+  const provider = config.model.provider;
 
   const envKeys: Record<string, string | undefined> = {
     anthropic: process.env.ANTHROPIC_API_KEY,
@@ -91,15 +105,12 @@ export function resolveApiKey(config: MesaConfig): string {
   };
 
   const envKey = envKeys[provider];
-  if (envKey) return envKey;
+  if (envKey) {
+    logger.debug(`[config] API key resolved for ${provider} (${envKey.slice(0, 4)}...${envKey.slice(-4)})`);
+    return envKey;
+  }
 
-  throw new Error(
-    `No API key found for provider "${provider}".\n` +
-      `  Set ${provider.toUpperCase()}_API_KEY in your environment (.env.local, .env).\n` +
-      `  Example:\n` +
-      `    ${provider.toUpperCase()}_API_KEY=<your-key>\n` +
-      '  Then run the review command again.'
-  );
+  throw new ApiKeyMissingError(provider);
 }
 
 function loadLocalEnvFiles(): void {
@@ -125,23 +136,16 @@ function createLanguageModel(config: ResolvedModelConfig): LanguageModel {
 }
 
 export function loadReviewAdapterConfig(configPath?: string): LoadedReviewAdapterConfig {
-  const parsed = loadMesaConfig(configPath) as MesaAdapterConfig;
-  validateConfig(parsed);
-
-  const provider = parsed.model?.provider as ModelProvider;
-  const model = parsed.model?.name as string;
-
-  const maxSteps = parsed.review?.max_steps_size;
-  const filesPerWorker = parsed.review?.files_per_worker;
+  const config = loadValidatedConfig(configPath);
 
   return {
     modelConfig: {
-      provider,
-      model,
-      apiKey: resolveApiKey(parsed),
+      provider: config.model.provider,
+      model: config.model.name,
+      apiKey: resolveApiKey(config),
     },
-    maxSteps: typeof maxSteps === 'number' ? maxSteps : undefined,
-    filesPerWorker: typeof filesPerWorker === 'number' ? filesPerWorker : undefined,
+    maxSteps: config.review.max_steps_size,
+    filesPerWorker: config.review.files_per_worker,
   };
 }
 
@@ -150,7 +154,7 @@ function resolveMesaConfigPath(configPath?: string): string | null {
     if (fs.existsSync(configPath)) {
       return configPath;
     }
-    throw new Error(`Config file not found: ${configPath}`);
+    throw new ConfigInvalidError(`Config file not found: ${configPath}`);
   }
 
   const envPath = process.env.MESA_CONFIG;

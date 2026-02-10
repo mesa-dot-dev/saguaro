@@ -32,7 +32,7 @@ export interface BuildOptions {
   verbose?: boolean;
 }
 
-export function buildIndex(options: BuildOptions): CodebaseIndex {
+export async function buildIndex(options: BuildOptions): Promise<CodebaseIndex> {
   const { rootDir, store, verbose } = options;
 
   const existingIndex = store.load();
@@ -57,7 +57,7 @@ export function buildIndex(options: BuildOptions): CodebaseIndex {
       continue;
     }
 
-    const parseResult = parseFile(relPath, content);
+    const parseResult = await parseFile(relPath, content);
 
     const resolvedImports = parseResult.imports.map((imp) => ({
       ...imp,

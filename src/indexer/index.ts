@@ -13,20 +13,20 @@ export type { CodebaseIndex, ExportRef, FileEntry, ImportRef } from './types.js'
  *
  * Returns empty string if indexing fails — reviews always work.
  */
-export function getCodebaseContext(options: {
+export async function getCodebaseContext(options: {
   rootDir: string;
   cacheDir: string;
   changedFiles: string[];
   blastRadiusDepth?: number;
   tokenBudget?: number;
   verbose?: boolean;
-}): string {
+}): Promise<string> {
   const { rootDir, cacheDir, changedFiles, blastRadiusDepth = 2, tokenBudget, verbose } = options;
 
   try {
     const store = new JsonIndexStore(cacheDir);
 
-    buildIndex({ rootDir, store, verbose });
+    await buildIndex({ rootDir, store, verbose });
 
     const blastRadius = store.getBlastRadius(changedFiles, blastRadiusDepth);
 

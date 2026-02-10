@@ -2,10 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
-import yaml from 'js-yaml';
-import { isReviewAdapterExecutionError, runReview } from '../adapter/review.js';
+import { runReview } from '../adapter/review.js';
 import { getCodebaseContext } from '../indexer/index.js';
+import { NoRulesFoundError } from '../lib/errors.js';
 import { getDiffs, getRepoRoot, listChangedFilesFromGit } from '../lib/git.js';
+import { logger } from '../lib/logger.js';
+import { loadValidatedConfig } from '../lib/review-model-config.js';
 import type { ReviewProgressEvent, ReviewResult } from '../types/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -13,30 +15,14 @@ const VERSION = resolvePackageVersion();
 const CURSOR_PROMPT_URL_MAX_LENGTH = 8000;
 const CLI_ACCENT = chalk.hex('#be3c00');
 
-interface ReviewOptions {
+export interface ReviewOptions {
   base?: string;
   head?: string;
   output: 'console' | 'json';
   rules?: string;
   verbose?: boolean;
   config?: string;
-}
-
-interface CliOutputConfig {
-  output?: {
-    cursor_deeplink?: boolean;
-  };
-  index?: {
-    enabled?: boolean;
-    blast_radius_depth?: number;
-    context_token_budget?: number;
-  };
-}
-
-interface IndexSettings {
-  enabled: boolean;
-  blastRadiusDepth: number;
-  contextTokenBudget: number;
+  abortSignal?: AbortSignal;
 }
 
 interface WorkerParseSummaryDetail {
@@ -51,22 +37,27 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
   const headRef = options.head ?? 'HEAD';
 
   try {
-    const cursorDeeplink = loadCliCursorDeeplinkConfig(options.config);
-    const indexSettings = loadIndexSettings(options.config);
+    const config = loadValidatedConfig(options.config);
+    const cursorDeeplink = config.output.cursor_deeplink;
+    const indexSettings = {
+      enabled: config.index.enabled,
+      blastRadiusDepth: config.index.blast_radius_depth,
+      contextTokenBudget: config.index.context_token_budget,
+    };
 
     // Pre-compute changed files and diffs
     const changedFiles = listChangedFilesFromGit(baseRef, headRef);
     const diffs = getDiffs(baseRef, headRef);
 
     if (options.verbose) {
-      console.log(`\nPre-computed diffs for ${diffs.size} files.`);
+      logger.verbose(`\nPre-computed diffs for ${diffs.size} files.`);
     }
 
     // Compute codebase context for the indexer (graceful — never blocks review)
     let codebaseContext = '';
     if (indexSettings.enabled && changedFiles.length > 0) {
       // rootDir = repo root (indexing scope), cacheDir = alongside config (cwd/.mesa/cache)
-      codebaseContext = getCodebaseContext({
+      codebaseContext = await getCodebaseContext({
         rootDir: getRepoRoot(),
         cacheDir: path.join(process.cwd(), '.mesa', 'cache'),
         changedFiles,
@@ -77,10 +68,10 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
     }
 
     if (options.verbose) {
-      console.log('\nRunning code review agent...');
+      logger.verbose('\nRunning code review agent...');
     }
 
-    const progressReporter = options.verbose ? new ReviewCliProgressReporter() : null;
+    const progressReporter = new ReviewCliProgressReporter();
 
     let outcome: Awaited<ReturnType<typeof runReview>>['outcome'];
     try {
@@ -93,6 +84,7 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
         codebaseContext,
         diffs,
         onProgress: progressReporter ? progressReporter.onProgress : undefined,
+        abortSignal: options.abortSignal,
       });
       progressReporter?.finish();
       outcome = reviewResult.outcome;
@@ -103,22 +95,25 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
 
     if (outcome.kind === 'no-changed-files') {
       if (options.verbose) {
-        console.log('No changed files found.');
+        logger.verbose('No changed files found.');
       }
       return 0;
     }
 
     if (options.verbose) {
-      console.log(`Mesa v${VERSION}`);
-      console.log(`\nFound ${outcome.changedFiles.length} changed files:`);
-      outcome.changedFiles.forEach((file) => console.log(`  ${file}`));
-      console.log(`\nRule Selection:`);
-      console.log(`  ${outcome.rulesLoaded} total rules loaded.`);
-      console.log(`  ${outcome.filesWithRules} files have applicable rules.`);
-      console.log(`  ${outcome.totalChecks} total checks to perform.`);
+      logger.verbose(`Mesa v${VERSION}`);
+      logger.verbose(`\nFound ${outcome.changedFiles.length} changed files:`);
+      outcome.changedFiles.forEach((file) => logger.verbose(`  ${file}`));
+      logger.verbose(`\nRule Selection:`);
+      logger.verbose(`  ${outcome.rulesLoaded} total rules loaded.`);
+      logger.verbose(`  ${outcome.filesWithRules} files have applicable rules.`);
+      logger.verbose(`  ${outcome.totalChecks} total checks to perform.`);
     }
 
     if (outcome.kind === 'no-matching-rules') {
+      if (outcome.rulesLoaded === 0) {
+        throw new NoRulesFoundError();
+      }
       console.log('No rules matched the changed files. Review passed.');
       return 0;
     }
@@ -128,13 +123,9 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
     const hasErrors = outcome.result.violations.some((violation) => violation.severity === 'error');
     return hasErrors ? 1 : 0;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (isReviewAdapterExecutionError(error)) {
-      console.error(message);
-      return 3;
-    }
-    console.error(`Error: ${message}`);
-    return 1;
+    // All errors propagate to wrapHandler's printError for tiered display.
+    // MesaError subclasses carry their own exitCode (e.g. AgentExecutionError → 3).
+    throw error instanceof Error ? error : new Error(`Unexpected error: ${String(error)}`);
   }
 }
 
@@ -214,16 +205,14 @@ class ReviewCliProgressReporter {
     if (event.type === 'run_split') {
       this.totalWorkers = event.totalWorkers;
       this.completedWorkers = 0;
-      this.spinner.log(chalk.gray(`Split ${event.totalFiles} files into ${event.totalWorkers} worker group(s)`));
+      logger.verbose(`Split ${event.totalFiles} files into ${event.totalWorkers} worker group(s)`);
       this.spinner.start(this.getSpinnerText());
       return;
     }
 
     if (event.type === 'worker_started') {
       this.totalWorkers = Math.max(this.totalWorkers, event.totalWorkers);
-      this.spinner.log(
-        chalk.gray(`Worker ${event.workerIndex}/${event.totalWorkers} sent (${event.promptChars} chars)`)
-      );
+      logger.verbose(`Worker ${event.workerIndex}/${event.totalWorkers} sent (${event.promptChars} chars)`);
       return;
     }
 
@@ -231,12 +220,12 @@ class ReviewCliProgressReporter {
       this.totalWorkers = Math.max(this.totalWorkers, event.totalWorkers);
       this.completedWorkers += 1;
       this.spinner.update(this.getSpinnerText());
-      this.spinner.log(chalk.green(`✓ Worker ${event.workerIndex}/${event.totalWorkers} complete`));
+      logger.verbose(chalk.green(`✓ Worker ${event.workerIndex}/${event.totalWorkers} complete`));
       return;
     }
 
     if (event.type === 'tool_call') {
-      this.spinner.log(chalk.gray(formatToolCallLogLine(event.toolName, event.path)));
+      logger.verbose(chalk.gray(formatToolCallLogLine(event.toolName, event.path)));
       return;
     }
 
@@ -264,14 +253,14 @@ class ReviewCliProgressReporter {
         shortCircuitedNoViolations: false,
       };
 
-      console.log(
+      logger.verbose(
         chalk.gray(
           `Parse worker ${workerIndex}/${this.totalWorkers}: matched=${parseSummary.matchedLines}, ignored=${parseSummary.ignoredLines}, violations=${parseSummary.violations}`
         )
       );
 
       if (parseSummary.shortCircuitedNoViolations) {
-        console.log(chalk.yellow(`  Worker ${workerIndex} parser short-circuited on "no violations found" text`));
+        logger.verbose(chalk.yellow(`  Worker ${workerIndex} parser short-circuited on "no violations found" text`));
       }
     }
   }
@@ -294,7 +283,7 @@ function formatToolCallLogLine(toolName: string, filePath?: string): string {
   return filePath ? `  ${toolName}: ${filePath}` : `  ${toolName}:`;
 }
 
-function resolvePackageVersion(): string {
+export function resolvePackageVersion(): string {
   const candidatePaths = [
     path.resolve(__dirname, '..', '..', 'package.json'),
     path.resolve(__dirname, '..', '..', '..', 'package.json'),
@@ -318,70 +307,6 @@ function resolvePackageVersion(): string {
   return 'unknown';
 }
 
-function loadCliCursorDeeplinkConfig(configPath?: string): boolean {
-  const resolvedPath = resolveCliConfigPath(configPath);
-  if (!resolvedPath) {
-    throw new Error('Mesa config not found. Run "mesa init" or pass --config.');
-  }
-
-  const contents = fs.readFileSync(resolvedPath, 'utf8');
-  const parsed = yaml.load(contents);
-  if (!parsed || typeof parsed !== 'object') {
-    throw new Error(`Invalid Mesa config at ${resolvedPath}`);
-  }
-
-  const output = (parsed as CliOutputConfig).output;
-  if (typeof output?.cursor_deeplink !== 'boolean') {
-    throw new Error('Invalid config: output.cursor_deeplink is required and must be true or false.');
-  }
-
-  return output.cursor_deeplink;
-}
-
-function loadIndexSettings(configPath?: string): IndexSettings {
-  const resolvedPath = resolveCliConfigPath(configPath);
-  if (!resolvedPath) {
-    return { enabled: false, blastRadiusDepth: 2, contextTokenBudget: 4000 };
-  }
-
-  try {
-    const contents = fs.readFileSync(resolvedPath, 'utf8');
-    const parsed = yaml.load(contents) as CliOutputConfig | null;
-    if (!parsed || typeof parsed !== 'object') {
-      return { enabled: false, blastRadiusDepth: 2, contextTokenBudget: 4000 };
-    }
-
-    return {
-      enabled: parsed.index?.enabled !== false,
-      blastRadiusDepth: parsed.index?.blast_radius_depth ?? 2,
-      contextTokenBudget: parsed.index?.context_token_budget ?? 4000,
-    };
-  } catch {
-    return { enabled: false, blastRadiusDepth: 2, contextTokenBudget: 4000 };
-  }
-}
-
-function resolveCliConfigPath(configPath?: string): string | null {
-  if (configPath) {
-    if (fs.existsSync(configPath)) {
-      return configPath;
-    }
-    throw new Error(`Config file not found: ${configPath}`);
-  }
-
-  const envPath = process.env.MESA_CONFIG;
-  if (envPath && fs.existsSync(envPath)) {
-    return envPath;
-  }
-
-  const defaultPath = path.resolve(process.cwd(), '.mesa', 'config.yaml');
-  if (fs.existsSync(defaultPath)) {
-    return defaultPath;
-  }
-
-  return null;
-}
-
 function printViolations(
   result: ReviewResult,
   format: 'console' | 'json' = 'console',
@@ -399,10 +324,9 @@ function printViolations(
 
   if (result.violations.length === 0) {
     console.log(chalk.green('No rule violations found\n'));
-    console.log(chalk.gray(`  Files reviewed: ${filesReviewed}`));
-    console.log(chalk.gray(`  Rules checked:  ${rulesChecked}`));
-    if (duration) console.log(chalk.gray(`  Duration:       ${duration}${formattedCost ? `, ${formattedCost}` : ''}`));
-    console.log();
+    logger.verbose(chalk.gray(`  Files reviewed: ${filesReviewed}`));
+    logger.verbose(chalk.gray(`  Rules checked:  ${rulesChecked}`));
+    console.log(chalk.gray(`  Duration:       ${duration}${formattedCost ? `, ${formattedCost}` : ''}`));
     return;
   }
 

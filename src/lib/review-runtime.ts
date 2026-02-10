@@ -47,10 +47,12 @@ export function createNodeReviewRuntime(): ReviewRuntime {
               diffs: input.diffs ?? new Map(),
               model,
               filesPerWorker: resolvedConfig.filesPerWorker,
+              maxSteps: resolvedConfig.maxSteps,
               verbose: input.verbose,
               codebaseContext: input.codebaseContext,
               onProgress: input.onProgress,
               resolveFile: createGitFileResolver(input.headRef),
+              abortSignal: input.abortSignal,
             });
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);

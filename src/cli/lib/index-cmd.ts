@@ -15,7 +15,7 @@ const indexHandler = async (argv: IndexArgv) => {
   console.log(chalk.gray('Building codebase index...'));
   const startTime = Date.now();
 
-  const index = buildIndex({
+  const index = await buildIndex({
     rootDir,
     store,
     verbose: argv.verbose,

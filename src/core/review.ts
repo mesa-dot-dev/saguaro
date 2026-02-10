@@ -8,6 +8,7 @@ export interface ReviewRequest {
   codebaseContext?: string;
   diffs?: Map<string, string>;
   onProgress?: ReviewProgressCallback;
+  abortSignal?: AbortSignal;
 }
 
 export interface ReviewInputChannel {
@@ -23,6 +24,7 @@ export interface ReviewerInput {
   codebaseContext?: string;
   diffs?: Map<string, string>;
   onProgress?: ReviewProgressCallback;
+  abortSignal?: AbortSignal;
 }
 
 export interface Reviewer {
@@ -115,6 +117,7 @@ export function createReviewCore(deps: ReviewCoreDeps): ReviewCore {
         codebaseContext: request.codebaseContext,
         diffs: request.diffs,
         onProgress: request.onProgress,
+        abortSignal: request.abortSignal,
       });
 
       const durationMs = clock.nowMs() - startedAtMs;
