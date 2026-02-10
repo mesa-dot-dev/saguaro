@@ -14,10 +14,12 @@ export interface RunReviewOptions {
   onProgress?: ReviewProgressCallback;
   /** Markdown section with import graph + blast radius context from the codebase indexer */
   codebaseContext?: string;
+  /** Resolves a repo-relative file path to its content. Used by the read_file tool and line snapping. */
+  resolveFile?: (path: string) => string | null;
 }
 
 const DEFAULT_FILES_PER_WORKER = 3;
-const MAX_DIFF_CHARS = 30_000;
+const MAX_DIFF_CHARS = 30000;
 
 const SYSTEM_PROMPT = `You are a code review enforcement agent. Your ONLY job is to check whether new code changes violate the defined rules. You do not make suggestions, observations, or compliments. Silence means approval.
 
@@ -56,7 +58,9 @@ If no Codebase Map is provided, review using only the diffs. Do not speculativel
 
 After reviewing ALL files, output violations in this exact format, one per line:
 
-[rule-id] file:line - description
+[rule-id] file:line - description | \`snippet\`
+
+where \`snippet\` is a short (10-40 char) unique substring copied verbatim from the offending line.
 
 If no violations are found across all files, respond with exactly: No violations found.
 
@@ -71,6 +75,7 @@ If no violations are found across all files, respond with exactly: No violations
 export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewResult> {
   void options.verbose;
   const runStartedAtMs = Date.now();
+  const resolveFile = options.resolveFile ?? createDefaultFileResolver();
   const emitProgress = (event: Parameters<ReviewProgressCallback>[0]): void => {
     try {
       options.onProgress?.(event);
@@ -119,15 +124,12 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
             }),
             execute: async ({ path: filePath }) => {
               try {
-                const absolutePath = path.resolve(process.cwd(), filePath);
-
-                if (!absolutePath.startsWith(process.cwd())) {
-                  return 'Error: path is outside the repository.';
+                const content = resolveFile(filePath);
+                if (content === null) {
+                  return `Error reading file: file not found or unreadable`;
                 }
-
-                const content = fs.readFileSync(absolutePath, 'utf-8');
-                if (content.length > 10_000) {
-                  return `${content.slice(0, 10_000)}\n[file truncated at 10,000 characters]`;
+                if (content.length > 10000) {
+                  return `${content.slice(0, 10000)}\n[file truncated at 10,000 characters]`;
                 }
                 return content;
               } catch (error) {
@@ -173,7 +175,7 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
         .filter(Boolean)
         .join('\n');
 
-      const parsed = parseViolationsDetailed(text, options.filesWithRules);
+      const parsed = parseViolationsDetailed(text, options.filesWithRules, resolveFile);
 
       emitProgress({
         type: 'parse_summary',
@@ -188,6 +190,8 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
       return {
         ...parsed,
         toolCalls,
+        inputTokens: result.totalUsage.inputTokens ?? 0,
+        outputTokens: result.totalUsage.outputTokens ?? 0,
       };
     })
   );
@@ -196,6 +200,8 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
   const totalMatched = parseResults.reduce((count, result) => count + result.matchedLines, 0);
   const totalIgnored = parseResults.reduce((count, result) => count + result.ignoredLines, 0);
   const allViolations = parseResults.flatMap((result) => result.violations);
+  const totalInputTokens = parseResults.reduce((count, result) => count + result.inputTokens, 0);
+  const totalOutputTokens = parseResults.reduce((count, result) => count + result.outputTokens, 0);
 
   emitProgress({
     type: 'run_summary',
@@ -215,6 +221,9 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
       errors: allViolations.filter((v) => v.severity === 'error').length,
       warnings: allViolations.filter((v) => v.severity === 'warning').length,
       infos: allViolations.filter((v) => v.severity === 'info').length,
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
+      cost: (totalInputTokens / 1000000) * 5 + (totalOutputTokens / 1000000) * 25,
     },
   };
 }
@@ -260,6 +269,8 @@ interface ParseViolationsResult {
 
 interface WorkerParseViolationsResult extends ParseViolationsResult {
   toolCalls: number;
+  inputTokens: number;
+  outputTokens: number;
 }
 
 interface ExtractedToolCall {
@@ -328,7 +339,51 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function parseViolationsDetailed(text: string, filesWithRules: Map<string, Rule[]>): ParseViolationsResult {
+function createDefaultFileResolver(): (filePath: string) => string | null {
+  const cache = new Map<string, string | null>();
+  return (filePath: string) => {
+    if (cache.has(filePath)) return cache.get(filePath)!;
+    try {
+      const absolutePath = path.resolve(process.cwd(), filePath);
+      if (!absolutePath.startsWith(process.cwd())) {
+        cache.set(filePath, null);
+        return null;
+      }
+      const content = fs.readFileSync(absolutePath, 'utf-8');
+      cache.set(filePath, content);
+      return content;
+    } catch {
+      cache.set(filePath, null);
+      return null;
+    }
+  };
+}
+
+function snapLine(
+  resolveFile: (path: string) => string | null,
+  filePath: string,
+  reportedLine: number,
+  snippet: string,
+  window = 10
+): number {
+  const content = resolveFile(filePath);
+  if (!content) return reportedLine;
+
+  const lines = content.split('\n');
+  const start = Math.max(0, reportedLine - window - 1);
+  const end = Math.min(lines.length, reportedLine + window);
+
+  for (let i = start; i < end; i++) {
+    if (lines[i].includes(snippet.trim())) return i + 1;
+  }
+  return reportedLine;
+}
+
+function parseViolationsDetailed(
+  text: string,
+  filesWithRules: Map<string, Rule[]>,
+  resolveFile: (path: string) => string | null
+): ParseViolationsResult {
   const violations: Violation[] = [];
   if (!text) {
     return {
@@ -349,21 +404,29 @@ function parseViolationsDetailed(text: string, filesWithRules: Map<string, Rule[
     }
   }
 
+  const SNIPPET_REGEX = /\[([^\]]+)\]\s+(\S+):(\d+)?\s*-\s*(.+?)\s*\|\s*`([^`]+)`/;
+  const FALLBACK_REGEX = /\[([^\]]+)\]\s+(\S+):(\d+)?\s*-\s*(.+)/;
+
   const lines = text.split('\n');
   let matchedLines = 0;
   for (const line of lines) {
-    const match = line.match(/\[([^\]]+)\]\s+(\S+):(\d+)?\s*-\s*(.+)/);
+    const match = line.match(SNIPPET_REGEX) ?? line.match(FALLBACK_REGEX);
     if (match) {
       matchedLines++;
       const ruleId = match[1];
       const rule = rulesById.get(ruleId);
+      const reportedLine = match[3] ? parseInt(match[3], 10) : undefined;
+      const snippet = match[5]; // undefined if FALLBACK_REGEX matched
+      const message = snippet ? match[4] : match[4].replace(/\s*\|\s*`[^`]*`\s*$/, '');
+
       violations.push({
         ruleId,
         ruleTitle: rule?.title ?? ruleId,
         severity: rule?.severity ?? 'error',
         file: match[2],
-        line: match[3] ? parseInt(match[3], 10) : undefined,
-        message: match[4],
+        line:
+          reportedLine !== undefined && snippet ? snapLine(resolveFile, match[2], reportedLine, snippet) : reportedLine,
+        message,
       });
     }
   }

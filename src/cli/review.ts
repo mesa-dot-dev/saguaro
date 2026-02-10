@@ -393,14 +393,15 @@ function printViolations(
     return;
   }
 
-  const { filesReviewed, rulesChecked, durationMs } = result.summary;
+  const { filesReviewed, rulesChecked, durationMs, cost } = result.summary;
   const duration = durationMs ? formatDuration(durationMs) : null;
+  const formattedCost = cost !== undefined ? formatCost(cost) : null;
 
   if (result.violations.length === 0) {
     console.log(chalk.green('No rule violations found\n'));
     console.log(chalk.gray(`  Files reviewed: ${filesReviewed}`));
     console.log(chalk.gray(`  Rules checked:  ${rulesChecked}`));
-    if (duration) console.log(chalk.gray(`  Duration:       ${duration}`));
+    if (duration) console.log(chalk.gray(`  Duration:       ${duration}${formattedCost ? `, ${formattedCost}` : ''}`));
     console.log();
     return;
   }
@@ -409,7 +410,7 @@ function printViolations(
     console.log(`${result.violations.length} violation(s):\n`);
     console.log(chalk.gray(`  Files reviewed: ${filesReviewed}`));
     console.log(chalk.gray(`  Rules checked:  ${rulesChecked}`));
-    if (duration) console.log(chalk.gray(`  Duration:       ${duration}`));
+    if (duration) console.log(chalk.gray(`  Duration:       ${duration}${formattedCost ? `, ${formattedCost}` : ''}`));
     console.log();
 
     if (showCursorDeepLink) {
@@ -443,7 +444,7 @@ function printViolations(
   console.log(`${result.violations.length} violation(s): ${errors} errors, ${warnings} warnings, ${infos} infos\n`);
   console.log(chalk.gray(`  Files reviewed: ${filesReviewed}`));
   console.log(chalk.gray(`  Rules checked:  ${rulesChecked}`));
-  if (duration) console.log(chalk.gray(`  Duration:       ${duration}`));
+  if (duration) console.log(chalk.gray(`  Duration:       ${duration}${formattedCost ? `, ${formattedCost}` : ''}`));
   console.log();
 
   if (showCursorDeepLink && result.violations.length > 0) {
@@ -472,6 +473,10 @@ function terminalLink(label: string, url: string): string {
 function formatDuration(ms: number): string {
   const seconds = (ms / 1000).toFixed(1);
   return `${seconds}s`;
+}
+
+function formatCost(cost: number): string {
+  return `$${cost.toFixed(2)} cost`;
 }
 
 function buildCursorPromptText(result: ReviewResult): string {

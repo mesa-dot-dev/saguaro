@@ -63,6 +63,21 @@ export function getRepoRoot(): string {
   }
 }
 
+export function getFileAtRef(ref: string, filePath: string): string | null {
+  assertValidGitRef(ref, 'ref');
+  if (filePath.startsWith('/') || filePath.includes('..')) {
+    return null;
+  }
+  try {
+    return execFileSync('git', ['show', `${ref}:${filePath}`], {
+      encoding: 'utf-8',
+      maxBuffer: 1024 * 1024,
+    });
+  } catch {
+    return null;
+  }
+}
+
 function assertValidGitRef(ref: string, label: string): void {
   if (!VALID_GIT_REF.test(ref)) {
     throw new Error(`Invalid ${label}`);

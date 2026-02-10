@@ -1,7 +1,7 @@
 import type { Reviewer } from '../core/review.js';
 import type { Rule } from '../types/types.js';
 import { AgentExecutionError } from './errors.js';
-import { listChangedFilesFromGit } from './git.js';
+import { getFileAtRef, listChangedFilesFromGit } from './git.js';
 import {
   loadReviewAdapterConfig,
   type ResolvedModelConfig,
@@ -14,6 +14,16 @@ export interface ReviewRuntime {
   listChangedFiles(baseRef: string, headRef: string): Promise<string[]> | string[];
   loadRules(rulesDir?: string): Promise<Rule[]> | Rule[];
   createReviewer(configPath?: string): Reviewer;
+}
+
+function createGitFileResolver(ref: string): (filePath: string) => string | null {
+  const cache = new Map<string, string | null>();
+  return (filePath: string) => {
+    if (cache.has(filePath)) return cache.get(filePath)!;
+    const content = getFileAtRef(ref, filePath);
+    cache.set(filePath, content);
+    return content;
+  };
 }
 
 export function createNodeReviewRuntime(): ReviewRuntime {
@@ -40,6 +50,7 @@ export function createNodeReviewRuntime(): ReviewRuntime {
               verbose: input.verbose,
               codebaseContext: input.codebaseContext,
               onProgress: input.onProgress,
+              resolveFile: createGitFileResolver(input.headRef),
             });
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);

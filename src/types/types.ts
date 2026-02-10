@@ -20,6 +20,9 @@ export interface ReviewResult {
     warnings: number;
     infos: number;
     durationMs?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    cost?: number;
   };
 }
 
