@@ -5,7 +5,7 @@ A lightweight code review.
 ## Install
 
 ```bash
-brew install mesa-dot-dev/homebrew-tap/mesa
+brew install mesa-dot-dev/homebrew-tap/code-review
 ```
 
 ## Usage
