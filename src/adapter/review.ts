@@ -1,9 +1,6 @@
-import { createReviewCore, type ReviewEngineOutcome } from '../core/review-engine.js';
+import { createReviewCore, type ReviewEngineOutcome } from '../core/review.js';
 import { AgentExecutionError } from '../lib/errors.js';
-import { listChangedFilesFromGit } from '../lib/git.js';
-import { createAiSdkReviewModelAdapter } from '../lib/review-ai-sdk-reviewer.js';
-import { loadReviewAdapterConfig } from '../lib/review-model-config.js';
-import { loadConfiguredRules } from '../lib/rules.js';
+import { createNodeReviewRuntime, type ReviewRuntime } from '../lib/review-runtime.js';
 
 export interface ReviewAdapterRequest {
   baseRef: string;
@@ -21,19 +18,15 @@ export interface ReviewAdapterResult {
   outcome: ReviewEngineOutcome;
 }
 
-export async function runReviewAdapter(request: ReviewAdapterRequest): Promise<ReviewAdapterResult> {
-  const resolvedConfig = loadReviewAdapterConfig(request.configPath);
+export async function runReview(request: ReviewAdapterRequest, runtime?: ReviewRuntime): Promise<ReviewAdapterResult> {
+  const effectiveRuntime = runtime ?? createNodeReviewRuntime();
 
   const reviewCore = createReviewCore({
     input: {
-      listChangedFiles: (base, head) => listChangedFilesFromGit(base, head),
-      loadRules: () => loadConfiguredRules(request.rulesDir),
+      listChangedFiles: (base, head) => effectiveRuntime.listChangedFiles(base, head),
+      loadRules: () => effectiveRuntime.loadRules(request.rulesDir),
     },
-    reviewer: createAiSdkReviewModelAdapter({
-      modelConfig: resolvedConfig.modelConfig,
-      maxSteps: resolvedConfig.maxSteps,
-      filesPerWorker: resolvedConfig.filesPerWorker,
-    }),
+    reviewer: effectiveRuntime.createReviewer(request.configPath),
   });
 
   const outcome = await reviewCore.review({

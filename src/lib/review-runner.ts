@@ -2,12 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { LanguageModel } from 'ai';
 import { generateText, stepCountIs, tool } from 'ai';
-import chalk from 'chalk';
 import { z } from 'zod';
-import type { ReviewResult, Rule } from '../types/types.js';
-import { parseViolationsDetailed } from './review-parse.js';
-import { buildPrompt } from './review-prompt.js';
-import { createProcessingSpinner } from './review-spinner.js';
+import type { ReviewResult, Rule, Violation } from '../types/types.js';
 
 export interface RunReviewOptions {
   filesWithRules: Map<string, Rule[]>;
@@ -20,6 +16,7 @@ export interface RunReviewOptions {
 }
 
 const DEFAULT_FILES_PER_WORKER = 3;
+const MAX_DIFF_CHARS = 30_000;
 
 const SYSTEM_PROMPT = `You are a code review enforcement agent. Your ONLY job is to check whether new code changes violate the defined rules. You do not make suggestions, observations, or compliments. Silence means approval.
 
@@ -71,135 +68,74 @@ If no violations are found across all files, respond with exactly: No violations
 - When a file's diff says "No diff available", skip that file entirely.`;
 
 export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewResult> {
+  void options.verbose;
   const filesPerWorker = ensurePositiveInteger(options.filesPerWorker, DEFAULT_FILES_PER_WORKER, 'files_per_worker');
   const fileGroups = splitFilesForWorkers(options.filesWithRules, filesPerWorker);
 
-  if (options.verbose) {
-    console.log(chalk.gray(`Split ${options.filesWithRules.size} files into ${fileGroups.length} worker group(s)`));
-  }
+  const results = await Promise.all(
+    fileGroups.map((group) => {
+      const prompt = buildPrompt({
+        diffs: options.diffs,
+        filesWithRules: group,
+        codebaseContext: options.codebaseContext,
+      });
 
-  const spinner = createProcessingSpinner(
-    process.stdout.isTTY,
-    `Processing review... 0/${fileGroups.length} worker(s) complete`
+      return generateText({
+        model: options.model,
+        system: SYSTEM_PROMPT,
+        prompt,
+        tools: {
+          read_file: tool({
+            description:
+              'Read the contents of a file in the repository. Use this when the Codebase Map shows a relevant dependency and a rule requires understanding cross-file behavior.',
+            inputSchema: z.object({
+              path: z.string().describe('Repo-relative file path (e.g., "src/lib/math.ts")'),
+            }),
+            execute: async ({ path: filePath }) => {
+              try {
+                const absolutePath = path.resolve(process.cwd(), filePath);
+
+                if (!absolutePath.startsWith(process.cwd())) {
+                  return 'Error: path is outside the repository.';
+                }
+
+                const content = fs.readFileSync(absolutePath, 'utf-8');
+                if (content.length > 10_000) {
+                  return `${content.slice(0, 10_000)}\n[file truncated at 10,000 characters]`;
+                }
+                return content;
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                return `Error reading file: ${message}`;
+              }
+            },
+          }),
+        },
+        stopWhen: stepCountIs(10),
+      });
+    })
   );
 
-  let completedCount = 0;
-  spinner.start();
+  const texts = results.map((result) =>
+    result.steps
+      .map((step) => step.text)
+      .filter(Boolean)
+      .join('\n')
+  );
 
-  try {
-    const results = await Promise.all(
-      fileGroups.map((group, i) => {
-        const workerIndex = i + 1;
-        const workerLabel = `${workerIndex}/${fileGroups.length}`;
-        const prompt = buildPrompt({
-          diffs: options.diffs,
-          filesWithRules: group,
-          codebaseContext: options.codebaseContext,
-        });
+  const parseResults = texts.map((text) => parseViolationsDetailed(text, options.filesWithRules));
+  const allViolations = parseResults.flatMap((result) => result.violations);
 
-        if (options.verbose) {
-          console.log(chalk.gray(`Worker ${workerLabel} sent (${prompt.length} chars)`));
-        }
-
-        return generateText({
-          model: options.model,
-          system: SYSTEM_PROMPT,
-          prompt,
-          tools: {
-            read_file: tool({
-              description:
-                'Read the contents of a file in the repository. Use this when the Codebase Map shows a relevant dependency and a rule requires understanding cross-file behavior.',
-              inputSchema: z.object({
-                path: z.string().describe('Repo-relative file path (e.g., "src/lib/math.ts")'),
-              }),
-              execute: async ({ path: filePath }) => {
-                try {
-                  const absolutePath = path.resolve(process.cwd(), filePath);
-
-                  // Safety: prevent path traversal outside repo
-                  if (!absolutePath.startsWith(process.cwd())) {
-                    return 'Error: path is outside the repository.';
-                  }
-
-                  const content = fs.readFileSync(absolutePath, 'utf-8');
-                  if (content.length > 10_000) {
-                    return `${content.slice(0, 10_000)}\n[file truncated at 10,000 characters]`;
-                  }
-                  return content;
-                } catch (error) {
-                  const message = error instanceof Error ? error.message : String(error);
-                  return `Error reading file: ${message}`;
-                }
-              },
-            }),
-          },
-          stopWhen: stepCountIs(10),
-        }).then((result) => {
-          completedCount++;
-          spinner.setMessage(`Processing review... ${completedCount}/${fileGroups.length} worker(s) complete`);
-          spinner.log(chalk.green(`✓ Worker ${workerLabel} complete`));
-          return result;
-        });
-      })
-    );
-
-    spinner.stop();
-
-    // Collect text from ALL steps — result.text only returns the last step's text
-    const texts = results.map((r) =>
-      r.steps
-        .map((s) => s.text)
-        .filter(Boolean)
-        .join('\n')
-    );
-
-    if (options.verbose) {
-      for (let i = 0; i < results.length; i++) {
-        const result = results[i];
-        const toolCalls = result.steps.flatMap((s) => s.toolCalls);
-        if (toolCalls.length > 0) {
-          console.log(chalk.gray(`Worker ${i + 1}/${results.length} made ${toolCalls.length} tool call(s):`));
-          for (const tc of toolCalls) {
-            if (!tc.dynamic) {
-              console.log(chalk.gray(`  read_file: ${tc.input.path}`));
-            }
-          }
-        }
-      }
-    }
-
-    const parseResults = texts.map((text) => parseViolationsDetailed(text, options.filesWithRules));
-    const allViolations = parseResults.flatMap((result) => result.violations);
-
-    if (options.verbose) {
-      for (let i = 0; i < parseResults.length; i++) {
-        const result = parseResults[i];
-        const workerIndex = i + 1;
-        console.log(
-          chalk.gray(
-            `Parse worker ${workerIndex}/${parseResults.length}: matched=${result.matchedLines}, ignored=${result.ignoredLines}, violations=${result.violations.length}`
-          )
-        );
-        if (result.shortCircuitedNoViolations) {
-          console.log(chalk.yellow(`  Worker ${workerIndex} parser short-circuited on "no violations found" text`));
-        }
-      }
-    }
-
-    return {
-      violations: allViolations,
-      summary: {
-        filesReviewed: options.filesWithRules.size,
-        rulesChecked: countRules(options.filesWithRules),
-        errors: allViolations.filter((v) => v.severity === 'error').length,
-        warnings: allViolations.filter((v) => v.severity === 'warning').length,
-        infos: allViolations.filter((v) => v.severity === 'info').length,
-      },
-    };
-  } catch (error) {
-    spinner.stop();
-    throw error;
-  }
+  return {
+    violations: allViolations,
+    summary: {
+      filesReviewed: options.filesWithRules.size,
+      rulesChecked: countRules(options.filesWithRules),
+      errors: allViolations.filter((v) => v.severity === 'error').length,
+      warnings: allViolations.filter((v) => v.severity === 'warning').length,
+      infos: allViolations.filter((v) => v.severity === 'info').length,
+    },
+  };
 }
 
 function splitFilesForWorkers(filesWithRules: Map<string, Rule[]>, filesPerWorker: number): Map<string, Rule[]>[] {
@@ -231,4 +167,146 @@ function ensurePositiveInteger(value: number | undefined, fallback: number, fiel
   }
 
   return value;
+}
+
+interface ParseViolationsResult {
+  violations: Violation[];
+  totalLines: number;
+  matchedLines: number;
+  ignoredLines: number;
+  shortCircuitedNoViolations: boolean;
+}
+
+function parseViolationsDetailed(text: string, filesWithRules: Map<string, Rule[]>): ParseViolationsResult {
+  const violations: Violation[] = [];
+  if (!text) {
+    return {
+      violations,
+      totalLines: 0,
+      matchedLines: 0,
+      ignoredLines: 0,
+      shortCircuitedNoViolations: false,
+    };
+  }
+
+  const rulesById = new Map<string, Rule>();
+  for (const rules of filesWithRules.values()) {
+    for (const rule of rules) {
+      if (!rulesById.has(rule.id)) {
+        rulesById.set(rule.id, rule);
+      }
+    }
+  }
+
+  const lines = text.split('\n');
+  let matchedLines = 0;
+  for (const line of lines) {
+    const match = line.match(/\[([^\]]+)\]\s+(\S+):(\d+)?\s*-\s*(.+)/);
+    if (match) {
+      matchedLines++;
+      const ruleId = match[1];
+      const rule = rulesById.get(ruleId);
+      violations.push({
+        ruleId,
+        ruleTitle: rule?.title ?? ruleId,
+        severity: rule?.severity ?? 'error',
+        file: match[2],
+        line: match[3] ? parseInt(match[3], 10) : undefined,
+        message: match[4],
+      });
+    }
+  }
+
+  const shortCircuitedNoViolations = violations.length === 0 && isNoViolationsSentinel(text);
+
+  return {
+    violations,
+    totalLines: lines.length,
+    matchedLines,
+    ignoredLines: shortCircuitedNoViolations ? lines.length : Math.max(0, lines.length - matchedLines),
+    shortCircuitedNoViolations,
+  };
+}
+
+function isNoViolationsSentinel(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  return normalized === 'no violations found' || normalized === 'no violations found.';
+}
+
+function truncateDiff(diff: string): string {
+  if (diff.length <= MAX_DIFF_CHARS) {
+    return diff;
+  }
+
+  return `${diff.slice(0, MAX_DIFF_CHARS)}\n[diff truncated]`;
+}
+
+function buildPrompt(options: {
+  diffs: Map<string, string>;
+  filesWithRules: Map<string, Rule[]>;
+  codebaseContext?: string;
+}): string {
+  const lines: string[] = [];
+
+  if (options.codebaseContext) {
+    lines.push(options.codebaseContext);
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+  }
+
+  lines.push('## Files to Review');
+  lines.push('');
+
+  for (const [file, rules] of options.filesWithRules) {
+    const ruleList = rules.map((rule) => `${rule.id} (${rule.severity})`).join(', ');
+    lines.push(`### ${file}`);
+    lines.push(`Applicable rules: ${ruleList}`);
+
+    const diff = options.diffs.get(file);
+    if (diff) {
+      lines.push('```diff');
+      lines.push(truncateDiff(diff));
+      lines.push('```');
+    } else {
+      lines.push('No diff available for this file.');
+    }
+
+    lines.push('');
+  }
+
+  lines.push('---');
+  lines.push('');
+  lines.push('## Rules');
+  lines.push('');
+
+  const uniqueRules = new Set<Rule>(Array.from(options.filesWithRules.values()).flat());
+  for (const rule of uniqueRules) {
+    lines.push(formatRule(rule));
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+function formatRule(rule: Rule): string {
+  const lines: string[] = [
+    `### Rule ID: ${rule.id}`,
+    `**Severity:** ${rule.severity}`,
+    `**Applies to:** ${rule.globs.join(', ')}`,
+    '',
+    rule.instructions,
+  ];
+
+  if (rule.examples) {
+    lines.push('');
+    if (rule.examples.violations?.length) {
+      lines.push(`**Violations:** ${rule.examples.violations.join(', ')}`);
+    }
+    if (rule.examples.compliant?.length) {
+      lines.push(`**Compliant:** ${rule.examples.compliant.join(', ')}`);
+    }
+  }
+
+  return lines.join('\n');
 }

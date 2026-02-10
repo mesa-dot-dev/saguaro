@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
 import yaml from 'js-yaml';
-import { isReviewAdapterExecutionError, runReviewAdapter } from '../adapter/review.js';
+import { isReviewAdapterExecutionError, runReview } from '../adapter/review.js';
 import { getCodebaseContext } from '../indexer/index.js';
 import { getDiffs, getRepoRoot, listChangedFilesFromGit } from '../lib/git.js';
 import type { ReviewResult } from '../types/types.js';
@@ -68,7 +68,7 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
       });
     }
 
-    const { outcome } = await runReviewAdapter({
+    const { outcome } = await runReview({
       baseRef,
       headRef,
       rulesDir: options.rules,
