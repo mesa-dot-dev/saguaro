@@ -470,11 +470,11 @@ instructions: |
 
 examples:
   violations:
-    - "sql.raw(\\\`SELECT * FROM repos WHERE org_id = '\${orgId}'\\\`)"
-    - "sql.unsafe(\\\`DELETE FROM \${tableName} WHERE id = '\${id}'\\\`)"
-    - "db.execute(\\\`UPDATE users SET name = '\${name}'\\\`)"
+    - sql.raw(\`SELECT * FROM repos WHERE org_id = '\${orgId}'\`)
+    - sql.unsafe(\`DELETE FROM \${tableName} WHERE id = '\${id}'\`)
+    - db.execute(\`UPDATE users SET name = '\${name}'\`)
   compliant:
-    - "sql\\\`SELECT * FROM repos WHERE org_id = \${orgId}\\\`"
+    - sql\`SELECT * FROM repos WHERE org_id = \${orgId}\`
     - "db.select().from(repos).where(eq(repos.orgId, orgId))"
     - "sql.raw('SELECT 1')"
 

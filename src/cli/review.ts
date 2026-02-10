@@ -6,11 +6,12 @@ import yaml from 'js-yaml';
 import { isReviewAdapterExecutionError, runReview } from '../adapter/review.js';
 import { getCodebaseContext } from '../indexer/index.js';
 import { getDiffs, getRepoRoot, listChangedFilesFromGit } from '../lib/git.js';
-import type { ReviewResult } from '../types/types.js';
+import type { ReviewProgressEvent, ReviewResult } from '../types/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VERSION = resolvePackageVersion();
 const CURSOR_PROMPT_URL_MAX_LENGTH = 8000;
+const CLI_ACCENT = chalk.hex('#be3c00');
 
 interface ReviewOptions {
   base?: string;
@@ -36,6 +37,13 @@ interface IndexSettings {
   enabled: boolean;
   blastRadiusDepth: number;
   contextTokenBudget: number;
+}
+
+interface WorkerParseSummaryDetail {
+  matchedLines: number;
+  ignoredLines: number;
+  violations: number;
+  shortCircuitedNoViolations: boolean;
 }
 
 export async function reviewCommand(options: ReviewOptions): Promise<number> {
@@ -68,15 +76,30 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
       });
     }
 
-    const { outcome } = await runReview({
-      baseRef,
-      headRef,
-      rulesDir: options.rules,
-      verbose: options.verbose,
-      configPath: options.config,
-      codebaseContext,
-      diffs,
-    });
+    if (options.verbose) {
+      console.log('\nRunning code review agent...');
+    }
+
+    const progressReporter = options.verbose ? new ReviewCliProgressReporter() : null;
+
+    let outcome: Awaited<ReturnType<typeof runReview>>['outcome'];
+    try {
+      const reviewResult = await runReview({
+        baseRef,
+        headRef,
+        rulesDir: options.rules,
+        verbose: options.verbose,
+        configPath: options.config,
+        codebaseContext,
+        diffs,
+        onProgress: progressReporter ? progressReporter.onProgress : undefined,
+      });
+      progressReporter?.finish();
+      outcome = reviewResult.outcome;
+    } catch (error) {
+      progressReporter?.stop();
+      throw error;
+    }
 
     if (outcome.kind === 'no-changed-files') {
       if (options.verbose) {
@@ -100,10 +123,6 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
       return 0;
     }
 
-    if (options.verbose) {
-      console.log('\nRunning code review agent...');
-    }
-
     printViolations(outcome.result, options.output, cursorDeeplink, !!options.verbose);
 
     const hasErrors = outcome.result.violations.some((violation) => violation.severity === 'error');
@@ -117,6 +136,162 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
     console.error(`Error: ${message}`);
     return 1;
   }
+}
+
+class CliSpinner {
+  private readonly frames = ['-', '\\', '|', '/'];
+  private interval: ReturnType<typeof setInterval> | null = null;
+  private frameIndex = 0;
+  private isRunning = false;
+  private text = '';
+
+  start(text: string): void {
+    this.text = text;
+    this.isRunning = true;
+
+    if (!process.stdout.isTTY) {
+      return;
+    }
+
+    this.render();
+    this.interval = setInterval(() => {
+      this.frameIndex = (this.frameIndex + 1) % this.frames.length;
+      this.render();
+    }, 80);
+  }
+
+  update(text: string): void {
+    this.text = text;
+    if (this.isRunning && process.stdout.isTTY) {
+      this.render();
+    }
+  }
+
+  log(message: string): void {
+    if (this.isRunning && process.stdout.isTTY) {
+      this.clearLine();
+      console.log(message);
+      this.render();
+      return;
+    }
+
+    console.log(message);
+  }
+
+  stop(): void {
+    if (!this.isRunning) {
+      return;
+    }
+
+    this.isRunning = false;
+    if (this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
+    }
+
+    if (process.stdout.isTTY) {
+      this.clearLine();
+    }
+  }
+
+  private render(): void {
+    const frame = this.frames[this.frameIndex];
+    process.stdout.write(`\r${CLI_ACCENT(frame)} ${this.text}`);
+  }
+
+  private clearLine(): void {
+    process.stdout.write('\r\x1b[2K');
+  }
+}
+
+class ReviewCliProgressReporter {
+  private readonly spinner = new CliSpinner();
+  private totalWorkers = 0;
+  private completedWorkers = 0;
+  private readonly parseSummaryByWorker = new Map<number, WorkerParseSummaryDetail>();
+
+  readonly onProgress = (event: ReviewProgressEvent): void => {
+    if (event.type === 'run_split') {
+      this.totalWorkers = event.totalWorkers;
+      this.completedWorkers = 0;
+      this.spinner.log(chalk.gray(`Split ${event.totalFiles} files into ${event.totalWorkers} worker group(s)`));
+      this.spinner.start(this.getSpinnerText());
+      return;
+    }
+
+    if (event.type === 'worker_started') {
+      this.totalWorkers = Math.max(this.totalWorkers, event.totalWorkers);
+      this.spinner.log(
+        chalk.gray(`Worker ${event.workerIndex}/${event.totalWorkers} sent (${event.promptChars} chars)`)
+      );
+      return;
+    }
+
+    if (event.type === 'worker_completed') {
+      this.totalWorkers = Math.max(this.totalWorkers, event.totalWorkers);
+      this.completedWorkers += 1;
+      this.spinner.update(this.getSpinnerText());
+      this.spinner.log(chalk.green(`✓ Worker ${event.workerIndex}/${event.totalWorkers} complete`));
+      return;
+    }
+
+    if (event.type === 'tool_call') {
+      this.spinner.log(chalk.gray(formatToolCallLogLine(event.toolName, event.path)));
+      return;
+    }
+
+    if (event.type === 'parse_summary') {
+      this.parseSummaryByWorker.set(event.workerIndex, {
+        matchedLines: event.matchedLines,
+        ignoredLines: event.ignoredLines,
+        violations: event.violations,
+        shortCircuitedNoViolations: event.shortCircuitedNoViolations,
+      });
+      return;
+    }
+
+    this.totalWorkers = Math.max(this.totalWorkers, event.totalWorkers);
+  };
+
+  finish(): void {
+    this.stop();
+
+    for (let workerIndex = 1; workerIndex <= this.totalWorkers; workerIndex += 1) {
+      const parseSummary = this.parseSummaryByWorker.get(workerIndex) ?? {
+        matchedLines: 0,
+        ignoredLines: 0,
+        violations: 0,
+        shortCircuitedNoViolations: false,
+      };
+
+      console.log(
+        chalk.gray(
+          `Parse worker ${workerIndex}/${this.totalWorkers}: matched=${parseSummary.matchedLines}, ignored=${parseSummary.ignoredLines}, violations=${parseSummary.violations}`
+        )
+      );
+
+      if (parseSummary.shortCircuitedNoViolations) {
+        console.log(chalk.yellow(`  Worker ${workerIndex} parser short-circuited on "no violations found" text`));
+      }
+    }
+  }
+
+  stop(): void {
+    this.spinner.stop();
+  }
+
+  private getSpinnerText(): string {
+    const workers = Math.max(this.totalWorkers, 0);
+    return `Processing review... ${this.completedWorkers}/${workers} worker(s) complete`;
+  }
+}
+
+function formatToolCallLogLine(toolName: string, filePath?: string): string {
+  if (toolName === 'read_file' && filePath) {
+    return `  read_file: ${filePath}`;
+  }
+
+  return filePath ? `  ${toolName}: ${filePath}` : `  ${toolName}:`;
 }
 
 function resolvePackageVersion(): string {

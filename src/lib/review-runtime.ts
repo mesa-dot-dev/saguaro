@@ -39,6 +39,7 @@ export function createNodeReviewRuntime(): ReviewRuntime {
               filesPerWorker: resolvedConfig.filesPerWorker,
               verbose: input.verbose,
               codebaseContext: input.codebaseContext,
+              onProgress: input.onProgress,
             });
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);

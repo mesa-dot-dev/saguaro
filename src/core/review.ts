@@ -1,5 +1,5 @@
 import { minimatch } from 'minimatch';
-import type { ReviewResult, Rule } from '../types/types.js';
+import type { ReviewProgressCallback, ReviewResult, Rule } from '../types/types.js';
 
 export interface ReviewRequest {
   baseRef: string;
@@ -7,6 +7,7 @@ export interface ReviewRequest {
   verbose?: boolean;
   codebaseContext?: string;
   diffs?: Map<string, string>;
+  onProgress?: ReviewProgressCallback;
 }
 
 export interface ReviewInputChannel {
@@ -21,6 +22,7 @@ export interface ReviewerInput {
   verbose?: boolean;
   codebaseContext?: string;
   diffs?: Map<string, string>;
+  onProgress?: ReviewProgressCallback;
 }
 
 export interface Reviewer {
@@ -112,6 +114,7 @@ export function createReviewCore(deps: ReviewCoreDeps): ReviewCore {
         verbose: request.verbose,
         codebaseContext: request.codebaseContext,
         diffs: request.diffs,
+        onProgress: request.onProgress,
       });
 
       const durationMs = clock.nowMs() - startedAtMs;

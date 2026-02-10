@@ -1,6 +1,7 @@
 import { createReviewCore, type ReviewEngineOutcome } from '../core/review.js';
 import { AgentExecutionError } from '../lib/errors.js';
 import { createNodeReviewRuntime, type ReviewRuntime } from '../lib/review-runtime.js';
+import type { ReviewProgressCallback } from '../types/types.js';
 
 export interface ReviewAdapterRequest {
   baseRef: string;
@@ -12,6 +13,7 @@ export interface ReviewAdapterRequest {
   codebaseContext?: string;
   /** Pre-computed diffs keyed by file path */
   diffs?: Map<string, string>;
+  onProgress?: ReviewProgressCallback;
 }
 
 export interface ReviewAdapterResult {
@@ -35,6 +37,7 @@ export async function runReview(request: ReviewAdapterRequest, runtime?: ReviewR
     verbose: request.verbose,
     codebaseContext: request.codebaseContext,
     diffs: request.diffs,
+    onProgress: request.onProgress,
   });
 
   return {

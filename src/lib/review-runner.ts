@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { LanguageModel } from 'ai';
 import { generateText, stepCountIs, tool } from 'ai';
 import { z } from 'zod';
-import type { ReviewResult, Rule, Violation } from '../types/types.js';
+import type { ReviewProgressCallback, ReviewResult, Rule, Violation } from '../types/types.js';
 
 export interface RunReviewOptions {
   filesWithRules: Map<string, Rule[]>;
@@ -11,6 +11,7 @@ export interface RunReviewOptions {
   model: LanguageModel;
   filesPerWorker?: number;
   verbose?: boolean;
+  onProgress?: ReviewProgressCallback;
   /** Markdown section with import graph + blast radius context from the codebase indexer */
   codebaseContext?: string;
 }
@@ -69,18 +70,43 @@ If no violations are found across all files, respond with exactly: No violations
 
 export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewResult> {
   void options.verbose;
+  const runStartedAtMs = Date.now();
+  const emitProgress = (event: Parameters<ReviewProgressCallback>[0]): void => {
+    try {
+      options.onProgress?.(event);
+    } catch {}
+  };
   const filesPerWorker = ensurePositiveInteger(options.filesPerWorker, DEFAULT_FILES_PER_WORKER, 'files_per_worker');
   const fileGroups = splitFilesForWorkers(options.filesWithRules, filesPerWorker);
 
-  const results = await Promise.all(
-    fileGroups.map((group) => {
+  emitProgress({
+    type: 'run_split',
+    totalFiles: options.filesWithRules.size,
+    totalWorkers: fileGroups.length,
+  });
+
+  const totalWorkers = fileGroups.length;
+  const parseResults: WorkerParseViolationsResult[] = await Promise.all(
+    fileGroups.map(async (group, index) => {
+      const workerIndex = index + 1;
+      const workerStartedAtMs = Date.now();
       const prompt = buildPrompt({
         diffs: options.diffs,
         filesWithRules: group,
         codebaseContext: options.codebaseContext,
       });
 
-      return generateText({
+      emitProgress({
+        type: 'worker_started',
+        workerIndex,
+        totalWorkers,
+        promptChars: prompt.length,
+      });
+
+      const emittedToolCallKeys = new Set<string>();
+      let toolCalls = 0;
+
+      const result = await generateText({
         model: options.model,
         system: SYSTEM_PROMPT,
         prompt,
@@ -112,19 +138,74 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
           }),
         },
         stopWhen: stepCountIs(10),
+        onStepFinish: ({ toolCalls: stepToolCalls }) => {
+          const extractedToolCalls = extractToolCalls(stepToolCalls);
+
+          for (const toolCall of extractedToolCalls) {
+            const key = getToolCallKey(toolCall);
+            if (emittedToolCallKeys.has(key)) {
+              continue;
+            }
+
+            emittedToolCallKeys.add(key);
+            toolCalls += 1;
+            emitProgress({
+              type: 'tool_call',
+              workerIndex,
+              totalWorkers,
+              toolName: toolCall.toolName,
+              path: toolCall.path,
+            });
+          }
+        },
       });
+
+      emitProgress({
+        type: 'worker_completed',
+        workerIndex,
+        totalWorkers,
+        toolCalls,
+        durationMs: Date.now() - workerStartedAtMs,
+      });
+
+      const text = result.steps
+        .map((step) => step.text)
+        .filter(Boolean)
+        .join('\n');
+
+      const parsed = parseViolationsDetailed(text, options.filesWithRules);
+
+      emitProgress({
+        type: 'parse_summary',
+        workerIndex,
+        totalWorkers,
+        matchedLines: parsed.matchedLines,
+        ignoredLines: parsed.ignoredLines,
+        violations: parsed.violations.length,
+        shortCircuitedNoViolations: parsed.shortCircuitedNoViolations,
+      });
+
+      return {
+        ...parsed,
+        toolCalls,
+      };
     })
   );
 
-  const texts = results.map((result) =>
-    result.steps
-      .map((step) => step.text)
-      .filter(Boolean)
-      .join('\n')
-  );
-
-  const parseResults = texts.map((text) => parseViolationsDetailed(text, options.filesWithRules));
+  const totalToolCalls = parseResults.reduce((count, result) => count + result.toolCalls, 0);
+  const totalMatched = parseResults.reduce((count, result) => count + result.matchedLines, 0);
+  const totalIgnored = parseResults.reduce((count, result) => count + result.ignoredLines, 0);
   const allViolations = parseResults.flatMap((result) => result.violations);
+
+  emitProgress({
+    type: 'run_summary',
+    totalWorkers,
+    totalToolCalls,
+    totalMatched,
+    totalIgnored,
+    totalViolations: allViolations.length,
+    durationMs: Date.now() - runStartedAtMs,
+  });
 
   return {
     violations: allViolations,
@@ -175,6 +256,76 @@ interface ParseViolationsResult {
   matchedLines: number;
   ignoredLines: number;
   shortCircuitedNoViolations: boolean;
+}
+
+interface WorkerParseViolationsResult extends ParseViolationsResult {
+  toolCalls: number;
+}
+
+interface ExtractedToolCall {
+  toolName: string;
+  path?: string;
+}
+
+function extractToolCalls(toolCalls: unknown): ExtractedToolCall[] {
+  if (!Array.isArray(toolCalls)) {
+    return [];
+  }
+
+  const extracted: ExtractedToolCall[] = [];
+  for (const rawToolCall of toolCalls) {
+    const parsed = parseToolCall(rawToolCall);
+    if (parsed) {
+      extracted.push(parsed);
+    }
+  }
+
+  return extracted;
+}
+
+function getToolCallKey(toolCall: ExtractedToolCall): string {
+  return `${toolCall.toolName}::${toolCall.path ?? ''}`;
+}
+
+function parseToolCall(toolCall: unknown): ExtractedToolCall | null {
+  if (!isRecord(toolCall)) {
+    return null;
+  }
+
+  const toolName =
+    typeof toolCall.toolName === 'string'
+      ? toolCall.toolName
+      : typeof toolCall.tool === 'string'
+        ? toolCall.tool
+        : 'unknown_tool';
+
+  return {
+    toolName,
+    path: toolName === 'read_file' ? extractToolCallPath(toolCall) : undefined,
+  };
+}
+
+function extractToolCallPath(toolCall: Record<string, unknown>): string | undefined {
+  if (typeof toolCall.path === 'string') {
+    return toolCall.path;
+  }
+
+  const nestedCandidates = [toolCall.input, toolCall.args, toolCall.arguments];
+  for (const candidate of nestedCandidates) {
+    if (!isRecord(candidate)) {
+      continue;
+    }
+
+    if (typeof candidate.path === 'string') {
+      return candidate.path;
+    }
+  }
+
+  return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function parseViolationsDetailed(text: string, filesWithRules: Map<string, Rule[]>): ParseViolationsResult {

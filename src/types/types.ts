@@ -35,3 +35,62 @@ export interface Rule {
   };
   tags?: string[];
 }
+
+export interface ReviewRunSplitProgressEvent {
+  type: 'run_split';
+  totalFiles: number;
+  totalWorkers: number;
+}
+
+export interface ReviewWorkerStartedProgressEvent {
+  type: 'worker_started';
+  workerIndex: number;
+  totalWorkers: number;
+  promptChars: number;
+}
+
+export interface ReviewWorkerCompletedProgressEvent {
+  type: 'worker_completed';
+  workerIndex: number;
+  totalWorkers: number;
+  toolCalls?: number;
+  durationMs: number;
+}
+
+export interface ReviewToolCallProgressEvent {
+  type: 'tool_call';
+  workerIndex: number;
+  totalWorkers: number;
+  toolName: string;
+  path?: string;
+}
+
+export interface ReviewParseSummaryProgressEvent {
+  type: 'parse_summary';
+  workerIndex: number;
+  totalWorkers: number;
+  matchedLines: number;
+  ignoredLines: number;
+  violations: number;
+  shortCircuitedNoViolations: boolean;
+}
+
+export interface ReviewRunSummaryProgressEvent {
+  type: 'run_summary';
+  totalWorkers: number;
+  totalToolCalls: number;
+  totalMatched: number;
+  totalIgnored: number;
+  totalViolations: number;
+  durationMs: number;
+}
+
+export type ReviewProgressEvent =
+  | ReviewRunSplitProgressEvent
+  | ReviewWorkerStartedProgressEvent
+  | ReviewWorkerCompletedProgressEvent
+  | ReviewToolCallProgressEvent
+  | ReviewParseSummaryProgressEvent
+  | ReviewRunSummaryProgressEvent;
+
+export type ReviewProgressCallback = (event: ReviewProgressEvent) => void;
