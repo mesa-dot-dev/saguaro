@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import figlet from 'figlet';
 import yargs, { type Argv } from 'yargs';
 import checkHandler from '../lib/check.js';
+import indexCmdHandler from '../lib/index-cmd.js';
 import initHandler from '../lib/init.js';
 import { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, validateRules } from '../lib/rules.js';
 import serveHandler from '../lib/serve.js';
@@ -26,7 +27,11 @@ const showBanner = () => {
 };
 
 // Wrapper to handle async handlers and errors
-const wrapHandler = <T>(handlerName: string, handler: (argv: T) => Promise<number | void> | number | void) => {
+const wrapHandler = <T>(
+  handlerName: string,
+  // biome-ignore lint/suspicious/noConfusingVoidType: needed for handlers that return void
+  handler: (argv: T) => Promise<number | undefined | void> | number | undefined | void
+) => {
   return async (argv: T) => {
     try {
       const exitCode = await handler(argv);
@@ -197,5 +202,18 @@ yargs(argv)
     'Run Mesa as an MCP server for Claude/Cursor integration',
     () => {},
     wrapHandler('serve', serveHandler as (argv: unknown) => Promise<number>)
+  )
+  .command(
+    'index',
+    'Build or rebuild the codebase index',
+    (y: Argv) => {
+      y.option('v', {
+        alias: 'verbose',
+        describe: 'Show detailed progress',
+        type: 'boolean',
+        default: false,
+      });
+    },
+    wrapHandler('index', indexCmdHandler as (argv: unknown) => Promise<void>)
   )
   .parse();

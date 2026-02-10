@@ -1,10 +1,10 @@
-# Mesa Local Review Agent
+# Mesa Code Review CLI
 
 ## Architecture Design Document
 
-**Version:** 1.0  
-**Date:** February 2025  
-**Status:** Draft for Team Review
+**Version:** 2.0
+**Date:** February 2025
+**Status:** Current
 
 ---
 
@@ -13,25 +13,23 @@
 1. [Vision & Philosophy](#vision--philosophy)
 2. [Core Principles](#core-principles)
 3. [System Architecture](#system-architecture)
-4. [Rule System](#rule-system)
-5. [Data Flow](#data-flow)
-6. [Component Architecture](#component-architecture)
+4. [Data Flow](#data-flow)
+5. [Package Structure](#package-structure)
+6. [Rule System](#rule-system)
 7. [Agent Design](#agent-design)
-8. [Session & Memory](#session--memory)
+8. [Codebase Indexing](#codebase-indexing)
 9. [Output Model](#output-model)
-10. [What We Keep vs Drop](#what-we-keep-vs-drop)
+10. [Key Interfaces](#key-interfaces)
 
 ---
 
 ## Vision & Philosophy
 
-> An AI code review tool that **only speaks when something is wrong**, enforces **user-defined rules stored in code**, runs **locally as a CLI/MCP tool**, and operates as a **codebase-aware agent** with extensible context via MCP.
+> An AI code review tool that **only speaks when something is wrong**, enforces **user-defined rules stored in code**, runs **locally as a CLI**, and uses a **codebase-aware agent** with import graph analysis for surgical context.
 
 ### The Problem with Existing Tools
 
-Existing AI code review tools suffer from several issues:
-
-1. **Too chatty** - They comment on everything, including making sequence diagrams for button color changes
+1. **Too chatty** - Comment on everything, including sequence diagrams for button color changes
 2. **Assume what to review** - Built-in "default" checks that can't be disabled
 3. **Rules as afterthought** - Custom rules are a side feature, not the core
 4. **Rules not in code** - Rules stored in cloud dashboards, not version-controlled
@@ -40,14 +38,12 @@ Existing AI code review tools suffer from several issues:
 
 ### Our Solution
 
-A review tool where:
-
 - **Silence is success** - No output unless a rule is violated
 - **No defaults** - Zero built-in rules; you define everything
 - **Rules in code** - `.mesa/rules/` directory, version-controlled with git
-- **Full codebase access** - Agent can read any file, grep patterns, understand context
+- **Codebase-aware** - Import graph, blast radius, and symbol-level context
 - **Local-first** - CLI tool with user-provided API keys
-- **MCP-native** - Both a server (for Claude/Cursor) and client (for context injection)
+- **Multi-provider** - Anthropic, OpenAI, Google via Vercel AI SDK
 
 ---
 
@@ -59,8 +55,9 @@ A review tool where:
 | **No default checks** | Zero built-in rules; user defines everything |
 | **Rules in code** | `.mesa/rules/` directory in repo, versioned via git |
 | **Local-first** | CLI tool; user provides own API keys |
-| **Agent architecture** | Full codebase access, not just diff |
-| **Extensible context** | MCP integration for RFCs, Linear, custom docs |
+| **Codebase-aware** | Import graph analysis + blast radius for surgical context |
+| **Parallel execution** | Workers split files for concurrent LLM calls |
+| **Graceful degradation** | Indexing failures never block reviews |
 
 ---
 
@@ -68,79 +65,176 @@ A review tool where:
 
 ```
 +-----------------------------------------------------------------------------------+
-|                              MESA LOCAL REVIEW AGENT                              |
+|                           MESA CODE REVIEW CLI                                    |
 +-----------------------------------------------------------------------------------+
 |                                                                                   |
-|  +-----------------------------------------------------------------------------+  |
-|  |                          ENTRY POINTS                                       |  |
-|  |                                                                             |  |
-|  |   +-----------+      +-----------+      +---------------------+             |  |
-|  |   |   CLI     |      |   MCP     |      | Programmatic API    |             |  |
-|  |   |           |      |   Server  |      |                     |             |  |
-|  |   | $ mesa    |      |           |      | import { review }   |             |  |
-|  |   |   review  |      | Tools for |      | from '@mesa/core'   |             |  |
-|  |   |   --base  |      | Claude/   |      |                     |             |  |
-|  |   |   main    |      | Cursor    |      | await review({...}) |             |  |
-|  |   +-----+-----+      +-----+-----+      +----------+----------+             |  |
-|  |         |                  |                       |                        |  |
-|  +---------+------------------+-----------------------+------------------------+  |
-|            |                  |                       |                           |
-|            +------------------+-----------------------+                           |
-|                               |                                                   |
-|                               v                                                   |
-|  +-----------------------------------------------------------------------------+  |
-|  |                        CONTEXT LAYER                                        |  |
-|  |                                                                             |  |
-|  |   +---------------+    +---------------+    +-------------------+           |  |
-|  |   | Git Context   |    | Rule Loader   |    | MCP Context       |           |  |
-|  |   |               |    |               |    | Providers         |           |  |
-|  |   | - Diff        |    | .mesa/rules/  |    |                   |           |  |
-|  |   | - Changed     |    |               |    | - Linear issues   |           |  |
-|  |   |   files       |    | - YAML files  |    | - RFCs/ADRs       |           |  |
-|  |   | - Commit      |    | - Glob        |    | - Custom docs     |           |  |
-|  |   |   messages    |    |   patterns    |    | - Web search      |           |  |
-|  |   | - Branch      |    | - Severity    |    |                   |           |  |
-|  |   +-------+-------+    +-------+-------+    +---------+---------+           |  |
-|  |           |                    |                      |                     |  |
-|  |           +--------------------+----------------------+                     |  |
-|  +---------------------------------+-------------------------------------------+  |
-|                                    |                                              |
-|                                    v                                              |
-|  +-----------------------------------------------------------------------------+  |
-|  |                         AGENT CORE                                          |  |
-|  |                                                                             |  |
-|  |   +-----------------------------------------------------------------------+ |  |
-|  |   |                    REVIEW AGENT                                       | |  |
-|  |   |                                                                       | |  |
-|  |   |   System Prompt:                                                      | |  |
-|  |   |   - "Only comment when a rule is violated"                            | |  |
-|  |   |   - "Each comment MUST cite a rule ID"                                | |  |
-|  |   |   - "If no violations, output nothing"                                | |  |
-|  |   |                                                                       | |  |
-|  |   |   Tools Available:                                                    | |  |
-|  |   |   +----------+ +----------+ +------+ +------------------+             | |  |
-|  |   |   |view_diff | |read_file | | grep | | leave_violation  |             | |  |
-|  |   |   +----------+ +----------+ +------+ +------------------+             | |  |
-|  |   |   +------+ +------+ +-------+ +--------------------+                  | |  |
-|  |   |   | glob | | list | | batch | | mcp_* (external)   |                  | |  |
-|  |   |   +------+ +------+ +-------+ +--------------------+                  | |  |
-|  |   +-----------------------------------------------------------------------+ |  |
-|  +-----------------------------------------------------------------------------+  |
-|                                    |                                              |
-|                                    v                                              |
-|  +-----------------------------------------------------------------------------+  |
-|  |                      OUTPUT LAYER                                           |  |
-|  |                                                                             |  |
-|  |   +-----------+    +-----------+    +-----------+                          |  |
-|  |   |  Stdout   |    | JSON File |    | Markdown  |                          |  |
-|  |   | (default) |    | (for CI)  |    |  Report   |                          |  |
-|  |   |           |    |           |    |           |                          |  |
-|  |   | Silent if |    | Machine   |    | Human     |                          |  |
-|  |   | no issues |    | readable  |    | readable  |                          |  |
-|  |   +-----------+    +-----------+    +-----------+                          |  |
-|  +-----------------------------------------------------------------------------+  |
+|  +---------------------------------------------------------------------------+    |
+|  |                         CLI (yargs)                                       |    |
+|  |   $ mesa review --base main                                              |    |
+|  |   $ mesa init | rules | index                                            |    |
+|  +-----+---------------------------------------------------------------------+    |
+|        |                                                                          |
+|        v                                                                          |
+|  +---------------------------------------------------------------------------+    |
+|  |                      CONTEXT LAYER                                        |    |
+|  |                                                                           |    |
+|  |   +---------------+   +---------------+   +-----------------------+       |    |
+|  |   | Git Context   |   | Rule Loader   |   | Codebase Index        |       |    |
+|  |   |               |   |               |   |                       |       |    |
+|  |   | - git diff    |   | .mesa/rules/  |   | - SWC parser          |       |    |
+|  |   | - changed     |   | - YAML files  |   | - oxc-resolver        |       |    |
+|  |   |   files       |   | - Glob match  |   | - Import graph        |       |    |
+|  |   | - repo root   |   | - Severity    |   | - Blast radius (BFS)  |       |    |
+|  |   +-------+-------+   +-------+-------+   | - Symbol filtering    |       |    |
+|  |           |                    |            +-----------+-----------+       |    |
+|  |           +--------------------+------------------------+                  |    |
+|  +---------------------------------+-------------------------------------+    |    |
+|                                    |                                          |    |
+|                                    v                                          |    |
+|  +---------------------------------------------------------------------------+    |
+|  |                      AGENT CORE (Vercel AI SDK)                           |    |
+|  |                                                                           |    |
+|  |   Split files into workers (3 per worker)                                 |    |
+|  |                                                                           |    |
+|  |   +-------------------+  +-------------------+  +-------------------+     |    |
+|  |   | Worker 1          |  | Worker 2          |  | Worker N          |     |    |
+|  |   | generateText()    |  | generateText()    |  | generateText()    |     |    |
+|  |   |                   |  |                   |  |                   |     |    |
+|  |   | Tool: read_file   |  | Tool: read_file   |  | Tool: read_file   |     |    |
+|  |   | Max: 10 steps     |  | Max: 10 steps     |  | Max: 10 steps     |     |    |
+|  |   +-------------------+  +-------------------+  +-------------------+     |    |
+|  |            |                      |                      |                |    |
+|  |            +---------- Promise.all() --------------------+                |    |
+|  +---------------------------------+-------------------------------------+    |    |
+|                                    |                                          |    |
+|                                    v                                          |    |
+|  +---------------------------------------------------------------------------+    |
+|  |                      OUTPUT                                               |    |
+|  |                                                                           |    |
+|  |   +-- Regex parse violations from agent text output --+                   |    |
+|  |   |   Format: [rule-id] file:line - description       |                   |    |
+|  |   +---------------------------------------------------+                   |    |
+|  |                                                                           |    |
+|  |   +-----------+    +-----------+    +-------------------+                 |    |
+|  |   |  Console  |    |   JSON    |    | Cursor Deeplink   |                 |    |
+|  |   |  (boxen)  |    | (stdout)  |    | (clickable link)  |                 |    |
+|  |   +-----------+    +-----------+    +-------------------+                 |    |
+|  +---------------------------------------------------------------------------+    |
 |                                                                                   |
 +-----------------------------------------------------------------------------------+
+```
+
+---
+
+## Data Flow
+
+```
+$ mesa review --base main
+        |
+        v
++---------------------------------------------------------------+
+|  1. CONTEXT GATHERING (parallel)                              |
+|                                                               |
+|     getChangedFiles()          loadAllRules()                 |
+|     git diff --name-only      .mesa/rules/*.yaml              |
+|     --diff-filter=ACMR                                        |
++---------------------------------------------------------------+
+                        |
+                        v
++---------------------------------------------------------------+
+|  2. RULE SELECTION                                            |
+|                                                               |
+|     selectRulesForFiles(changedFiles, rules)                  |
+|     Deterministic minimatch glob matching (no AI)             |
++---------------------------------------------------------------+
+                        |
+                        v
++---------------------------------------------------------------+
+|  3. DIFF COMPUTATION                                          |
+|                                                               |
+|     getDiffs() — single git diff call, parsed by file         |
++---------------------------------------------------------------+
+                        |
+                        v
++---------------------------------------------------------------+
+|  4. CODEBASE INDEXING (graceful — never blocks review)        |
+|                                                               |
+|     buildIndex()       — SWC parse + oxc-resolver             |
+|     getBlastRadius()   — BFS from changed files               |
+|     buildContext()     — Symbol-level filtering, token budget  |
++---------------------------------------------------------------+
+                        |
+                        v
++---------------------------------------------------------------+
+|  5. PARALLEL AGENT EXECUTION                                  |
+|                                                               |
+|     Split files into groups of 3                              |
+|     For each group (Promise.all):                             |
+|       buildPrompt(codebaseContext + diffs + rules)            |
+|       generateText({ model, system, prompt, tools })          |
+|       Tool: read_file (cross-file investigation)              |
+|       stopWhen: stepCountIs(10)                               |
+|       Collect text from ALL steps                             |
++---------------------------------------------------------------+
+                        |
+                        v
++---------------------------------------------------------------+
+|  6. PARSE & OUTPUT                                            |
+|                                                               |
+|     Regex parse: [rule-id] file:line - description            |
+|     Map rule IDs back to metadata (title, severity)           |
+|     Format output (console/JSON + optional Cursor deeplink)   |
+|                                                               |
+|     Exit code: 0 = clean, 1 = violations, 3 = agent error    |
++---------------------------------------------------------------+
+```
+
+---
+
+## Package Structure
+
+Single package: `@mesa/code-review`
+
+```
+packages/code-review/
++-- src/
+|   +-- cli/
+|   |   +-- bin/
+|   |   |   +-- index.ts            # yargs command router
+|   |   +-- lib/
+|   |   |   +-- git.ts              # git diff, changed files, repo root
+|   |   |   +-- selector.ts         # Rule loading + glob matching
+|   |   +-- review.ts               # Review command orchestrator
+|   |   +-- init.ts                  # mesa init
+|   |   +-- rules.ts                # mesa rules (list, create, etc.)
+|   |   +-- index-cmd.ts            # mesa index
+|   |
+|   +-- agent/
+|   |   +-- runner.ts               # Vercel AI SDK generateText + workers
+|   |   +-- config.ts               # .mesa/config.yaml loading, model resolution
+|   |   +-- prompt.ts               # Prompt building (context + diffs + rules)
+|   |   +-- parse.ts                # Regex-based violation parsing
+|   |   +-- output.ts               # Console/JSON formatting, Cursor deeplinks
+|   |   +-- spinner.ts              # TTY-aware progress spinner
+|   |   +-- index.ts                # Public exports
+|   |
+|   +-- indexer/
+|   |   +-- build.ts                # File discovery + incremental index building
+|   |   +-- store.ts                # JSON persistence + blast radius BFS
+|   |   +-- index.ts                # Context builder (symbol filtering, token budget)
+|   |   +-- resolver.ts             # oxc-resolver wrapper for module resolution
+|   |   +-- types.ts                # CodebaseIndex, FileEntry, ImportRef, ExportRef
+|   |   +-- parsers/
+|   |       +-- index.ts            # Parser dispatch + file support check
+|   |       +-- swc-parser.ts       # SWC-based TS/JS/TSX/JSX parser
+|   |
+|   +-- types/
+|       +-- types.ts                # Rule, Violation, ReviewResult, Severity
+|
++-- plans/
+|   +-- ARCHITECTURE.md             # This document
+|
++-- package.json                    # bin: { "mesa": "./dist/cli/bin/index.js" }
 ```
 
 ---
@@ -153,34 +247,13 @@ Rules are the **only thing that matters**. Everything else is infrastructure to 
 
 - Rules live in code: `.mesa/rules/*.yaml`
 - Version controlled with git
-- Access control via CODEOWNERS
 - No database, no cloud dashboard
 - Deterministic glob-based selection (no AI for rule matching)
 
-### Directory Structure
-
-```
-repository/
-+-- .mesa/
-|   +-- config.yaml              # Global configuration
-|   +-- rules/
-|       +-- rust-time.yaml       # Rule: ban wall clock access
-|       +-- rust-services.yaml   # Rule: service spawn pattern
-|       +-- security.yaml        # Rule: security practices
-|       +-- architecture.yaml    # Rule: architectural constraints
-|
-+-- CODEOWNERS
-    # .mesa/ rules require senior review
-    .mesa/ @senior-engineers @platform-team
-```
-
 ### Rule Schema
 
-See [specs/rule-schema.md](./specs/rule-schema.md) for full specification.
-
 ```yaml
-# Example: .mesa/rules/rust-time.yaml
-
+# .mesa/rules/no-wall-clock.yaml
 id: no-wall-clock
 title: "Ban direct wall clock access"
 severity: error  # error | warning | info
@@ -190,174 +263,255 @@ globs:
   - "!**/tests/**"    # Exclude tests
 
 instructions: |
-  Utc::now() or any analogous "get wall clock time" function 
-  should be banned from Rust services. Use a Clock trait instead.
-  Always dependency inject time.
-  
+  Utc::now() should be banned. Use a Clock trait instead.
+
   GOOD:
     fn process(clock: &dyn Clock) {
         let now = clock.now();
     }
-  
+
   BAD:
     fn process() {
-        let now = Utc::now();  // Direct wall clock access!
+        let now = Utc::now();
     }
 
 examples:
   violations:
     - "Utc::now()"
-    - "SystemTime::now()"
   compliant:
     - "clock.now()"
-    - "self.clock.utc_now()"
 ```
 
-### Rule Selection (Deterministic)
+### Rule Selection
 
-Rules are selected based on **glob pattern matching**, not AI:
+Deterministic glob matching via `minimatch`, not AI:
 
 ```
 Changed Files: [src/api/handler.rs, src/lib.rs]
                         |
                         v
-+--------------------------------------------------------+
-|  Filter rules by glob patterns                         |
-|                                                        |
-|  rust-time.yaml      -> matches **/*.rs     SELECTED   |
-|  rust-services.yaml  -> matches src/lib.rs  SELECTED   |
-|  python-imports.yaml -> matches **/*.py     SKIPPED    |
-+--------------------------------------------------------+
+    rust-time.yaml      -> matches **/*.rs         SELECTED
+    security.yaml       -> matches **/*.{ts,rs}    SELECTED
+    python-imports.yaml  -> matches **/*.py         SKIPPED
 ```
+
+Negation patterns (`!**/tests/**`) are supported for excluding files.
 
 ---
 
-## Data Flow
+## Agent Design
+
+### Execution Model
+
+Each review spawns parallel workers via the Vercel AI SDK `generateText()`:
+
+1. Files are split into groups of 3 (configurable via `review.files_per_worker`)
+2. Each worker gets a separate `generateText()` call with its own prompt
+3. Workers run in parallel via `Promise.all()`
+4. Each worker has a single tool: `read_file` for cross-file investigation
+5. Workers are capped at 10 LLM steps (`stopWhen: stepCountIs(10)`)
+
+### System Prompt
+
+The system prompt guides the agent through three phases:
 
 ```
-USER INVOKES
-     |
-     |  $ mesa review --base main
-     |
-     v
-+------------------------------------------------------------+
-|  1. CONTEXT GATHERING                                      |
-|                                                            |
-|     Git Diff          Load Rules         MCP Context       |
-|     (git diff         (.mesa/rules/      (Linear,         |
-|      main...HEAD)      *.yaml)            RFCs, etc.)      |
-+------------------------------------------------------------+
-                         |
-                         v
-+------------------------------------------------------------+
-|  2. RULE SELECTION                                         |
-|                                                            |
-|     Match rules to changed files via glob patterns         |
-|     (deterministic, no AI)                                 |
-+------------------------------------------------------------+
-                         |
-                         v
-+------------------------------------------------------------+
-|  3. AGENT EXECUTION                                        |
-|                                                            |
-|     For each file:                                         |
-|       1. view_diff(file)                                   |
-|       2. Check each applicable rule                        |
-|       3. Use read_file/grep for context                    |
-|       4. leave_violation() if rule violated                |
-|       5. mark_file_reviewed()                              |
-|                                                            |
-|     When done: complete_review()                           |
-+------------------------------------------------------------+
-                         |
-                         v
-+------------------------------------------------------------+
-|  4. OUTPUT                                                 |
-|                                                            |
-|     Violations found?                                      |
-|       YES -> Print violations, exit code 1                 |
-|       NO  -> Silent exit, exit code 0                      |
-+------------------------------------------------------------+
+## Your Workflow
+
+### Phase 1: Orient
+Read the Codebase Map (if provided) to understand what files are involved
+and how they connect to each other.
+
+### Phase 2: Review
+For each file and its applicable rules:
+- Read the diff carefully, focusing on "+" lines (added code)
+- Apply each rule's instructions to the changes
+- Use read_file if you need to see surrounding context
+
+### Phase 3: Investigate
+If a potential violation needs context from other files:
+- Use read_file to check related code
+- Verify the violation before reporting
+
+## Output Format
+Report violations as: [rule-id] file:line - description
+If no violations: "No violations found"
 ```
+
+### Tool: `read_file`
+
+The only tool available to the agent:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `path` | `string` | Repo-relative file path |
+
+Constraints:
+- Path traversal prevention (rejects `..`, absolute paths)
+- 10KB file truncation
+- Reads relative to repo root
+
+### Violation Reporting
+
+Violations are reported as plain text in the agent's output, then parsed via regex:
+
+```
+[no-wall-clock] src/api/handler.rs:47 - Direct call to Utc::now() detected.
+Inject a Clock dependency instead.
+```
+
+The regex parser (`parse.ts`) extracts `rule_id`, `file`, `line`, and `message`. This approach was deliberately chosen over structured output (`generateObject` or a `report_violation` tool) because:
+
+- Text format is constrained enough that LLMs follow it reliably
+- A tool-based approach would add an extra round-trip per violation
+- Text output is human-readable in verbose mode
+- The regex parser is small (~70 lines) and handles edge cases
+
+### Pre-computed Context
+
+All context is injected into the prompt upfront — the agent does not fetch diffs or rules at runtime:
+
+- **Diffs:** Pre-computed via `git diff`, injected per-file (truncated at 30KB)
+- **Rules:** Full rule definitions with instructions and examples
+- **Codebase context:** Import graph analysis with symbol-level filtering (see below)
 
 ---
 
-## Component Architecture
+## Codebase Indexing
 
-### Package Structure
+### Overview
+
+The indexer builds an import graph of the codebase, computes a "blast radius" from changed files, and generates a token-budgeted context section for the review prompt. This gives the agent structural awareness without dumping the entire codebase.
+
+### Pipeline
 
 ```
-packages/
-+-- mesa-core/                     # Portable core logic
-|   +-- src/
-|   |   +-- rules/
-|   |   |   +-- loader.ts          # Load rules from .mesa/rules/
-|   |   |   +-- selector.ts        # Match rules to changed files
-|   |   |   +-- types.ts           # Rule schema definitions
-|   |   |
-|   |   +-- context/
-|   |   |   +-- git.ts             # Git diff, changed files
-|   |   |   +-- files.ts           # File reading, glob matching
-|   |   |   +-- mcp-client.ts      # MCP client for external context
-|   |   |
-|   |   +-- agent/
-|   |   |   +-- prompts.ts         # System/user prompts
-|   |   |   +-- runner.ts          # Agent execution loop
-|   |   |   +-- tools.ts           # MCP tool definitions
-|   |   |
-|   |   +-- review/
-|   |   |   +-- session.ts         # Review session state
-|   |   |   +-- violations.ts      # Violation data structures
-|   |   |   +-- validator.ts       # Validate violations cite rules
-|   |   |
-|   |   +-- output/
-|   |       +-- console.ts         # Terminal output
-|   |       +-- json.ts            # JSON for CI/CD
-|   |       +-- markdown.ts        # Human-readable report
-|   |
-|   +-- index.ts                   # Main export: review()
-|
-+-- mesa-cli/                      # CLI entry point
-|   +-- src/
-|   |   +-- commands/
-|   |   |   +-- review.ts          # $ mesa review
-|   |   |   +-- check.ts           # $ mesa check <rule-id>
-|   |   |   +-- rules.ts           # $ mesa rules list|explain
-|   |   |   +-- init.ts            # $ mesa init
-|   |   |
-|   |   +-- index.ts
-|   |
-|   +-- package.json               # bin: { "mesa": "./dist/index.js" }
-|
-+-- mesa-mcp-server/               # MCP server for Claude/Cursor
-    +-- src/
-    |   +-- server.ts              # MCP server setup
-    |   +-- tools.ts               # mesa_review, mesa_check, etc.
-    |
-    +-- package.json
+File Discovery (skip: node_modules, dist, .git, .mesa, etc.)
+        |
+        v
+SWC Parse (imports, exports, signatures)
+        |
+        v
+oxc-resolver (resolve import specifiers to repo-relative paths)
+        |
+        v
+Reverse Index (importedBy edges)
+        |
+        v
+JSON Persistence (.mesa/cache/index.json)
+        |
+        v
+Blast Radius BFS (from changed files, configurable depth)
+        |
+        v
+Symbol-Level Context (used vs other exports, token budget)
 ```
 
-### Key Interfaces
+### Incremental Updates
+
+Files are hashed (SHA-256). On subsequent runs, only changed files are re-parsed. The index is stored at `.mesa/cache/index.json` (gitignored).
+
+### Blast Radius
+
+Starting from changed files, BFS traverses:
+- **Importers** — files that import from a changed file
+- **Dependencies** — files that a changed file imports from
+
+Each file in the radius is classified:
+- `changed` — directly modified in the diff
+- `importer` — imports symbols from a changed file
+- `dependency` — exports symbols consumed by a changed file
+
+### Symbol-Level Filtering
+
+For files in the blast radius, the context builder cross-references imports and exports to show only relevant information:
+
+```markdown
+### src/agent/config.ts (imported by src/agent/runner.ts)
+Used symbols: loadMesaConfig(): MesaConfig, resolveModel(): LanguageModel
+Also exports: resolveApiKey, validateConfig
+Imports from: src/types/types.ts: Rule, Severity
+Imported by: src/agent/runner.ts, src/cli/review.ts
+```
+
+Key behaviors:
+- **`imported-by` connections:** Cross-reference which symbols a changed file actually imports. Show full signatures for used symbols, names-only for the rest.
+- **Default imports:** Matched via `isDefault` on exports (not by name, since aliases differ)
+- **Namespace imports** (`import * as X`): All exports are considered used
+- **Token budget:** Default 4000 tokens (~16KB). Changed files are prioritized, then importers, then dependencies. Sections that exceed the budget are skipped.
+
+### Graceful Failure
+
+If indexing fails for any reason, the review continues without codebase context. This is enforced by a try/catch in `getCodebaseContext()` that returns an empty string on error.
+
+---
+
+## Output Model
+
+### Silence is Success
+
+If no rules are violated, output is minimal. Violations are displayed in a styled box:
+
+```
+$ mesa review --base main
+
+  ┌─────────────────────────────────────────────────┐
+  │  Mesa Code Review Results                       │
+  │                                                 │
+  │  X src/api/handler.rs:47 [error]                │
+  │    Rule: no-wall-clock                          │
+  │    Direct call to Utc::now() detected.          │
+  │                                                 │
+  │  1 violation (1 error, 0 warnings)              │
+  └─────────────────────────────────────────────────┘
+```
+
+### Output Formats
+
+| Format | Flag | Use Case |
+|--------|------|----------|
+| Console | `--output console` (default) | Human-readable terminal output |
+| JSON | `--output json` | Machine-readable for CI/CD |
+
+### Cursor Deeplink
+
+When `output.cursor_deeplink: true` in `.mesa/config.yaml`, the output includes a clickable terminal link that opens Cursor with a pre-filled prompt containing all violations for quick fixing.
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | No error-severity violations |
+| 1 | Error-severity violations found |
+| 3 | Agent/runtime error |
+
+---
+
+## Key Interfaces
 
 ```typescript
-// Rule definition
+// Severity levels
+type Severity = 'error' | 'warning' | 'info';
+
+// Rule definition (.mesa/rules/*.yaml)
 interface Rule {
   id: string;
   title: string;
-  severity: 'error' | 'warning' | 'info';
+  severity: Severity;
   globs: string[];
   instructions: string;
   examples?: {
     violations?: string[];
     compliant?: string[];
   };
+  tags?: string[];
 }
 
-// Violation (what the agent produces)
+// Violation (parsed from agent text output)
 interface Violation {
-  rule_id: string;
-  rule_title: string;
-  severity: 'error' | 'warning' | 'info';
+  ruleId: string;
+  ruleTitle: string;
+  severity: Severity;
   file: string;
   line?: number;
   column?: number;
@@ -365,198 +519,127 @@ interface Violation {
   suggestion?: string;
 }
 
-// Review session state
-interface ReviewSession {
-  id: string;
-  state: {
-    diffs: Record<string, string>;
-    filesToReview: string[];
-    violations: Violation[];
-    filesReviewed: string[];
-  };
-}
-
 // Review result
 interface ReviewResult {
   violations: Violation[];
   summary: {
-    files_reviewed: number;
-    rules_checked: number;
+    filesReviewed: number;
+    rulesChecked: number;
     errors: number;
     warnings: number;
     infos: number;
+    durationMs?: number;
   };
 }
 ```
 
----
-
-## Agent Design
-
-### System Prompt Philosophy
-
-The key difference from current Mesa: **rules-only enforcer**, not generic reviewer.
-
-```
-You are a code review enforcement agent. Your ONLY job is to check
-if the code changes violate any of the defined rules.
-
-## Critical Instructions
-
-1. **ONLY comment when a rule is violated.**
-   - If no rules are violated, call `complete_review` with zero violations.
-   - Do NOT make suggestions, observations, or compliments.
-   - Do NOT invent rules. Only enforce the rules given.
-
-2. **Every violation MUST cite a rule ID.**
-   - Use the `leave_violation` tool with the exact rule_id.
-   - If you cannot cite a rule, do not leave the comment.
-
-3. **You have full codebase access.**
-   - Use `read_file`, `grep`, `glob` to understand context.
-   - Check if apparent violations are actually handled elsewhere.
-
-4. **Be certain before flagging.**
-   - False positives waste developer time.
-   - When uncertain, investigate more or skip.
-
-## Available Tools
-
-- view_diff(file): View the diff for a changed file
-- read_file(path): Read any file in the repository
-- grep(pattern, include): Search for patterns
-- glob(pattern): Find files matching pattern
-- leave_violation(rule_id, file, line, message, suggestion?): Report
-- mark_file_reviewed(file): Mark a file as fully reviewed
-- complete_review(): Signal review is complete
-
-## Rules to Enforce
-
-{INJECTED_RULES}
-```
-
-### Tool Definitions
-
-| Tool | Purpose | Parameters |
-|------|---------|------------|
-| `view_diff` | View diff for a file | `file: string` |
-| `read_file` | Read any file | `path: string` |
-| `grep` | Search patterns | `pattern: string, include?: string` |
-| `glob` | Find files | `pattern: string` |
-| `leave_violation` | Report rule violation | `rule_id, file, line?, message, suggestion?` |
-| `mark_file_reviewed` | Mark file done | `file: string` |
-| `complete_review` | Finish review | none |
-
----
-
-## Session & Memory
-
-### Philosophy
-
-The agent uses **ephemeral, short-term memory only**. Each review run is independent and deterministic. There is no persistent state between runs.
-
-This is intentional:
-- **Determinism** - Same input always produces same output
-- **Debuggability** - Easy to understand why a violation was flagged
-- **No hidden state** - Behavior is predictable
-
-### Working Memory (v1)
-
-During a review, the agent tracks:
+### Codebase Index Types
 
 ```typescript
-interface WorkingMemory {
-  sessionId: string;
-  
-  files: {
-    pending: string[];           // Files remaining to review
-    reviewed: string[];          // Files already processed
-    diffs: Record<string, string>;
-  };
-  
-  violations: Violation[];       // Violations found so far
-  activeRules: Rule[];           // Rules being enforced
+interface CodebaseIndex {
+  version: 1;
+  rootDir: string;
+  indexedAt: string;  // ISO 8601
+  files: Record<string, FileEntry>;
+}
+
+interface FileEntry {
+  contentHash: string;  // SHA-256
+  language: 'typescript' | 'javascript' | 'tsx' | 'jsx' | 'python' | 'go' | 'rust' | 'unknown';
+  imports: ImportRef[];
+  exports: ExportRef[];
+  importedBy: string[];  // reverse index
+}
+
+interface ImportRef {
+  source: string;           // raw specifier
+  resolvedPath?: string;    // repo-relative path (null for external packages)
+  symbols: string[];
+  typeSymbols: string[];
+  kind: 'named' | 'default' | 'namespace' | 'side-effect' | 'dynamic';
+  isTypeOnly: boolean;
+  defaultAlias?: string;
+  namespaceAlias?: string;
+}
+
+interface ExportRef {
+  name: string;
+  kind: 'function' | 'class' | 'interface' | 'type' | 'enum' | 'variable'
+      | 'const' | 're-export' | 're-export-all' | 'unknown';
+  signature?: string;
+  isDefault?: boolean;
+  isTypeOnly?: boolean;
+  reExportSource?: string;
 }
 ```
 
-This state:
-- Lives only in RAM
-- Exists only during the review run
-- Is discarded when the process exits
+---
 
-### No Persistent Memory (Intentional)
+## Dependencies
 
-We explicitly **do not** persist:
-- Previous review results
-- "Learned" codebase patterns
-- Suppressed violations
+| Category | Package | Purpose |
+|----------|---------|---------|
+| **AI/LLM** | `ai` (Vercel AI SDK v6) | `generateText()`, `tool()`, `stopWhen` |
+| | `@ai-sdk/anthropic` | Anthropic provider factory |
+| | `@ai-sdk/openai` | OpenAI provider factory |
+| | `@ai-sdk/google` | Google provider factory |
+| **Parsing** | `@swc/core` | Rust-speed TS/JS/TSX/JSX AST parsing |
+| | `oxc-resolver` | Rust-speed module resolution (tsconfig-aware) |
+| **CLI** | `yargs` | Command routing and argument parsing |
+| | `chalk` | Terminal colors |
+| | `boxen` | Violation output boxes |
+| | `figlet` | ASCII banner |
+| **Core** | `minimatch` | Glob pattern matching for rule selection |
+| | `js-yaml` | YAML rule/config parsing |
+| | `zod` | Tool input schema validation |
 
-If you want the agent to remember something, **write a rule**.
+### Why These Dependencies
 
-### Future: Optional Review Cache
+The computationally expensive operations are already native:
+- **AST parsing:** `@swc/core` (Rust)
+- **Module resolution:** `oxc-resolver` (Rust)
+- **Git operations:** `git` binary (C)
+- **File I/O:** `libuv` (C)
 
-A future version may add opt-in caching for:
-- Incremental reviews (only new changes)
-- Avoiding repeat violations
-
-This would be:
-- Opt-in via `--incremental` flag
-- File-based (`.mesa/cache/`)
-- Git-ignored by default
-
-See [specs/session-state.md](./specs/session-state.md) for full specification.
+The TypeScript orchestration layer runs in microseconds. The bottleneck is the LLM API call by orders of magnitude.
 
 ---
 
-## Output Model
+## Configuration
 
-### Philosophy: Silence is Success
+### `.mesa/config.yaml`
 
-If no rules are violated, there is **no output**. Silence means success.
+```yaml
+model:
+  provider: anthropic          # anthropic | openai | google
+  name: claude-sonnet-4-5-20250929
 
-### Scenarios
+api_keys:
+  anthropic: ${ANTHROPIC_API_KEY}
 
-**No Violations:**
-```bash
-$ mesa review --base main
-$ echo $?
-0
+output:
+  cursor_deeplink: true
 
-# some sort of output
+index:
+  enabled: true                # default: true
+  blast_radius_depth: 2        # BFS depth from changed files
+  context_token_budget: 4000   # ~16KB of context
 ```
 
-**Violations Found:**
-```
-$ mesa review --base main
+### `.mesa/rules/`
 
-X src/api/handler.rs:47 [error]
-  Rule: no-wall-clock
-  
-  Direct call to Utc::now() detected. Inject a Clock dependency
-  instead of accessing wall clock time directly.
-  
-  47 | -   let now = Utc::now();
-     | +   let now = self.clock.now();
+All YAML files in this directory are loaded as rules. No subdirectory nesting.
 
-X src/lib.rs [error]
-  Rule: service-spawn-pattern
-  
-  Web service not exposed via spawn_* function in lib.rs.
+### `.mesa/cache/`
 
-2 violations found (2 errors, 0 warnings)
-
-$ echo $?
-1
-```
-
-### Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | No violations (any severity) |
-| 1 | Violations found (error severity) |
-| 2 | Configuration error |
-| 3 | Agent/runtime error |
+Auto-generated, gitignored. Contains `index.json` (persisted codebase index).
 
 ---
 
+## Unimplemented
+
+- `mesa check <rule-id>` — Single rule check (stub)
+- `mesa serve` — MCP server mode (stub)
+- Multi-language indexing — Python/Go/Rust parsers (regex-based, build when needed)
+- MCP context providers — Linear, RFCs, external docs
+- Programmatic API — `import { review } from '@mesa/code-review'`

@@ -1,9 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
-import fs from 'fs';
 import yaml from 'js-yaml';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { isReviewAdapterExecutionError, runReviewAdapter } from '../adapter/review.js';
+import { getCodebaseContext } from '../indexer/index.js';
+import { getDiffs, getRepoRoot, listChangedFilesFromGit } from '../lib/git.js';
 import type { ReviewResult } from '../types/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -23,6 +25,17 @@ interface CliOutputConfig {
   output?: {
     cursor_deeplink?: boolean;
   };
+  index?: {
+    enabled?: boolean;
+    blast_radius_depth?: number;
+    context_token_budget?: number;
+  };
+}
+
+interface IndexSettings {
+  enabled: boolean;
+  blastRadiusDepth: number;
+  contextTokenBudget: number;
 }
 
 export async function reviewCommand(options: ReviewOptions): Promise<number> {
@@ -31,12 +44,38 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
 
   try {
     const cursorDeeplink = loadCliCursorDeeplinkConfig(options.config);
+    const indexSettings = loadIndexSettings(options.config);
+
+    // Pre-compute changed files and diffs
+    const changedFiles = listChangedFilesFromGit(baseRef, headRef);
+    const diffs = getDiffs(baseRef, headRef);
+
+    if (options.verbose) {
+      console.log(`\nPre-computed diffs for ${diffs.size} files.`);
+    }
+
+    // Compute codebase context for the indexer (graceful — never blocks review)
+    let codebaseContext = '';
+    if (indexSettings.enabled && changedFiles.length > 0) {
+      // rootDir = repo root (indexing scope), cacheDir = alongside config (cwd/.mesa/cache)
+      codebaseContext = getCodebaseContext({
+        rootDir: getRepoRoot(),
+        cacheDir: path.join(process.cwd(), '.mesa', 'cache'),
+        changedFiles,
+        blastRadiusDepth: indexSettings.blastRadiusDepth,
+        tokenBudget: indexSettings.contextTokenBudget,
+        verbose: options.verbose,
+      });
+    }
+
     const { outcome } = await runReviewAdapter({
       baseRef,
       headRef,
       rulesDir: options.rules,
       verbose: options.verbose,
       configPath: options.config,
+      codebaseContext,
+      diffs,
     });
 
     if (outcome.kind === 'no-changed-files') {
@@ -122,6 +161,29 @@ function loadCliCursorDeeplinkConfig(configPath?: string): boolean {
   }
 
   return output.cursor_deeplink;
+}
+
+function loadIndexSettings(configPath?: string): IndexSettings {
+  const resolvedPath = resolveCliConfigPath(configPath);
+  if (!resolvedPath) {
+    return { enabled: false, blastRadiusDepth: 2, contextTokenBudget: 4000 };
+  }
+
+  try {
+    const contents = fs.readFileSync(resolvedPath, 'utf8');
+    const parsed = yaml.load(contents) as CliOutputConfig | null;
+    if (!parsed || typeof parsed !== 'object') {
+      return { enabled: false, blastRadiusDepth: 2, contextTokenBudget: 4000 };
+    }
+
+    return {
+      enabled: parsed.index?.enabled !== false,
+      blastRadiusDepth: parsed.index?.blast_radius_depth ?? 2,
+      contextTokenBudget: parsed.index?.context_token_budget ?? 4000,
+    };
+  } catch {
+    return { enabled: false, blastRadiusDepth: 2, contextTokenBudget: 4000 };
+  }
 }
 
 function resolveCliConfigPath(configPath?: string): string | null {

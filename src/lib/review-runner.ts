@@ -1,4 +1,5 @@
-import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { LanguageModel } from 'ai';
 import { generateText, stepCountIs, tool } from 'ai';
 import chalk from 'chalk';
@@ -9,65 +10,68 @@ import { buildPrompt } from './review-prompt.js';
 import { createProcessingSpinner } from './review-spinner.js';
 
 export interface RunReviewOptions {
-  baseBranch: string;
-  headRef: string;
   filesWithRules: Map<string, Rule[]>;
+  diffs: Map<string, string>;
   model: LanguageModel;
-  maxSteps?: number;
   filesPerWorker?: number;
   verbose?: boolean;
+  /** Markdown section with import graph + blast radius context from the codebase indexer */
+  codebaseContext?: string;
 }
 
 const DEFAULT_FILES_PER_WORKER = 3;
-const DEFAULT_MAX_STEPS = 10;
 
-const SYSTEM_PROMPT = `You are a code reviewer. You review ONLY the new/changed lines in a git diff.
+const SYSTEM_PROMPT = `You are a code review enforcement agent. Your ONLY job is to check whether new code changes violate the defined rules. You do not make suggestions, observations, or compliments. Silence means approval.
 
-Workflow:
-1. For each file in the review scope, call the view_diff tool with the filepath and base branch
-2. If view_diff returns 'No changes.', skip the file
-3. Read ONLY the lines prefixed with '+' (added lines) in the diff
-4. Check those added lines against the applicable rules
-5. After checking ALL files, output violations in this exact format, one per line:
-   [rule-id] file:line - description
-6. If no violations found across all files, respond with exactly: No violations found.
+## Workflow
 
-Rules:
-- ONLY flag code on '+' lines. NEVER flag '-' lines or unchanged context.
-- Do NOT use bash, grep, or glob. Use ONLY the view_diff tool to get diffs.
+You will receive three sections of context in order:
+
+1. **Codebase Map** — A dependency graph showing exports, imports, and relationships between files in the blast radius of this change. This is your navigation guide. Study it before reading any diffs.
+2. **Files to Review** — Git diffs for each changed file with their applicable rules listed.
+3. **Rules** — Full definitions of each rule including instructions and examples.
+
+Follow this process:
+
+### Phase 1: Orient
+Read the Codebase Map. Understand which files are changed, which files import from them, and which files they depend on. Build a mental model of how the changed code connects to the rest of the codebase.
+
+### Phase 2: Review
+For each file, read its diff. Check ONLY the added lines (lines prefixed with "+") against the applicable rules. Most violations can be identified from the diff alone.
+
+### Phase 3: Investigate (only when needed)
+Some rules require understanding cross-file behavior (e.g., "validate inputs before passing to external functions"). When a rule requires this AND the Codebase Map shows a relevant connection, use the read_file tool to inspect that specific file.
+
+**When to use read_file:**
+- The rule's instructions explicitly or implicitly require understanding code in another file
+- The Codebase Map shows a concrete import/dependency relationship to follow
+- You need to see the implementation of an imported function to determine if a rule is violated
+
+**When NOT to use read_file:**
+- The diff alone is sufficient to check the rule
+- The Codebase Map shows no relevant connections for the rule being checked
+- You are curious but the rule doesn't require cross-file context
+
+If no Codebase Map is provided, review using only the diffs. Do not speculatively search the codebase.
+
+## Output
+
+After reviewing ALL files, output violations in this exact format, one per line:
+
+[rule-id] file:line - description
+
+If no violations are found across all files, respond with exactly: No violations found.
+
+## Constraints
+
+- ONLY flag code on "+" lines (added code). NEVER flag removed or unchanged lines.
+- Every violation MUST cite a rule ID from the provided rules. Do not invent rules.
+- Be certain before flagging. False positives waste developer time. If uncertain, skip.
 - Be concise. No preamble, no summary, no explanation beyond the violation format.
-- If a rule does not apply to any added lines in a file, skip it silently.
-- When all files have been checked, output results immediately and stop.`;
-
-function createViewDiffTool(headRef: string, gitRoot: string) {
-  return tool({
-    description:
-      'View the git diff for a specific file between a base branch and configured head ref. Returns only the diff output. If the file has no changes, returns "No changes."',
-    inputSchema: z.object({
-      filepath: z.string().describe('The file path to diff'),
-      base: z.string().describe('The base branch to diff against'),
-    }),
-    execute: async ({ filepath, base }) => {
-      try {
-        const output = execFileSync('git', ['diff', `${base}...${headRef}`, '--', filepath], {
-          encoding: 'utf8',
-          cwd: gitRoot,
-          maxBuffer: 1024 * 1024,
-        });
-        return output.trim() || 'No changes.';
-      } catch (e) {
-        return `[VIEW_DIFF_ERROR] ${e instanceof Error ? e.message : String(e)}`;
-      }
-    },
-  });
-}
+- When a file's diff says "No diff available", skip that file entirely.`;
 
 export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewResult> {
-  const gitRoot = resolveGitRoot();
-  const viewDiffTool = createViewDiffTool(options.headRef, gitRoot);
-
   const filesPerWorker = ensurePositiveInteger(options.filesPerWorker, DEFAULT_FILES_PER_WORKER, 'files_per_worker');
-  const maxSteps = ensurePositiveInteger(options.maxSteps, DEFAULT_MAX_STEPS, 'max_steps_size');
   const fileGroups = splitFilesForWorkers(options.filesWithRules, filesPerWorker);
 
   if (options.verbose) {
@@ -88,9 +92,9 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
         const workerIndex = i + 1;
         const workerLabel = `${workerIndex}/${fileGroups.length}`;
         const prompt = buildPrompt({
-          baseBranch: options.baseBranch,
-          headRef: options.headRef,
+          diffs: options.diffs,
           filesWithRules: group,
+          codebaseContext: options.codebaseContext,
         });
 
         if (options.verbose) {
@@ -100,18 +104,36 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
         return generateText({
           model: options.model,
           system: SYSTEM_PROMPT,
-          tools: { view_diff: viewDiffTool },
-          stopWhen: stepCountIs(maxSteps),
           prompt,
-          onStepFinish({ toolCalls }) {
-            if (options.verbose) {
-              for (const call of toolCalls) {
-                if (!call.dynamic && call.toolName === 'view_diff') {
-                  spinner.log(chalk.cyan(`  [${workerIndex}] ↳ ${call.toolName}: ${call.input.filepath}`));
+          tools: {
+            read_file: tool({
+              description:
+                'Read the contents of a file in the repository. Use this when the Codebase Map shows a relevant dependency and a rule requires understanding cross-file behavior.',
+              inputSchema: z.object({
+                path: z.string().describe('Repo-relative file path (e.g., "src/lib/math.ts")'),
+              }),
+              execute: async ({ path: filePath }) => {
+                try {
+                  const absolutePath = path.resolve(process.cwd(), filePath);
+
+                  // Safety: prevent path traversal outside repo
+                  if (!absolutePath.startsWith(process.cwd())) {
+                    return 'Error: path is outside the repository.';
+                  }
+
+                  const content = fs.readFileSync(absolutePath, 'utf-8');
+                  if (content.length > 10_000) {
+                    return `${content.slice(0, 10_000)}\n[file truncated at 10,000 characters]`;
+                  }
+                  return content;
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : String(error);
+                  return `Error reading file: ${message}`;
                 }
-              }
-            }
+              },
+            }),
           },
+          stopWhen: stepCountIs(10),
         }).then((result) => {
           completedCount++;
           spinner.setMessage(`Processing review... ${completedCount}/${fileGroups.length} worker(s) complete`);
@@ -123,12 +145,29 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
 
     spinner.stop();
 
+    // Collect text from ALL steps — result.text only returns the last step's text
     const texts = results.map((r) =>
       r.steps
         .map((s) => s.text)
         .filter(Boolean)
         .join('\n')
     );
+
+    if (options.verbose) {
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        const toolCalls = result.steps.flatMap((s) => s.toolCalls);
+        if (toolCalls.length > 0) {
+          console.log(chalk.gray(`Worker ${i + 1}/${results.length} made ${toolCalls.length} tool call(s):`));
+          for (const tc of toolCalls) {
+            if (!tc.dynamic) {
+              console.log(chalk.gray(`  read_file: ${tc.input.path}`));
+            }
+          }
+        }
+      }
+    }
+
     const parseResults = texts.map((text) => parseViolationsDetailed(text, options.filesWithRules));
     const allViolations = parseResults.flatMap((result) => result.violations);
 
@@ -192,12 +231,4 @@ function ensurePositiveInteger(value: number | undefined, fallback: number, fiel
   }
 
   return value;
-}
-
-function resolveGitRoot(): string {
-  try {
-    return execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
-  } catch {
-    throw new Error('Not a git repository');
-  }
 }

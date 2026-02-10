@@ -4,6 +4,8 @@ export interface ReviewRequest {
   baseRef: string;
   headRef: string;
   verbose?: boolean;
+  codebaseContext?: string;
+  diffs?: Map<string, string>;
 }
 
 export interface ReviewInputChannel {
@@ -16,6 +18,8 @@ export interface ReviewerInput {
   headRef: string;
   filesWithRules: Map<string, Rule[]>;
   verbose?: boolean;
+  codebaseContext?: string;
+  diffs?: Map<string, string>;
 }
 
 export interface Reviewer {

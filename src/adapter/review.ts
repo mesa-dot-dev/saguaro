@@ -11,6 +11,10 @@ export interface ReviewAdapterRequest {
   rulesDir?: string;
   verbose?: boolean;
   configPath?: string;
+  /** Markdown section with import graph + blast radius context from the codebase indexer */
+  codebaseContext?: string;
+  /** Pre-computed diffs keyed by file path */
+  diffs?: Map<string, string>;
 }
 
 export interface ReviewAdapterResult {
@@ -36,6 +40,8 @@ export async function runReviewAdapter(request: ReviewAdapterRequest): Promise<R
     baseRef: request.baseRef,
     headRef: request.headRef,
     verbose: request.verbose,
+    codebaseContext: request.codebaseContext,
+    diffs: request.diffs,
   });
 
   return {

@@ -16,13 +16,12 @@ export function createAiSdkReviewModelAdapter(options: AiSdkReviewModelOptions):
     async review(input) {
       try {
         return await runReviewAgent({
-          baseBranch: input.baseRef,
-          headRef: input.headRef,
           filesWithRules: input.filesWithRules,
+          diffs: input.diffs ?? new Map(),
           model,
-          maxSteps: options.maxSteps,
           filesPerWorker: options.filesPerWorker,
           verbose: input.verbose,
+          codebaseContext: input.codebaseContext,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

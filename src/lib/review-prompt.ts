@@ -1,28 +1,53 @@
 import type { Rule } from '../types/types.js';
 
+const MAX_DIFF_CHARS = 30_000;
+
+function truncateDiff(diff: string): string {
+  if (diff.length <= MAX_DIFF_CHARS) return diff;
+  return `${diff.slice(0, MAX_DIFF_CHARS)}\n[diff truncated]`;
+}
+
 export function buildPrompt(options: {
-  baseBranch: string;
-  headRef: string;
+  diffs: Map<string, string>;
   filesWithRules: Map<string, Rule[]>;
+  codebaseContext?: string;
 }): string {
   const lines: string[] = [];
 
-  lines.push(`Base branch: ${options.baseBranch}`);
-  lines.push(`Head ref: ${options.headRef}`);
-  lines.push('');
-  lines.push(`For each file below, call view_diff with the filepath and base="${options.baseBranch}".`);
-  lines.push('Then check ONLY the added lines ("+") against the listed rules.');
+  // 1. Codebase map first — structural awareness before any diffs
+  if (options.codebaseContext) {
+    lines.push(options.codebaseContext);
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+  }
+
+  // 2. Files to review — each file with its applicable rules and diff
+  lines.push('## Files to Review');
   lines.push('');
 
   for (const [file, rules] of options.filesWithRules) {
-    lines.push(`${file}`);
-    for (const rule of rules) {
-      lines.push(`  -> ${rule.id} (${rule.severity})`);
+    const ruleList = rules.map((r) => `${r.id} (${r.severity})`).join(', ');
+    lines.push(`### ${file}`);
+    lines.push(`Applicable rules: ${ruleList}`);
+
+    const diff = options.diffs.get(file);
+    if (diff) {
+      lines.push('```diff');
+      lines.push(truncateDiff(diff));
+      lines.push('```');
+    } else {
+      lines.push('No diff available for this file.');
     }
+
+    lines.push('');
   }
 
-  lines.push('');
   lines.push('---');
+  lines.push('');
+
+  // 3. Full rule definitions
+  lines.push('## Rules');
   lines.push('');
 
   const uniqueRules = new Set<Rule>(Array.from(options.filesWithRules.values()).flat());

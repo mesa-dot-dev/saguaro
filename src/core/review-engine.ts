@@ -81,6 +81,8 @@ export function createReviewCore(deps: ReviewCoreDeps): ReviewCore {
         headRef: request.headRef,
         filesWithRules: filesWithRulesMap,
         verbose: request.verbose,
+        codebaseContext: request.codebaseContext,
+        diffs: request.diffs,
       });
 
       const durationMs = clock.nowMs() - startedAtMs;
