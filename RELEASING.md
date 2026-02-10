@@ -7,8 +7,7 @@ of the code-review CLI.
 
 - `bun`, `node`, `npm`, `git` installed
 - `gh` authenticated (`gh auth status`)
-- `homebrew-tap` repo cloned locally at:
-  - `/Users/peterrallojay/Desktop/mesa/homebrew-tap`
+- `homebrew-tap` repo cloned locally
 
 ## 1) Bump Version in depot
 
