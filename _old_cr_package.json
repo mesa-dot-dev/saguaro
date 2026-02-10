@@ -1,6 +1,6 @@
 {
   "name": "@mesa/code-review",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
@@ -28,6 +28,7 @@
     "@ai-sdk/google": "^3.0.22",
     "@ai-sdk/openai": "^3.0.26",
     "@swc/core": "^1.15.11",
+    "@swc/wasm": "^1.15.11",
     "ai": "^6.0.75",
     "boxen": "^5.1.2",
     "chalk": "^4.1.2",
