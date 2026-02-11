@@ -17,6 +17,19 @@ export function listChangedFilesFromGit(baseRef: string, headRef: string): strin
     .filter((line) => line.length > 0);
 }
 
+export function listLocalChangedFilesFromGit(): string[] {
+  assertInsideGitRepo();
+
+  const output = execFileSync('git', ['diff', '--name-only', '--diff-filter=ACMR', 'HEAD'], {
+    encoding: 'utf8',
+  });
+
+  return output
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
 function assertInsideGitRepo(): void {
   try {
     execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { stdio: 'ignore' });
@@ -31,6 +44,17 @@ export function getDiffs(baseRef: string, headRef: string): Map<string, string> 
   assertValidGitRef(headRef, 'head ref');
 
   const output = execFileSync('git', ['diff', `${baseRef}...${headRef}`], {
+    encoding: 'utf8',
+    maxBuffer: 10 * 1024 * 1024,
+  });
+
+  return parseDiffByFile(output);
+}
+
+export function getLocalDiffs(): Map<string, string> {
+  assertInsideGitRepo();
+
+  const output = execFileSync('git', ['diff', 'HEAD'], {
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024,
   });

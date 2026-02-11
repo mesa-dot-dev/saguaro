@@ -152,12 +152,10 @@ yargs(argv)
         alias: 'base',
         describe: 'Base branch to diff against',
         type: 'string',
-        default: 'main',
       })
         .option('head', {
           describe: 'Head ref to diff against',
           type: 'string',
-          default: 'HEAD',
         })
         .option('o', {
           alias: 'output',

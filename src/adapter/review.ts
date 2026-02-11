@@ -5,6 +5,7 @@ import type { ReviewProgressCallback } from '../types/types.js';
 export interface ReviewAdapterRequest {
   baseRef: string;
   headRef: string;
+  changedFilesOverride?: string[];
   rulesDir?: string;
   verbose?: boolean;
   configPath?: string;
@@ -22,10 +23,11 @@ export interface ReviewAdapterResult {
 
 export async function runReview(request: ReviewAdapterRequest, runtime?: ReviewRuntime): Promise<ReviewAdapterResult> {
   const effectiveRuntime = runtime ?? createNodeReviewRuntime();
+  const changedFilesOverride = request.changedFilesOverride;
 
   const reviewCore = createReviewCore({
     input: {
-      listChangedFiles: (base, head) => effectiveRuntime.listChangedFiles(base, head),
+      listChangedFiles: (base, head) => changedFilesOverride ?? effectiveRuntime.listChangedFiles(base, head),
       loadRules: () => effectiveRuntime.loadRules(request.rulesDir),
     },
     reviewer: effectiveRuntime.createReviewer(request.configPath),
