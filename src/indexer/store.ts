@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { CodebaseIndex, FileEntry } from './types.js';
 
-export const CURRENT_VERSION = 1;
+export const CURRENT_VERSION = 2;
 
 type BlastLabel = 'changed' | 'importer' | 'dependency';
 

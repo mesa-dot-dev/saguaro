@@ -1,6 +1,6 @@
 {
   "name": "@mesa/code-review",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
@@ -35,6 +35,8 @@
     "js-yaml": "^4.1.1",
     "minimatch": "^10.1.2",
     "oxc-resolver": "^11.17.0",
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "0.25.10",
     "yargs": "^18.0.0",
     "zod": "^4.3.6"
   },

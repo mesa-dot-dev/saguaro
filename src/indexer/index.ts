@@ -99,7 +99,7 @@ function getFileConnections(
 }
 
 function collectImportSymbols(imp: FileEntry['imports'][number]): string[] {
-  const symbols = [...imp.symbols, ...imp.typeSymbols];
+  const symbols = [...imp.symbols, ...(imp.typeSymbols ?? [])];
   if (imp.defaultAlias) symbols.push(imp.defaultAlias);
   if (imp.namespaceAlias) symbols.push(`* as ${imp.namespaceAlias}`);
   return symbols;
@@ -218,7 +218,7 @@ function formatFileContext(
   const localImports = entry.imports.filter((imp) => imp.resolvedPath);
   if (localImports.length > 0) {
     const importLines = localImports.map((imp) => {
-      const symbols = [...imp.symbols, ...imp.typeSymbols.map((s) => `type ${s}`)];
+      const symbols = [...imp.symbols, ...(imp.typeSymbols ?? []).map((s) => `type ${s}`)];
       const symbolStr = symbols.length > 0 ? `: ${symbols.join(', ')}` : '';
       return `${imp.resolvedPath}${symbolStr}`;
     });

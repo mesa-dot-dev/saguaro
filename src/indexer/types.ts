@@ -3,7 +3,7 @@
  */
 export interface CodebaseIndex {
   /** Schema version. Increment on breaking changes → forces full re-index */
-  version: 1;
+  version: 2;
   /** Absolute path to the repository root */
   rootDir: string;
   /** ISO 8601 timestamp of last index build */
@@ -25,7 +25,17 @@ export interface FileEntry {
   importedBy: string[];
 }
 
-export type Language = 'typescript' | 'javascript' | 'tsx' | 'jsx' | 'python' | 'go' | 'rust' | 'unknown';
+export type Language =
+  | 'typescript'
+  | 'javascript'
+  | 'tsx'
+  | 'jsx'
+  | 'python'
+  | 'go'
+  | 'rust'
+  | 'java'
+  | 'kotlin'
+  | 'unknown';
 
 export interface ImportRef {
   /** Raw import specifier as written in source. NOT resolved */
@@ -34,10 +44,11 @@ export interface ImportRef {
   resolvedPath: string | null;
   /** Named value imports */
   symbols: string[];
-  /** Named type-only imports */
-  typeSymbols: string[];
-  kind: 'named' | 'default' | 'namespace' | 'side-effect' | 'dynamic';
-  isTypeOnly: boolean;
+  /** Named type-only imports (JS/TS only) */
+  typeSymbols?: string[];
+  kind: 'named' | 'default' | 'namespace' | 'side-effect' | 'wildcard';
+  /** Whether the entire import is type-only (JS/TS only) */
+  isTypeOnly?: boolean;
   defaultAlias?: string;
   namespaceAlias?: string;
 }
@@ -65,6 +76,7 @@ export type ExportKind =
   | 'enum'
   | 'variable'
   | 'constant'
+  | 'trait'
   | 're-export'
   | 're-export-all';
 
@@ -76,3 +88,25 @@ export interface ParseResult {
   imports: Omit<ImportRef, 'resolvedPath'>[];
   exports: ExportRef[];
 }
+
+/**
+ * Directories to skip during file discovery and tsconfig scanning.
+ */
+export const SKIP_DIRS = new Set([
+  'node_modules',
+  'dist',
+  'build',
+  '.git',
+  '.mesa',
+  '.next',
+  '.nuxt',
+  '.output',
+  'coverage',
+  '__pycache__',
+  '.turbo',
+  '.cache',
+  'vendor',
+  '.venv',
+  'venv',
+  'target',
+]);

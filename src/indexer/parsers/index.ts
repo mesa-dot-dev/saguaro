@@ -1,6 +1,7 @@
 import { logger } from '../../lib/logger.js';
 import type { Language, ParseResult } from '../types.js';
 import { SwcParser } from './swc-parser.js';
+import { TreeSitterParser } from './tree-sitter/parser.js';
 
 const SWC_EXTENSIONS: Record<string, Language> = {
   '.ts': 'typescript',
@@ -11,19 +12,28 @@ const SWC_EXTENSIONS: Record<string, Language> = {
   '.jsx': 'jsx',
 };
 
+const TREE_SITTER_EXTENSIONS: Record<string, Language> = {
+  '.py': 'python',
+  '.go': 'go',
+  '.rs': 'rust',
+  '.java': 'java',
+  '.kt': 'kotlin',
+};
+
 type SwcParserLike = { parse(filePath: string, content: string): ParseResult };
 
-let parser: SwcParserLike | null | false = null; // false = failed to load
+let swcParser: SwcParserLike | null | false = null; // false = failed to load
+let treeSitterParser: TreeSitterParser | null | false = null;
 
-async function getParser(): Promise<SwcParserLike | null> {
-  if (parser === false) return null;
-  if (parser) return parser;
+async function getSwcParser(): Promise<SwcParserLike | null> {
+  if (swcParser === false) return null;
+  if (swcParser) return swcParser;
 
   try {
-    parser = new SwcParser();
-    return parser;
+    swcParser = new SwcParser();
+    return swcParser;
   } catch (error) {
-    parser = false;
+    swcParser = false;
     const message = error instanceof Error ? error.message : String(error);
     logger.verbose(
       `[Mesa] Codebase indexing unavailable: @swc/core failed to load (${message}). Reviews will work without cross-file context.`
@@ -32,22 +42,55 @@ async function getParser(): Promise<SwcParserLike | null> {
   }
 }
 
+async function getTreeSitterParser(): Promise<TreeSitterParser | null> {
+  if (treeSitterParser === false) return null;
+  if (treeSitterParser) return treeSitterParser;
+
+  try {
+    treeSitterParser = new TreeSitterParser();
+    return treeSitterParser;
+  } catch (error) {
+    treeSitterParser = false;
+    const message = error instanceof Error ? error.message : String(error);
+    logger.verbose(
+      `[Mesa] Tree-sitter indexing unavailable: ${message}. Reviews will work without cross-file context for Python/Go/Rust.`
+    );
+    return null;
+  }
+}
+
 export function detectLanguage(filePath: string): Language {
   const dot = filePath.lastIndexOf('.');
   if (dot === -1) return 'unknown';
-  return SWC_EXTENSIONS[filePath.slice(dot)] ?? 'unknown';
+  const ext = filePath.slice(dot);
+  return SWC_EXTENSIONS[ext] ?? TREE_SITTER_EXTENSIONS[ext] ?? 'unknown';
 }
 
 export async function parseFile(filePath: string, content: string): Promise<ParseResult> {
-  const p = await getParser();
-  if (!p) {
-    return { language: detectLanguage(filePath), imports: [], exports: [] };
+  const dot = filePath.lastIndexOf('.');
+  const ext = dot === -1 ? '' : filePath.slice(dot);
+  const language = detectLanguage(filePath);
+
+  // Route to SWC for TS/JS
+  if (ext in SWC_EXTENSIONS) {
+    const p = await getSwcParser();
+    if (!p) return { language, imports: [], exports: [] };
+    return p.parse(filePath, content);
   }
-  return p.parse(filePath, content);
+
+  // Route to tree-sitter for Python/Go/Rust
+  if (ext in TREE_SITTER_EXTENSIONS) {
+    const ts = await getTreeSitterParser();
+    if (!ts) return { language, imports: [], exports: [] };
+    return ts.parse(filePath, content, language);
+  }
+
+  return { language: 'unknown', imports: [], exports: [] };
 }
 
 export function isSupportedFile(filePath: string): boolean {
   const dot = filePath.lastIndexOf('.');
   if (dot === -1) return false;
-  return filePath.slice(dot) in SWC_EXTENSIONS;
+  const ext = filePath.slice(dot);
+  return ext in SWC_EXTENSIONS || ext in TREE_SITTER_EXTENSIONS;
 }

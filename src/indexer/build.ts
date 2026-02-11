@@ -5,26 +5,9 @@ import { isSupportedFile, parseFile } from './parsers/index.js';
 import { createResolver } from './resolver.js';
 import type { JsonIndexStore } from './store.js';
 import type { CodebaseIndex, FileEntry } from './types.js';
+import { SKIP_DIRS } from './types.js';
 
-const SKIP_DIRS = new Set([
-  'node_modules',
-  'dist',
-  'build',
-  '.git',
-  '.mesa',
-  '.next',
-  '.nuxt',
-  '.output',
-  'coverage',
-  '__pycache__',
-  '.turbo',
-  '.cache',
-  'vendor',
-  '.venv',
-  'venv',
-]);
-
-const MAX_FILE_SIZE = 1_000_000; // 1MB
+const MAX_FILE_SIZE = 1000000;
 
 export interface BuildOptions {
   rootDir: string;
@@ -61,7 +44,7 @@ export async function buildIndex(options: BuildOptions): Promise<CodebaseIndex> 
 
     const resolvedImports = parseResult.imports.map((imp) => ({
       ...imp,
-      resolvedPath: resolver.resolve(relPath, imp.source),
+      resolvedPath: resolver.resolve(relPath, imp.source, parseResult.language),
     }));
 
     files[relPath] = {
@@ -88,7 +71,7 @@ export async function buildIndex(options: BuildOptions): Promise<CodebaseIndex> 
   }
 
   const index: CodebaseIndex = {
-    version: 1,
+    version: 2,
     rootDir,
     indexedAt: new Date().toISOString(),
     files,
