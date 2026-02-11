@@ -3,7 +3,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import { generateAndWriteRules } from '../../generator/index.js';
 import { STARTER_RULES } from '../../templates/starter-rules.js';
-import { ask, askYesNo, createReadline } from './prompt.js';
+import { ask, askChoice, createReadline } from './prompt.js';
 import { CliSpinner } from './spinner.js';
 
 const mesaDir = '.mesa';
@@ -16,6 +16,8 @@ const secondary = chalk.hex('#be3c00');
 const tertiary = chalk.hex('#ffecba');
 const DEFAULT_PROVIDER = 'anthropic' as const;
 const DEFAULT_MODEL = 'claude-opus-4-6';
+
+type RuleSetupChoice = 'generate' | 'default' | 'skip';
 
 function buildConfigContent(): string {
   return `# Mesa Configuration
@@ -109,17 +111,19 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   }
 
   const rl2 = createReadline();
-  let wantRules: boolean;
+  let ruleSetupChoice: RuleSetupChoice;
   try {
-    wantRules = await askYesNo(
-      rl2,
-      secondary('Would you like Mesa to analyze your project and generate review rules?')
-    );
+    const choice = await askChoice(rl2, secondary('How would you like to set up review rules?'), [
+      { id: 'generate', label: 'Analyze project and generate rules' },
+      { id: 'default', label: 'Use Mesa default starter rules' },
+      { id: 'skip', label: 'Skip for now (set up rules later)' },
+    ] as const);
+    ruleSetupChoice = choice.id;
   } finally {
     rl2.close();
   }
 
-  if (wantRules) {
+  if (ruleSetupChoice === 'generate') {
     if (!wroteApiKey) {
       console.log(chalk.yellow('  API key required for rule generation. Creating starter rules instead.'));
       writeBasicRules(path.resolve(process.cwd(), rulesDir));
@@ -131,6 +135,9 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
         console.log(chalk.gray(`  Added starter rules instead. Add more with ${tertiary('mesa rules create')}.`));
       }
     }
+  } else if (ruleSetupChoice === 'default') {
+    writeBasicRules(path.resolve(process.cwd(), rulesDir));
+    console.log(chalk.gray(`  Added starter rules. Add more with ${tertiary('mesa rules create')}.`));
   } else {
     console.log(chalk.gray(`  Specify your rules with ${secondary('mesa rules create')}.`));
   }
