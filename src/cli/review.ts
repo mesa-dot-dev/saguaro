@@ -9,6 +9,7 @@ import { getDiffs, getRepoRoot, listChangedFilesFromGit } from '../lib/git.js';
 import { logger } from '../lib/logger.js';
 import { loadValidatedConfig } from '../lib/review-model-config.js';
 import type { ReviewProgressEvent, ReviewResult } from '../types/types.js';
+import { CliSpinner } from './lib/spinner.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VERSION = resolvePackageVersion();
@@ -94,9 +95,13 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
     }
 
     if (outcome.kind === 'no-changed-files') {
-      if (options.verbose) {
-        logger.verbose('No changed files found.');
-      }
+      console.log(chalk.gray('No changed files found.'));
+      console.log(chalk.gray(`  Comparing ${CLI_ACCENT(baseRef)} → ${CLI_ACCENT(headRef)}. Nothing to review.`));
+      console.log(
+        chalk.gray(
+          `\n  Tips:\n    ${CLI_ACCENT('mesa review -b HEAD~1')}  Review the last commit\n    ${CLI_ACCENT('mesa review -b main')}   Review changes against main`
+        )
+      );
       return 0;
     }
 
@@ -126,72 +131,6 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
     // All errors propagate to wrapHandler's printError for tiered display.
     // MesaError subclasses carry their own exitCode (e.g. AgentExecutionError → 3).
     throw error instanceof Error ? error : new Error(`Unexpected error: ${String(error)}`);
-  }
-}
-
-class CliSpinner {
-  private readonly frames = ['-', '\\', '|', '/'];
-  private interval: ReturnType<typeof setInterval> | null = null;
-  private frameIndex = 0;
-  private isRunning = false;
-  private text = '';
-
-  start(text: string): void {
-    this.text = text;
-    this.isRunning = true;
-
-    if (!process.stdout.isTTY) {
-      return;
-    }
-
-    this.render();
-    this.interval = setInterval(() => {
-      this.frameIndex = (this.frameIndex + 1) % this.frames.length;
-      this.render();
-    }, 80);
-  }
-
-  update(text: string): void {
-    this.text = text;
-    if (this.isRunning && process.stdout.isTTY) {
-      this.render();
-    }
-  }
-
-  log(message: string): void {
-    if (this.isRunning && process.stdout.isTTY) {
-      this.clearLine();
-      console.log(message);
-      this.render();
-      return;
-    }
-
-    console.log(message);
-  }
-
-  stop(): void {
-    if (!this.isRunning) {
-      return;
-    }
-
-    this.isRunning = false;
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-    }
-
-    if (process.stdout.isTTY) {
-      this.clearLine();
-    }
-  }
-
-  private render(): void {
-    const frame = this.frames[this.frameIndex];
-    process.stdout.write(`\r${CLI_ACCENT(frame)} ${this.text}`);
-  }
-
-  private clearLine(): void {
-    process.stdout.write('\r\x1b[2K');
   }
 }
 

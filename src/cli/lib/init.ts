@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
+import { generateAndWriteRules } from '../../generator/index.js';
 import { STARTER_RULES } from '../../templates/starter-rules.js';
 import { ask, askYesNo, createReadline } from './prompt.js';
+import { CliSpinner } from './spinner.js';
 
 const mesaDir = '.mesa';
 const rulesDir = path.join(mesaDir, 'rules');
@@ -12,7 +14,7 @@ const envLocalPath = '.env.local';
 const apiKeyEnvName = 'ANTHROPIC_API_KEY';
 const secondary = chalk.hex('#be3c00');
 const tertiary = chalk.hex('#ffecba');
-const DEFAULT_PROVIDER = 'anthropic';
+const DEFAULT_PROVIDER = 'anthropic' as const;
 const DEFAULT_MODEL = 'claude-opus-4-6';
 
 function buildConfigContent(): string {
@@ -84,53 +86,112 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
 
   fs.mkdirSync(rulesDir, { recursive: true });
   fs.writeFileSync(rulesKeepPath, '');
-
   const rl1 = createReadline();
-  const wantRules = await askYesNo(rl1, secondary('Would you like Mesa to create some rules for you?'));
-  rl1.close();
-
-  if (wantRules) {
-    writeBasicRules(path.resolve(process.cwd(), rulesDir));
-    console.log(chalk.gray(`  Added 2 basic rules. Add more with ${tertiary('mesa rules create')}.`));
-  } else {
-    console.log(chalk.gray(`Specify your rules with ${secondary('mesa rules create')}.`));
-  }
-
-  // Prompt to set up API key
-  const rl2 = createReadline();
+  let apiKey = '';
   try {
     const keyInput = await ask(
-      rl2,
+      rl1,
       secondary('Paste your Anthropic API key (or type "n" to skip and set ANTHROPIC_API_KEY in .env.local, .env)')
     );
     const normalizedInput = keyInput.trim();
     const skippedWithN = normalizedInput.toLowerCase() === 'n';
-    const apiKey = skippedWithN ? '' : normalizedInput;
-    const wroteApiKey = apiKey.length > 0;
+    apiKey = skippedWithN ? '' : normalizedInput;
+  } finally {
+    rl1.close();
+  }
 
-    fs.writeFileSync(configPath, buildConfigContent());
-    if (wroteApiKey) {
-      upsertEnvValue(path.resolve(process.cwd(), envLocalPath), apiKeyEnvName, apiKey);
-    }
+  const wroteApiKey = apiKey.length > 0;
 
-    console.log(secondary('\nMesa initialized successfully!'));
-    console.log(chalk.gray(`  Created: ${configPath}`));
-    console.log(chalk.gray(`  Created: ${rulesDir}/`));
-    if (wroteApiKey) {
-      console.log(chalk.gray(`  Updated: ${envLocalPath} (${apiKeyEnvName})`));
-    }
-    console.log(secondary(`Specify more rules with ${tertiary('mesa rules create')}.`));
-    if (!wroteApiKey) {
-      console.log(chalk.gray(`  Add ${apiKeyEnvName} in your environment (.env.local, .env).`));
-      if (skippedWithN) {
-        console.log(chalk.gray('  You entered "n", so API key setup is manual.'));
-      }
-    }
+  // Write config and env before rule generation (config must exist for other commands)
+  fs.writeFileSync(configPath, buildConfigContent());
+  if (wroteApiKey) {
+    upsertEnvValue(path.resolve(process.cwd(), envLocalPath), apiKeyEnvName, apiKey);
+  }
+
+  const rl2 = createReadline();
+  let wantRules: boolean;
+  try {
+    wantRules = await askYesNo(
+      rl2,
+      secondary('Would you like Mesa to analyze your project and generate review rules?')
+    );
   } finally {
     rl2.close();
   }
 
+  if (wantRules) {
+    if (!wroteApiKey) {
+      console.log(chalk.yellow('  API key required for rule generation. Creating starter rules instead.'));
+      writeBasicRules(path.resolve(process.cwd(), rulesDir));
+      console.log(chalk.gray(`  Added starter rules. Add more with ${tertiary('mesa rules create')}.`));
+    } else {
+      const generated = await generateRulesWithProgress(apiKey);
+      if (!generated) {
+        writeBasicRules(path.resolve(process.cwd(), rulesDir));
+        console.log(chalk.gray(`  Added starter rules instead. Add more with ${tertiary('mesa rules create')}.`));
+      }
+    }
+  } else {
+    console.log(chalk.gray(`  Specify your rules with ${secondary('mesa rules create')}.`));
+  }
+
+  console.log(secondary('\nMesa initialized successfully!'));
+  console.log(chalk.gray(`  Created: ${configPath}`));
+  console.log(chalk.gray(`  Created: ${rulesDir}/`));
+  if (wroteApiKey) {
+    console.log(chalk.gray(`  Updated: ${envLocalPath} (${apiKeyEnvName})`));
+  } else {
+    console.log(chalk.gray(`  Add ${apiKeyEnvName} in your environment (.env.local, .env).`));
+  }
+  console.log(secondary(`\nRun ${tertiary('mesa review')} to review your changes.`));
+
   return 0;
 };
+
+async function generateRulesWithProgress(apiKey: string): Promise<boolean> {
+  const repoRoot = process.cwd();
+  const spinner = new CliSpinner();
+
+  console.log('');
+  spinner.start('Analyzing your project...');
+
+  try {
+    const result = await generateAndWriteRules(repoRoot, { apiKey });
+    spinner.stop();
+
+    if (result.written.length === 0 && result.scanContext.fileTree.length < 3) {
+      console.log(chalk.yellow('  Not enough source files to analyze.'));
+      return false;
+    }
+
+    if (result.written.length === 0) {
+      console.log(chalk.yellow('  No rules generated.'));
+      return false;
+    }
+
+    const { manifest } = result.scanContext;
+    if (manifest.testRunner) {
+      console.log(chalk.gray(`  Testing: ${manifest.testRunner}`));
+    }
+
+    console.log('');
+    console.log(secondary(`  Generated ${result.written.length} rules:`));
+    for (const rule of result.written) {
+      const severityColor =
+        rule.severity === 'error' ? chalk.red : rule.severity === 'warning' ? chalk.yellow : chalk.blue;
+      console.log(
+        `    ${chalk.green('✓')} ${chalk.cyan(rule.id)}  ${severityColor(`(${rule.severity})`)}  ${chalk.gray(rule.title)}`
+      );
+    }
+    console.log('');
+
+    return true;
+  } catch (error) {
+    spinner.stop();
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(chalk.yellow(`  Rule generation failed: ${message}`));
+    return false;
+  }
+}
 
 export default initHandler;

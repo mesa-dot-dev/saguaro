@@ -8,8 +8,11 @@ import {
   locateRulesDirectoryAdapter,
   validateRulesAdapter,
 } from '../../adapter/rules.js';
+import { generateAndWriteRules } from '../../generator/index.js';
+import { loadReviewAdapterConfig } from '../../lib/review-model-config.js';
 import type { Severity } from '../../types/types.js';
 import { ask, createReadline } from './prompt.js';
+import { CliSpinner } from './spinner.js';
 
 interface RuleTemplate {
   name: string;
@@ -229,4 +232,78 @@ function buildInstructions(templateType: string, answers: RuleAnswers): string {
   }
 }
 
-export { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, validateRules };
+// ---------------------------------------------------------------------------
+// mesa rules generate
+// ---------------------------------------------------------------------------
+
+const secondary = chalk.hex('#be3c00');
+
+interface GenerateRulesArgv {
+  force?: boolean;
+  count?: number;
+  config?: string;
+}
+
+const generateRulesCommand = async (argv: GenerateRulesArgv): Promise<number> => {
+  const { modelConfig } = loadReviewAdapterConfig(argv.config);
+  const repoRoot = process.cwd();
+  const spinner = new CliSpinner();
+
+  console.log('');
+  spinner.start('Analyzing your project...');
+
+  let result: Awaited<ReturnType<typeof generateAndWriteRules>>;
+  try {
+    result = await generateAndWriteRules(
+      repoRoot,
+      { apiKey: modelConfig.apiKey },
+      { count: argv.count ?? 8, force: argv.force ?? false }
+    );
+  } catch (error) {
+    spinner.stop();
+    throw error;
+  }
+  spinner.stop();
+
+  if (result.written.length === 0 && result.scanContext.fileTree.length < 3) {
+    console.log(chalk.yellow('  Not enough source files to analyze. Add rules manually with "mesa rules create".'));
+    return 1;
+  }
+
+  // Print detection summary
+  const { manifest } = result.scanContext;
+  if (manifest.languages.length > 0) {
+    console.log(chalk.gray(`  Detected: ${manifest.languages.join(', ')}`));
+  }
+  if (manifest.frameworks.length > 0) {
+    console.log(chalk.gray(`  Frameworks: ${manifest.frameworks.join(', ')}`));
+  }
+  if (manifest.testRunner) {
+    console.log(chalk.gray(`  Testing: ${manifest.testRunner}`));
+  }
+
+  // Print generated rules
+  if (result.written.length > 0) {
+    console.log(secondary(`\n  Generated ${result.written.length} rules:`));
+    for (const rule of result.written) {
+      const severityColor =
+        rule.severity === 'error' ? chalk.red : rule.severity === 'warning' ? chalk.yellow : chalk.blue;
+      console.log(
+        `    ${chalk.green('✓')} ${chalk.cyan(rule.id)}  ${severityColor(`(${rule.severity})`)}  ${chalk.gray(rule.title)}`
+      );
+    }
+  }
+
+  if (result.skipped.length > 0) {
+    console.log(chalk.gray(`\n  Skipped ${result.skipped.length} rules (already exist). Use --force to overwrite.`));
+  }
+
+  if (result.written.length === 0 && result.skipped.length > 0) {
+    console.log(chalk.gray('  All generated rules already exist.'));
+  }
+
+  console.log('');
+  return 0;
+};
+
+export { createRule, deleteRule, explainRule, generateRulesCommand, listRules, locateRulesDirectory, validateRules };

@@ -7,7 +7,15 @@ import { logger } from '../../lib/logger.js';
 import checkHandler from '../lib/check.js';
 import indexCmdHandler from '../lib/index-cmd.js';
 import initHandler from '../lib/init.js';
-import { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, validateRules } from '../lib/rules.js';
+import {
+  createRule,
+  deleteRule,
+  explainRule,
+  generateRulesCommand,
+  listRules,
+  locateRulesDirectory,
+  validateRules,
+} from '../lib/rules.js';
 import serveHandler from '../lib/serve.js';
 import { resolvePackageVersion, reviewCommand } from '../review.js';
 
@@ -262,6 +270,29 @@ yargs(argv)
             .option('instructions', { describe: 'Rule instructions' });
         },
         wrapHandler('rules-create', createRule as (argv: unknown) => Promise<number>)
+      )
+      .command(
+        'generate',
+        'Analyze your project and generate review rules with AI',
+        (y: Argv) => {
+          y.option('force', {
+            describe: 'Overwrite existing rules with the same ID',
+            type: 'boolean',
+            default: false,
+          })
+            .option('count', {
+              describe: 'Number of rules to generate',
+              type: 'number',
+              default: 8,
+            })
+            .option('c', {
+              alias: 'config',
+              describe: 'Path to config file',
+              type: 'string',
+              default: '.mesa/config.yaml',
+            });
+        },
+        wrapHandler('rules-generate', generateRulesCommand as (argv: unknown) => Promise<number>)
       );
   })
   .command(
