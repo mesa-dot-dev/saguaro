@@ -10,10 +10,24 @@ brew install mesa-dot-dev/homebrew-tap/code-review
 
 ## Usage
 
+### Homebrew
+
 ```bash
 mesa --help
 mesa init
 mesa review
+
+```
+
+### Local
+
+From the monorepo root, use `bun run mesa` to run the local code-review CLI.
+
+```bash
+bun run mesa --help
+bun run mesa init
+bun run mesa review
+bun run mesa review --base origin/main --head origin/eval/db-refactor --verbose
 ```
 
 ## Configuration

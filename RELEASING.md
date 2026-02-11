@@ -24,7 +24,7 @@ Example:
 From depot root:
 
 ```bash
-bun run release:code-review -- --dry-run
+bun run code-review:release -- --dry-run
 ```
 
 This will:
@@ -41,7 +41,7 @@ If dry-run fails, stop and fix before continuing.
 From depot root:
 
 ```bash
-bun run release:code-review
+bun run code-review:release
 ```
 
 This creates a release in `mesa-dot-dev/homebrew-tap` with tag:
