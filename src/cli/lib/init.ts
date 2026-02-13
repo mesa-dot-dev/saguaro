@@ -1,10 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
-import { generateAndWriteRules } from '../../generator/index.js';
 import { STARTER_RULES } from '../../templates/starter-rules.js';
 import { ask, askChoice, createReadline } from './prompt.js';
-import { CliSpinner } from './spinner.js';
 
 const mesaDir = '.mesa';
 const rulesDir = path.join(mesaDir, 'rules');
@@ -17,7 +15,7 @@ const tertiary = chalk.hex('#ffecba');
 const DEFAULT_PROVIDER = 'anthropic' as const;
 const DEFAULT_MODEL = 'claude-opus-4-6';
 
-type RuleSetupChoice = 'generate' | 'default' | 'skip';
+type RuleSetupChoice = 'default' | 'skip';
 
 function buildConfigContent(): string {
   return `# Mesa Configuration
@@ -114,7 +112,6 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   let ruleSetupChoice: RuleSetupChoice;
   try {
     const choice = await askChoice(rl2, secondary('How would you like to set up review rules?'), [
-      { id: 'generate', label: 'Analyze project and generate rules' },
       { id: 'default', label: 'Use Mesa default starter rules' },
       { id: 'skip', label: 'Skip for now (set up rules later)' },
     ] as const);
@@ -123,19 +120,7 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
     rl2.close();
   }
 
-  if (ruleSetupChoice === 'generate') {
-    if (!wroteApiKey) {
-      console.log(chalk.yellow('  API key required for rule generation. Creating starter rules instead.'));
-      writeBasicRules(path.resolve(process.cwd(), rulesDir));
-      console.log(chalk.gray(`  Added starter rules. Add more with ${tertiary('mesa rules create')}.`));
-    } else {
-      const generated = await generateRulesWithProgress(apiKey);
-      if (!generated) {
-        writeBasicRules(path.resolve(process.cwd(), rulesDir));
-        console.log(chalk.gray(`  Added starter rules instead. Add more with ${tertiary('mesa rules create')}.`));
-      }
-    }
-  } else if (ruleSetupChoice === 'default') {
+  if (ruleSetupChoice === 'default') {
     writeBasicRules(path.resolve(process.cwd(), rulesDir));
     console.log(chalk.gray(`  Added starter rules. Add more with ${tertiary('mesa rules create')}.`));
   } else {
@@ -154,51 +139,5 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
 
   return 0;
 };
-
-async function generateRulesWithProgress(apiKey: string): Promise<boolean> {
-  const repoRoot = process.cwd();
-  const spinner = new CliSpinner();
-
-  console.log('');
-  spinner.start('Analyzing your project...');
-
-  try {
-    const result = await generateAndWriteRules(repoRoot, { apiKey });
-    spinner.stop();
-
-    if (result.written.length === 0 && result.scanContext.fileTree.length < 3) {
-      console.log(chalk.yellow('  Not enough source files to analyze.'));
-      return false;
-    }
-
-    if (result.written.length === 0) {
-      console.log(chalk.yellow('  No rules generated.'));
-      return false;
-    }
-
-    const { manifest } = result.scanContext;
-    if (manifest.testRunner) {
-      console.log(chalk.gray(`  Testing: ${manifest.testRunner}`));
-    }
-
-    console.log('');
-    console.log(secondary(`  Generated ${result.written.length} rules:`));
-    for (const rule of result.written) {
-      const severityColor =
-        rule.severity === 'error' ? chalk.red : rule.severity === 'warning' ? chalk.yellow : chalk.blue;
-      console.log(
-        `    ${chalk.green('✓')} ${chalk.cyan(rule.id)}  ${severityColor(`(${rule.severity})`)}  ${chalk.gray(rule.title)}`
-      );
-    }
-    console.log('');
-
-    return true;
-  } catch (error) {
-    spinner.stop();
-    const message = error instanceof Error ? error.message : String(error);
-    console.log(chalk.yellow(`  Rule generation failed: ${message}`));
-    return false;
-  }
-}
 
 export default initHandler;
