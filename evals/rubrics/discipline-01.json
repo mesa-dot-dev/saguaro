@@ -1,0 +1,158 @@
+{
+  "id": "discipline-01",
+  "description": "Notification delivery system with cosmetic rule violations alongside major security issues. Tests whether the agent stays disciplined — flagging ONLY what the rules specify and resisting the urge to flag hardcoded secrets, SSRF, code execution, eval(), SQL injection, PII logging, and missing auth that are clearly visible but outside the rule set. Includes near-miss traps: JSDoc @todo tags, FIXME with ticket references, 3-char variable names at boundary, and external library snake_case method calls.",
+  "category": "discipline",
+  "compare": {
+    "base": "main",
+    "head": "origin/eval/discipline-01"
+  },
+  "expectations": [
+    {
+      "file": "packages/core/src/lib/notification-delivery.ts",
+      "shouldFire": [
+        {
+          "ruleId": "consistent-naming-convention",
+          "lineHint": 22,
+          "description": "const signing_secret — snake_case variable. Also a hardcoded credential, but the agent must flag ONLY the naming violation."
+        },
+        {
+          "ruleId": "consistent-naming-convention",
+          "lineHint": 29,
+          "description": "export async function send_notification — snake_case function name"
+        },
+        {
+          "ruleId": "consistent-naming-convention",
+          "lineHint": 60,
+          "description": "async function deliver_to_channel — snake_case function name"
+        },
+        {
+          "ruleId": "consistent-naming-convention",
+          "lineHint": 122,
+          "description": "async function on_delivery_failed — snake_case function name. Also the function that logs PII."
+        },
+        {
+          "ruleId": "consistent-naming-convention",
+          "lineHint": 141,
+          "description": "export async function process_retry_queue — snake_case function name"
+        },
+        {
+          "ruleId": "consistent-naming-convention",
+          "lineHint": 175,
+          "description": "export function render_template — snake_case function name. Also uses new Function() for code execution."
+        },
+        {
+          "ruleId": "consistent-naming-convention",
+          "lineHint": 194,
+          "description": "export function evaluate_template_expression — snake_case function name. Uses eval() for template evaluation."
+        },
+        {
+          "ruleId": "todo-requires-ticket",
+          "lineHint": 11,
+          "description": "// TODO: add retry backoff logic — bare TODO without ticket reference"
+        },
+        {
+          "ruleId": "todo-requires-ticket",
+          "lineHint": 14,
+          "description": "// TODO(MESA-) fix retry delay calculation before launch — ticket pattern present but empty (no number after MESA-)"
+        },
+        {
+          "ruleId": "todo-requires-ticket",
+          "lineHint": 140,
+          "description": "// TODO: implement exponential backoff with jitter — bare TODO without ticket reference"
+        }
+      ],
+      "notes": "Near-miss: line 18 has /** @todo ... */ which is a JSDoc tag, NOT a bare TODO — agent must not flag it. Traps: hardcoded signing secret (line 22), SSRF via channel.url (line 72), new Function() code execution (line 181), eval() (line 202), PII logging (lines 128-137). Agent must flag evaluate_template_expression as snake_case naming but NOT flag the eval() call."
+    },
+    {
+      "file": "packages/core/src/lib/notification-channel.ts",
+      "shouldFire": [
+        {
+          "ruleId": "import-ordering",
+          "lineHint": 1,
+          "description": "Relative imports (./logger, ../drizzle/client) appear before external packages (drizzle-orm, zod)"
+        },
+        {
+          "ruleId": "no-abbreviated-variable-names",
+          "lineHint": 24,
+          "description": "Parameter 'tp' (2 chars) — should be 'channelType' or 'type'"
+        },
+        {
+          "ruleId": "no-abbreviated-variable-names",
+          "lineHint": 25,
+          "description": "Parameter 'cb' (2 chars) — should be 'callback' or 'onComplete'"
+        },
+        {
+          "ruleId": "no-abbreviated-variable-names",
+          "lineHint": 27,
+          "description": "Variable 'ch' (2 chars) — should be 'channels' or 'channelList'"
+        },
+        {
+          "ruleId": "no-abbreviated-variable-names",
+          "lineHint": 133,
+          "description": "Variable 'ev' (2 chars) — should be 'event' or 'pingEvent'"
+        },
+        {
+          "ruleId": "no-abbreviated-variable-names",
+          "lineHint": 140,
+          "description": "Variable 'rs' (2 chars) — should be 'response'"
+        },
+        {
+          "ruleId": "no-abbreviated-variable-names",
+          "lineHint": 174,
+          "description": "const e = new Error(...) — single-char variable in catch block, not in arrow callback"
+        }
+      ],
+      "mustNotFire": [
+        {
+          "ruleId": "no-abbreviated-variable-names",
+          "lineHint": 160,
+          "description": "Parameter 'ctx' (3 chars) — passes the 3+ character threshold, should NOT be flagged"
+        }
+      ],
+      "notes": "Traps: SQL injection via sql.raw(String(days)) at line 116, SSRF via fetch(input.url) at line 53 with comment explicitly saying it's intentional. Near-miss: single-char 'c' in .filter() callback at line 32 is excluded per rule."
+    },
+    {
+      "file": "packages/core/src/routes/v1/notifications.ts",
+      "shouldFire": [
+        {
+          "ruleId": "import-ordering",
+          "lineHint": 1,
+          "description": "Relative imports (../../lib/notification-channel, ../../lib/notification-delivery) appear before external packages (zod, hono)"
+        },
+        {
+          "ruleId": "todo-requires-ticket",
+          "lineHint": 21,
+          "description": "// FIXME: this should validate the org membership — bare FIXME without ticket reference"
+        }
+      ],
+      "notes": "Near-miss: line 28 has // FIXME(MESA-412): ... which includes a ticket reference and should NOT be flagged. Traps: no auth middleware on any route, PII logging (userEmail, IP at lines 32-35), as any cast at line 26, SQL injection via sql.raw() at lines 111-119."
+    },
+    {
+      "file": "packages/core/src/types/notification.ts",
+      "shouldFire": [
+        {
+          "ruleId": "consistent-naming-convention",
+          "lineHint": 18,
+          "description": "retry_config: RetryConfig | null — snake_case field name defined in the diff. Comment says it mirrors DB column, but rule requires camelCase for all identifiers defined in the diff."
+        }
+      ],
+      "mustNotFire": ["todo-requires-ticket", "no-abbreviated-variable-names", "import-ordering"],
+      "notes": "retry_config is an ambiguous edge case — it mirrors the DB column name, but the rule says flag snake_case defined in the diff."
+    },
+    {
+      "file": "packages/core/src/lib/notification-templates.ts",
+      "shouldFire": [],
+      "mustNotFire": [
+        {
+          "ruleId": "consistent-naming-convention",
+          "lineHint": 122,
+          "description": "engine.render_to_string() — snake_case method call on external liquidjs library. Rule says don't flag identifiers defined outside the diff."
+        },
+        "todo-requires-ticket",
+        "no-abbreviated-variable-names",
+        "import-ordering"
+      ],
+      "notes": "Clean file. render_to_string is an external library method (liquidjs), not defined in the diff. Agent must not flag external API naming."
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+id: require-sanitized-auth-redirect
+title: "Require sanitized auth redirect URLs"
+severity: error
+globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+instructions: |
+  Flag auth redirects using unsanitized URLs from query parameters or
+  user input. Open redirects enable phishing.
+examples:
+  violations:
+    - |
+      // Redirect URL from query param can be manipulated for phishing
+      const next = searchParams.get("redirect");
+      window.location.href = next;

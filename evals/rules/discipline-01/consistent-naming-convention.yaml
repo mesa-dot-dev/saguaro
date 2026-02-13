@@ -1,0 +1,18 @@
+id: consistent-naming-convention
+title: "Consistent naming convention (camelCase)"
+severity: warning
+globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "!**/*.test.ts"
+  - "!**/*.spec.ts"
+instructions: |
+  Flag identifiers defined in the diff that use snake_case. This
+  codebase uses camelCase for functions, variables, and parameters.
+  UPPER_SNAKE_CASE constants are acceptable. Only flag identifiers
+  defined in the diff, not references to identifiers defined elsewhere.
+examples:
+  violations:
+    - |
+      // snake_case function name — should be camelCase
+      function calculate_total(items: Item[]): number { ... }

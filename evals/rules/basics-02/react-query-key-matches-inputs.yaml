@@ -1,0 +1,15 @@
+id: react-query-key-matches-inputs
+title: "React Query cache key must include all query inputs"
+severity: error
+globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+instructions: |
+  Flag React Query hooks where queryKey doesn't include all dynamic
+  values used in the queryFn. Missing inputs cause stale or cross-entity
+  cache.
+examples:
+  violations:
+    - |
+      // 'status' affects query results but is missing from queryKey — stale cache
+      useQuery({ queryKey: ["orders", userId], queryFn: () => fetchOrders(userId, status) });

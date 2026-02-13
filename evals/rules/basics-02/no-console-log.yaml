@@ -1,0 +1,14 @@
+id: no-console-log
+title: "No console.log in production code"
+severity: warning
+globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "!**/*.test.ts"
+instructions: |
+  Flag console.log in production code.
+examples:
+  violations:
+    - |
+      // Console output in production code clutters devtools and may leak data
+      console.log("User logged in:", userId);

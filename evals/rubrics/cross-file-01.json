@@ -1,0 +1,171 @@
+{
+  "id": "cross-file-01",
+  "description": "Pipeline processing system where types, builder, and monitor are correct but executor, scheduler, cleanup, auth, and routes use stale/wrong fields, status literals, enum values, and callback signatures. Tests whether the agent can cross-reference type definitions in one file against usage in another. Includes near-miss traps: destructured rename (createdBy: owner), correct retryPolicy.maxAttempts stored as local 'maxRetries', properly awaited async validate, correct status values in switch, and structural subtyping FP trap.",
+  "category": "cross-file",
+  "compare": {
+    "base": "main",
+    "head": "origin/eval/cross-file-01"
+  },
+  "expectations": [
+    {
+      "file": "packages/core/src/lib/pipeline-executor.ts",
+      "shouldFire": [
+        {
+          "ruleId": "cross-file-type-mismatch",
+          "lineHint": 35,
+          "description": "if (validatePipelineConfig(config)) — validatePipelineConfig is async (returns Promise<ValidationResult>). A Promise is always truthy, so this always returns true. Must await and check .valid."
+        },
+        {
+          "ruleId": "cross-file-type-mismatch",
+          "lineHint": 81,
+          "description": "pipeline.config.maxRetries ?? 3 — maxRetries does not exist on PipelineConfig. Retry config lives in retryPolicy.maxAttempts."
+        },
+        {
+          "ruleId": "cross-file-type-mismatch",
+          "lineHint": 119,
+          "description": "case 'completed': — 'completed' is not a valid PipelineStatus value. The correct value is 'succeeded'."
+        },
+        {
+          "ruleId": "cross-file-type-mismatch",
+          "lineHint": 121,
+          "description": "case 'paused': — 'paused' is not a valid PipelineStatus value. The correct value is 'idle'."
+        }
+      ],
+      "mustNotFire": [
+        {
+          "ruleId": "cross-file-type-mismatch",
+          "lineHint": 151,
+          "description": "const { createdBy } = pipeline.config — correct field name, not stale 'owner'"
+        },
+        {
+          "ruleId": "cross-file-type-mismatch",
+          "lineHint": 156,
+          "description": "pipeline.config.retryPolicy.maxAttempts — correct path to retry configuration"
+        }
+      ],
+      "notes": "The executor has 4 violations of increasing subtlety. maxRetries is easy (field doesn't exist). The status literals require checking the PipelineStatus union. The unawaited async is the hardest — the code looks like a normal validation check. buildAuditEntry uses correct patterns as contrast."
+    },
+    {
+      "file": "packages/core/src/lib/pipeline-scheduler.ts",
+      "shouldFire": [
+        {
+          "ruleId": "cross-file-type-mismatch",
+          "lineHint": 32,
+          "description": "const { maxRetries = 3, owner, ...rest } = config — neither maxRetries nor owner exist on PipelineConfig. maxRetries moved to retryPolicy.maxAttempts, owner renamed to createdBy. Destructured values are silently undefined."
+        },
+        {
+          "ruleId": "cross-file-contract-violation",
+          "lineHint": 78,
+          "description": "execute: (ctx: StepContext) => { ... } — sync callback returning void. PipelineStep.execute is typed as (ctx: StepContext) => Promise<StepResult>."
+        },
+        {
+          "ruleId": "cross-file-contract-violation",
+          "lineHint": 83,
+          "description": "step.execute(ctx) without await — fire-and-forget on async operation that returns Promise<StepResult>"
+        }
+      ],
+      "notes": "The stale destructuring is medium difficulty — both fields silently become undefined and the defaults mask the bug. The sync callback is the hardest violation in the eval — requires reading the PipelineStep interface in types/pipeline.ts to know execute must be async and return StepResult."
+    },
+    {
+      "file": "packages/core/src/routes/v1/pipelines.ts",
+      "shouldFire": [
+        {
+          "ruleId": "cross-file-type-mismatch",
+          "lineHint": 63,
+          "description": "config.owner — field does not exist on PipelineConfig. Should be config.createdBy."
+        },
+        {
+          "ruleId": "cross-file-type-mismatch",
+          "lineHint": 81,
+          "description": "p.status === 'paused' — 'paused' is not a valid PipelineStatus. Should be 'idle'."
+        }
+      ],
+      "notes": "Two straightforward cross-file mismatches. The route file provides easy wins to balance the harder violations in executor and scheduler."
+    },
+    {
+      "file": "packages/core/src/lib/pipeline-cleanup.ts",
+      "shouldFire": [
+        {
+          "ruleId": "cross-file-type-mismatch",
+          "lineHint": 50,
+          "description": "config.status === 'timed_out' — 'timed_out' is not a valid PipelineStatus value. Valid values are: running, idle, failed, succeeded, cancelled."
+        },
+        {
+          "ruleId": "cross-file-contract-violation",
+          "lineHint": 73,
+          "description": "onCleanup: (pipeline: Pipeline) => void — arity mismatch with CleanupHandler type which requires (pipeline: Pipeline, reason: CleanupReason) => Promise<void>. Missing reason parameter and sync instead of async."
+        }
+      ],
+      "notes": "pipeline-cleanup.ts has a status literal mismatch and a callback arity/async mismatch. The status check looks plausible ('timed_out' sounds like a real status) but doesn't exist in the PipelineStatus union."
+    },
+    {
+      "file": "packages/core/src/middleware/pipeline-auth.ts",
+      "shouldFire": [
+        {
+          "ruleId": "cross-file-type-mismatch",
+          "lineHint": 22,
+          "description": "PipelinePermission.Execute — enum does not have 'Execute' member. The correct member is PipelinePermission.Run."
+        }
+      ],
+      "mustNotFire": [
+        {
+          "ruleId": "cross-file-type-mismatch",
+          "lineHint": 41,
+          "description": "config.retryPolicy.maxAttempts — correct path to retry configuration. Uses the proper nested access pattern."
+        }
+      ],
+      "notes": "pipeline-auth.ts has one enum value mismatch. The FP trap at validateRetryLimits correctly accesses retryPolicy.maxAttempts."
+    },
+    {
+      "file": "packages/core/src/types/pipeline.ts",
+      "shouldFire": [],
+      "mustNotFire": ["cross-file-type-mismatch", "cross-file-contract-violation"],
+      "notes": "Source of truth for all types. Everything here is correct by definition."
+    },
+    {
+      "file": "packages/core/src/lib/pipeline-builder.ts",
+      "shouldFire": [],
+      "mustNotFire": [
+        {
+          "ruleId": "cross-file-contract-violation",
+          "lineHint": 136,
+          "description": "addStepHook takes (ctx: StepContext) => Promise<void> — structural subtyping is valid. The hook's return value is ignored so Promise<void> is compatible. This is NOT a contract violation."
+        },
+        "cross-file-type-mismatch"
+      ],
+      "notes": "Reference implementation showing all correct patterns: uses createdBy, awaits validatePipelineConfig, uses retryPolicy.maxAttempts, correct status values, async step execution. addStepHook's Promise<void> hook is structurally compatible."
+    },
+    {
+      "file": "packages/core/src/lib/pipeline-monitor.ts",
+      "shouldFire": [],
+      "mustNotFire": [
+        {
+          "ruleId": "cross-file-type-mismatch",
+          "lineHint": 33,
+          "description": "const { createdBy: owner } = config — destructured rename, owner is a local variable alias for the correct field createdBy"
+        },
+        {
+          "ruleId": "cross-file-type-mismatch",
+          "lineHint": 36,
+          "description": "config.retryPolicy.maxAttempts stored as local 'maxRetries' — variable name is misleading but the access path is correct"
+        },
+        {
+          "ruleId": "cross-file-type-mismatch",
+          "lineHint": 41,
+          "description": "await validatePipelineConfig(config) — correctly awaited, unlike executor's unawaited call"
+        },
+        {
+          "ruleId": "cross-file-type-mismatch",
+          "lineHint": 121,
+          "description": "switch on 'succeeded', 'idle', 'running', 'failed', 'cancelled' — all correct PipelineStatus values"
+        },
+        {
+          "ruleId": "cross-file-contract-violation",
+          "lineHint": 78,
+          "description": "withMonitoring returns async callback with Promise<StepResult> — correct contract matching PipelineStep.execute"
+        }
+      ],
+      "notes": "Clean file with 5 near-miss traps: destructured rename, correct path stored as misleading local name, properly awaited async, correct status values, and correct async callback contract."
+    }
+  ]
+}

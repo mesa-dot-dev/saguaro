@@ -1,0 +1,211 @@
+{
+  "id": "basics-01",
+  "description": "Database performance refactor with 10+ planted issues across difficulty tiers and clean files testing false positive rate. Includes hardened SQL injection via mixed safe/unsafe parameterization, Drizzle $inferSelect FP trap, and fully parameterized SQL FP trap.",
+  "category": "basics",
+  "compare": {
+    "base": "main",
+    "head": "eval/db-refactor"
+  },
+  "expectations": [
+    {
+      "file": "packages/core/src/drizzle/pool.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-hardcoded-credentials",
+          "lineHint": 24,
+          "description": "Hardcoded database credentials in connection pool fallback string"
+        }
+      ]
+    },
+    {
+      "file": "packages/core/src/lib/query-cache.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-console-in-production",
+          "lineHint": 84,
+          "description": "console.log leaking cache key and TTL in production code"
+        },
+        {
+          "ruleId": "atomic-cache-operations",
+          "lineHint": 78,
+          "description": "Non-atomic cache get-then-set pattern creates race condition under concurrent access"
+        },
+        {
+          "ruleId": "no-redis-keys-in-production",
+          "lineHint": 132,
+          "description": "redis.keys('${prefix}*') in invalidateCacheByPrefix — KEYS command scans entire keyspace, blocking Redis for O(N) time in production. Use SCAN iterator instead."
+        }
+      ]
+    },
+    {
+      "file": "packages/core/src/drizzle/client.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-security-todos",
+          "lineHint": 6,
+          "description": "TODO comment indicating SSL is disabled for testing, with ssl: false hardcoded"
+        },
+        {
+          "ruleId": "no-env-override-for-infra-config",
+          "lineHint": 10,
+          "description": "process.env.DB_HOST takes precedence over Resource.DepotDB.host — if env var leaks into production, service silently connects to wrong database"
+        },
+        {
+          "ruleId": "no-env-override-for-infra-config",
+          "lineHint": 11,
+          "description": "process.env.DB_USER overrides Resource.DepotDB.username — same env leak vector as DB_HOST"
+        },
+        {
+          "ruleId": "no-env-override-for-infra-config",
+          "lineHint": 12,
+          "description": "process.env.DB_PASSWORD overrides Resource.DepotDB.password — env var fallback for credentials is especially dangerous"
+        },
+        {
+          "ruleId": "no-env-override-for-infra-config",
+          "lineHint": 13,
+          "description": "process.env.DB_PORT overrides Resource.DepotDB.port — wrong port silently routes to different database instance"
+        },
+        {
+          "ruleId": "no-env-override-for-infra-config",
+          "lineHint": 14,
+          "description": "process.env.DB_NAME overrides Resource.DepotDB.database — wrong database name leads to missing tables or wrong data"
+        }
+      ]
+    },
+    {
+      "file": "packages/core/src/drizzle/optimized-queries.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-raw-sql-interpolation",
+          "lineHint": 76,
+          "description": "SQL injection via string interpolation in sql.raw() for repo search query"
+        },
+        {
+          "ruleId": "no-raw-sql-interpolation",
+          "lineHint": 107,
+          "description": "sql.raw(sortColumn) and sql.raw(direction) in listReposSorted — user-configurable sort column and direction passed through sql.raw() despite surrounding parameterized sql template. Hard because orgId and limit are correctly parameterized."
+        }
+      ]
+    },
+    {
+      "file": "packages/core/src/scripts/migrate-refactor.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-silent-migration-failures",
+          "lineHint": 56,
+          "description": "try/catch swallows backfill error with console.warn and continues — subsequent constraint step will corrupt data"
+        },
+        {
+          "ruleId": "cascade-delete-review",
+          "lineHint": 97,
+          "description": "db.delete(organization) cascades to repos, apiKeys, webhooks, members. Combined with step1 renaming 'admin' to 'owner', step3's WHERE role='admin' matches ALL orgs (none have 'admin' anymore), deleting every org and cascading to all data"
+        },
+        {
+          "ruleId": "no-console-in-production",
+          "lineHint": 56,
+          "description": "console.warn inside catch block of migration script — production migrations should use structured logging"
+        }
+      ]
+    },
+    {
+      "file": "packages/core/src/routes/v1/repos.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-type-assertions-on-db-results",
+          "lineHint": 407,
+          "description": "Type assertion masks schema mismatch — sizeBytes was renamed to repoSizeLimitBytes, so this destructures undefined and quota calculation produces NaN"
+        }
+      ]
+    },
+    {
+      "file": "packages/core/src/auth/api-keys.ts",
+      "shouldFire": [
+        {
+          "ruleId": "constant-time-auth",
+          "lineHint": 18,
+          "description": "Format regex check returns early (~0ms) before DB validation, creating timing side-channel. Combined with cache (line 25), creates 3 distinct timing profiles that leak key format and usage patterns"
+        }
+      ]
+    },
+    {
+      "file": "packages/core/src/lib/pagination.ts",
+      "shouldFire": [],
+      "mustNotFire": [
+        {
+          "ruleId": "no-type-assertions-on-db-results",
+          "lineHint": 52,
+          "description": "InferRow<T> uses T['$inferSelect'] — correct Drizzle pattern for typing query results, not a type assertion"
+        },
+        "no-hardcoded-credentials",
+        "no-console-in-production",
+        "no-security-todos",
+        "no-raw-sql-interpolation",
+        "no-silent-migration-failures",
+        "atomic-cache-operations",
+        "no-env-override-for-infra-config",
+        "cascade-delete-review",
+        "constant-time-auth",
+        "no-redis-keys-in-production"
+      ],
+      "notes": "Clean file — InferRow type uses Drizzle's $inferSelect pattern which is NOT a type assertion"
+    },
+    {
+      "file": "packages/core/src/drizzle/schema.ts",
+      "shouldFire": [],
+      "mustNotFire": [
+        "no-hardcoded-credentials",
+        "no-console-in-production",
+        "no-security-todos",
+        "no-raw-sql-interpolation",
+        "no-silent-migration-failures",
+        "atomic-cache-operations",
+        "no-type-assertions-on-db-results",
+        "no-env-override-for-infra-config",
+        "cascade-delete-review",
+        "constant-time-auth",
+        "no-redis-keys-in-production"
+      ],
+      "notes": "Clean file — no violations expected"
+    },
+    {
+      "file": "packages/core/src/routes/v1/branches.ts",
+      "shouldFire": [],
+      "mustNotFire": [
+        {
+          "ruleId": "no-raw-sql-interpolation",
+          "lineHint": 194,
+          "description": "Fully parameterized sql template tag for audit log INSERT — all values use ${} placeholders, not sql.raw()"
+        },
+        "no-hardcoded-credentials",
+        "no-console-in-production",
+        "no-security-todos",
+        "no-silent-migration-failures",
+        "atomic-cache-operations",
+        "no-type-assertions-on-db-results",
+        "no-env-override-for-infra-config",
+        "cascade-delete-review",
+        "constant-time-auth",
+        "no-redis-keys-in-production"
+      ],
+      "notes": "Clean file — parameterized SQL audit log insert is NOT a raw SQL interpolation"
+    },
+    {
+      "file": "packages/core/src/types/api.ts",
+      "shouldFire": [],
+      "mustNotFire": [
+        "no-hardcoded-credentials",
+        "no-console-in-production",
+        "no-security-todos",
+        "no-raw-sql-interpolation",
+        "no-silent-migration-failures",
+        "atomic-cache-operations",
+        "no-type-assertions-on-db-results",
+        "no-env-override-for-infra-config",
+        "cascade-delete-review",
+        "constant-time-auth",
+        "no-redis-keys-in-production"
+      ],
+      "notes": "Clean file — no violations expected"
+    }
+  ]
+}

@@ -1,0 +1,205 @@
+{
+  "id": "noise-01",
+  "description": "Analytics, telemetry, and metrics system across 17 files. 6 files have violations — the rest are clean. Tests whether the agent maintains precision under volume, resisting the urge to flag patterns in clean files. Violations include: unsafe type assertion after shallow check, silent error handling, parameter mutation via .sort() and .push(), and 'best-effort' catch that silently skips data deletion. FP traps include: class sorting its own state, catch with counter AND log.warn preserving error, assertion after null check + throw, and fire-and-forget .catch on telemetry.",
+  "category": "noise-resilience",
+  "compare": {
+    "base": "main",
+    "head": "origin/eval/noise-01"
+  },
+  "expectations": [
+    {
+      "file": "packages/core/src/lib/telemetry-ingest.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-unsafe-type-assertion",
+          "lineHint": 54,
+          "description": "raw as TelemetrySpan after checking only traceId, spanId, and operationName — does NOT validate serviceName, status, startTime, endTime, attributes, or events. Compare to line 19 which correctly uses TelemetrySpanSchema.parse() before casting."
+        }
+      ],
+      "mustNotFire": [
+        {
+          "ruleId": "no-unsafe-type-assertion",
+          "lineHint": 19,
+          "description": "validated as unknown as TelemetrySpan after TelemetrySpanSchema.parse() — full zod validation, safe assertion"
+        },
+        "no-silent-error-handling",
+        "no-direct-mutation"
+      ],
+      "notes": "Line 19 has a SAFE assertion (validated as unknown as TelemetrySpan) after zod parse — agent must NOT flag it."
+    },
+    {
+      "file": "packages/core/src/lib/analytics-pipeline.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-silent-error-handling",
+          "lineHint": 52,
+          "description": "catch {} that only increments stageErrors counter — error message, type, and stack trace are all lost. The counter alone gives no insight into what failed. Compare to the AbortError check at lines 43-48 which properly discriminates by error type."
+        }
+      ],
+      "mustNotFire": [
+        {
+          "ruleId": "no-silent-error-handling",
+          "lineHint": 43,
+          "description": "AbortError check discriminates by error type (signal.reason instanceof DOMException), handles only AbortError, and throws everything else"
+        },
+        "no-unsafe-type-assertion",
+        "no-direct-mutation"
+      ],
+      "notes": "The AbortError check at line 43-48 is correct — agent must NOT flag this as silent error handling."
+    },
+    {
+      "file": "packages/core/src/lib/metrics-registry.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-direct-mutation",
+          "lineHint": 66,
+          "description": "metrics.sort() mutates the parameter array in-place. The function signature suggests it returns a sorted copy, but .sort() both mutates AND returns. Compare to getTopMetrics at line 73 which correctly uses [...metrics].sort()."
+        }
+      ],
+      "mustNotFire": [
+        {
+          "ruleId": "no-direct-mutation",
+          "lineHint": 73,
+          "description": "[...metrics].sort() correctly copies the array before sorting"
+        },
+        "no-unsafe-type-assertion",
+        "no-silent-error-handling"
+      ],
+      "notes": "Line 73 has the correct pattern: [...metrics].sort(). Module-scoped registry Map mutations (incrementCounter, setGauge) are intentional state management and should NOT be flagged."
+    },
+    {
+      "file": "packages/core/src/lib/analytics-collector.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-direct-mutation",
+          "lineHint": 57,
+          "description": "events.push(event) — mutates the parameter array by pushing new elements into it. The function receives events as a parameter and modifies it in-place."
+        }
+      ],
+      "mustNotFire": ["no-unsafe-type-assertion", "no-silent-error-handling"],
+      "notes": "The 'validated as unknown as AnalyticsEvent' on line 21 is safe because it follows AnalyticsEventSchema.parse(). The buffer.length = 0 is module-scoped state management."
+    },
+    {
+      "file": "packages/core/src/lib/retention-policy.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-silent-error-handling",
+          "lineHint": 80,
+          "description": "Catch silently skips data type with only log.debug — deleteExpiredData failures mean data accumulates indefinitely. 'Non-critical' framing is misleading — retention policy violations can have compliance implications."
+        }
+      ],
+      "mustNotFire": ["no-unsafe-type-assertion", "no-direct-mutation"],
+      "notes": "policies Map is module-scoped mutable state — mutations are intentional."
+    },
+    {
+      "file": "packages/core/src/lib/telemetry-buffer.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-direct-mutation",
+          "lineHint": 52,
+          "description": "spans.sort() mutates the parameter array in-place. Same file has correct [...spanBuffer] pattern for contrast."
+        }
+      ],
+      "mustNotFire": ["no-unsafe-type-assertion", "no-silent-error-handling"],
+      "notes": "spanBuffer is module-scoped mutable state — mutations are intentional."
+    },
+    {
+      "file": "packages/core/src/lib/dashboard-builder.ts",
+      "shouldFire": [],
+      "mustNotFire": [
+        {
+          "ruleId": "no-direct-mutation",
+          "lineHint": 73,
+          "description": "[...this.panels] in build() copies the array. toTimeSeries uses [...metrics].sort(). Class owns its own state."
+        },
+        "no-unsafe-type-assertion",
+        "no-silent-error-handling"
+      ],
+      "notes": "Clean file. [...this.panels] copies the array in build(). [...metrics].sort() in toTimeSeries copies before sorting."
+    },
+    {
+      "file": "packages/core/src/lib/alert-rules.ts",
+      "shouldFire": [],
+      "mustNotFire": [
+        {
+          "ruleId": "no-silent-error-handling",
+          "lineHint": 117,
+          "description": "safeEvaluateRule catch increments failureCounts AND calls log.warn with full error details (ruleId, error message, failureCount). This preserves error context — NOT silent."
+        },
+        "no-unsafe-type-assertion",
+        "no-direct-mutation"
+      ],
+      "notes": "Clean file. The catch block both counts failures AND logs the full error with log.warn — this is proper error handling, not silent."
+    },
+    {
+      "file": "packages/core/src/lib/analytics-aggregator.ts",
+      "shouldFire": [],
+      "mustNotFire": [
+        {
+          "ruleId": "no-unsafe-type-assertion",
+          "lineHint": 109,
+          "description": "result as AggregatedMetric after null check (if (!result) throw) — comprehensive guard ensures result is non-null before assertion"
+        },
+        "no-silent-error-handling",
+        "no-direct-mutation"
+      ],
+      "notes": "Clean file. [...events].sort() correctly copies before sorting. The assertion after throw-if-null is safe."
+    },
+    {
+      "file": "packages/core/src/lib/telemetry-client.ts",
+      "shouldFire": [],
+      "mustNotFire": [
+        {
+          "ruleId": "no-silent-error-handling",
+          "lineHint": 90,
+          "description": ".catch(() => {}) on fire-and-forget telemetry heartbeat — genuinely justified best-effort semantics. Comment explains: telemetry availability checks should never affect the main application."
+        },
+        "no-unsafe-type-assertion",
+        "no-direct-mutation"
+      ],
+      "notes": "Clean file. The catch in exportSpans re-throws after putting spans back — not silent. sendHeartbeat's .catch(() => {}) is justified fire-and-forget."
+    },
+    {
+      "file": "packages/core/src/types/analytics.ts",
+      "shouldFire": [],
+      "mustNotFire": ["no-unsafe-type-assertion", "no-silent-error-handling", "no-direct-mutation"],
+      "notes": "Clean type definitions."
+    },
+    {
+      "file": "packages/core/src/types/telemetry.ts",
+      "shouldFire": [],
+      "mustNotFire": ["no-unsafe-type-assertion", "no-silent-error-handling", "no-direct-mutation"],
+      "notes": "Clean type definitions."
+    },
+    {
+      "file": "packages/core/src/types/metrics.ts",
+      "shouldFire": [],
+      "mustNotFire": ["no-unsafe-type-assertion", "no-silent-error-handling", "no-direct-mutation"],
+      "notes": "Clean type definitions."
+    },
+    {
+      "file": "packages/core/src/lib/metrics-exporter.ts",
+      "shouldFire": [],
+      "mustNotFire": ["no-unsafe-type-assertion", "no-silent-error-handling", "no-direct-mutation"],
+      "notes": "Clean file. The .catch in startExporter logs the error — not silent. MetricExportConfigSchema.parse() validates before use."
+    },
+    {
+      "file": "packages/core/src/middleware/analytics-middleware.ts",
+      "shouldFire": [],
+      "mustNotFire": ["no-unsafe-type-assertion", "no-silent-error-handling", "no-direct-mutation"],
+      "notes": "Clean file. activeRequests Map is module-scoped mutable state. The non-null assertion on activeRequests.get(key)! is safe because the line above just called .set()."
+    },
+    {
+      "file": "packages/core/src/routes/v1/analytics.ts",
+      "shouldFire": [],
+      "mustNotFire": ["no-unsafe-type-assertion", "no-silent-error-handling", "no-direct-mutation"],
+      "notes": "Clean file. The 'event as unknown as AnalyticsEvent' cast follows zod schema validation."
+    },
+    {
+      "file": "packages/core/src/routes/v1/telemetry.ts",
+      "shouldFire": [],
+      "mustNotFire": ["no-unsafe-type-assertion", "no-silent-error-handling", "no-direct-mutation"],
+      "notes": "Clean file."
+    }
+  ]
+}

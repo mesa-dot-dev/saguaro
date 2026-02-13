@@ -1,0 +1,109 @@
+{
+  "id": "basics-02",
+  "description": "Web repository analytics and client flow refactor with 9 planted issues across 5 files covering API key handling, auth redirects, division safety, query cache keys, console logging, and React hook dependencies. Includes mustNotFire traps for correct patterns that look like violations.",
+  "category": "basics",
+  "compare": {
+    "base": "origin/main",
+    "head": "origin/refactor/web-repo-analytics-and-client-flow"
+  },
+  "expectations": [
+    {
+      "file": "packages/web/src/lib/core-client.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-client-api-key-fallback",
+          "lineHint": 8,
+          "description": "gatewayApiKey uses ?? fallback to hardcoded literal 'sk_live_gateway_web_fallback_9f2c1d4a'"
+        },
+        {
+          "ruleId": "require-sanitized-auth-redirect",
+          "lineHint": 51,
+          "description": "window.location.href set via string interpolation with currentRelativeUrl() instead of using buildSignInRedirect helper"
+        }
+      ],
+      "mustNotFire": [
+        {
+          "ruleId": "no-client-api-key-fallback",
+          "lineHint": 28,
+          "description": "buildHeaders uses gatewayApiKey variable — the violation is the fallback assignment on line 8, not the usage site"
+        }
+      ]
+    },
+    {
+      "file": "packages/web/src/lib/utils.ts",
+      "shouldFire": [
+        {
+          "ruleId": "guard-percentage-division",
+          "lineHint": 18,
+          "description": "toPercent divides partial/total without guarding total === 0 — returns NaN/Infinity"
+        }
+      ],
+      "mustNotFire": [
+        {
+          "ruleId": "guard-percentage-division",
+          "lineHint": 21,
+          "description": "clampPercent IS the guard — it checks Number.isFinite and clamps to 0-100. The function itself is the fix, not a violation."
+        }
+      ]
+    },
+    {
+      "file": "packages/web/src/components/repository-analytics.tsx",
+      "shouldFire": [
+        {
+          "ruleId": "guard-percentage-division",
+          "lineHint": 96,
+          "description": "Math.round((lines / totalProviderLines) * 100) in providerData map — no guard on totalProviderLines being zero"
+        },
+        {
+          "ruleId": "guard-percentage-division",
+          "lineHint": 275,
+          "description": "toPercent(commit.aiLines, commit.added) — commit.added can be 0, no guard"
+        },
+        {
+          "ruleId": "react-hook-dependency-completeness",
+          "lineHint": 86,
+          "description": "useMemo uses 'period' in the template string but dependency array is [analytics] — missing 'period' dependency"
+        }
+      ],
+      "mustNotFire": [
+        {
+          "ruleId": "guard-percentage-division",
+          "lineHint": 92,
+          "description": "clampPercent(toPercent(...)) — the call site wraps toPercent with clampPercent which handles NaN/Infinity. Violation is in toPercent definition, not at the guarded call site."
+        }
+      ]
+    },
+    {
+      "file": "packages/web/src/hooks/use-org.ts",
+      "shouldFire": [
+        {
+          "ruleId": "react-query-key-matches-inputs",
+          "lineHint": 32,
+          "description": "queryKey: ['org'] but queryFn uses orgSlug — orgSlug is missing from key, causing stale/cross-org cache"
+        }
+      ],
+      "mustNotFire": [
+        {
+          "ruleId": "react-query-key-matches-inputs",
+          "lineHint": 78,
+          "description": "useOrgMembers has queryKey: ['org-members', orgSlug, role] — correctly includes all dynamic inputs"
+        }
+      ]
+    },
+    {
+      "file": "packages/web/src/routes/$orgSlug/repositories_.$name.tsx",
+      "shouldFire": [
+        {
+          "ruleId": "react-query-key-matches-inputs",
+          "lineHint": 61,
+          "description": "queryKey: ['repo', name] but queryFn uses org.slug — org slug missing from key"
+        },
+        {
+          "ruleId": "no-console-log",
+          "lineHint": 139,
+          "description": "console.log('Copying clone URL', cloneUrl) in handleCopyUrl — debug log in production"
+        }
+      ]
+    }
+  ]
+}

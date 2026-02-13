@@ -1,0 +1,159 @@
+{
+  "id": "context-01",
+  "description": "Streaming pipeline, rate limiter, event bus, and stream recovery module with patterns that superficially match rules but are correct in context. Tests whether the agent understands WHY code exists before flagging it. Hard cases include: zod validation of one schema then cast to a different type, safeParse that checks .success but casts the original input, shallow structural checks masquerading as validation, convincing best-effort catch blocks that actually orphan resources, and nested mutation through shallow spreads.",
+  "category": "context-awareness",
+  "compare": {
+    "base": "main",
+    "head": "origin/eval/context-01"
+  },
+  "expectations": [
+    {
+      "file": "packages/core/src/lib/stream-processor.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-unsafe-type-assertion",
+          "lineHint": 103,
+          "description": "value as StreamChunk after only typeof + 'sequence' in check — shallow structural check does NOT validate field types or all required fields"
+        },
+        {
+          "ruleId": "no-unsafe-type-assertion",
+          "lineHint": 128,
+          "description": "parsed as StreamChunk after typeof + 'id' in + 'sequence' in check — only verifies property existence, not types or the presence of 'data' field"
+        },
+        {
+          "ruleId": "no-silent-error-handling",
+          "lineHint": 108,
+          "description": "Empty catch in resumeStream swallows ALL errors (network, type, logic bugs) with no logging or discrimination. Unlike the AbortError catch above which checks error type."
+        },
+        {
+          "ruleId": "no-silent-error-handling",
+          "lineHint": 142,
+          "description": "Empty catch in releaseStreamLock claims 'TTL will expire naturally' but failed lock release causes deadlock for all competing operations until TTL expires — could be minutes."
+        }
+      ],
+      "mustNotFire": [
+        {
+          "ruleId": "no-unsafe-type-assertion",
+          "lineHint": 51,
+          "description": "validated as unknown as StreamChunk after StreamChunkSchema.parse() — full runtime validation, assertion bridges zod-inferred type with separately-declared interface"
+        },
+        {
+          "ruleId": "no-direct-mutation",
+          "lineHint": 81,
+          "description": "[...buffered, ...live].sort() operates on a locally-created array — safe"
+        },
+        {
+          "ruleId": "no-silent-error-handling",
+          "lineHint": 58,
+          "description": "AbortError catch discriminates by error type (signal.reason instanceof DOMException) and re-throws all others"
+        }
+      ],
+      "notes": "Context-OK: line 51 'validated as unknown as StreamChunk' is safe because StreamChunkSchema.parse() provides full runtime validation — the assertion bridges TypeScript's inability to unify a zod-inferred type with a separately-declared interface. Context-OK: line 81 merged.sort() operates on a locally-created array ([...buffered, ...live]). Context-OK: AbortError catch at line 58 discriminates by error type and re-throws all others."
+    },
+    {
+      "file": "packages/core/src/lib/stream-recovery.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-unsafe-type-assertion",
+          "lineHint": 41,
+          "description": "validated as unknown as StreamChunk — ReconnectPayloadSchema.parse(raw) validates ReconnectPayload fields but casts to StreamChunk, a completely different type. Zod call is present but validates the wrong schema."
+        },
+        {
+          "ruleId": "no-unsafe-type-assertion",
+          "lineHint": 59,
+          "description": "msg as ReconnectPayload — safeParse checks .success on result but then casts the original msg instead of using result.data. Validation ran but the cast bypasses the validated output."
+        },
+        {
+          "ruleId": "no-silent-error-handling",
+          "lineHint": 84,
+          "description": "Empty catch in recoverStreamResources claims cleanup is 'best-effort' with convincing comment about GC/process restart, but failure actually orphans file handles, read buffers, and backpressure tokens until process recycle."
+        },
+        {
+          "ruleId": "no-direct-mutation",
+          "lineHint": 116,
+          "description": "state.chunks.sort() — spread created a new top-level object but chunks is still a reference to snapshot.chunks. The .sort() mutates the original snapshot's chunk array."
+        }
+      ],
+      "mustNotFire": [
+        {
+          "ruleId": "no-direct-mutation",
+          "lineHint": 99,
+          "description": "[...buffer].reverse() creates a new array via spread before reversing — safe, does not mutate the parameter"
+        }
+      ],
+      "notes": "stream-recovery.ts has 4 violations across all 3 rules. The hardest are: (1) schema mismatch — zod validates ReconnectPayload but cast is to StreamChunk, (2) partial safeParse — validation ran on 'msg' but result.data is ignored and original msg is cast directly. The FP trap at line 99 uses [...buffer].reverse() which creates a copy."
+    },
+    {
+      "file": "packages/core/src/middleware/rate-limiter.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-unsafe-type-assertion",
+          "lineHint": 49,
+          "description": "JSON.parse(raw!) as RateLimitEntry — non-null assertion on Redis .get() which returns null for expired/missing keys. raw is null when key doesn't exist, causing JSON.parse(null) to throw."
+        },
+        {
+          "ruleId": "no-unsafe-type-assertion",
+          "lineHint": 132,
+          "description": "parsed as RateLimitConfig after shallow structural check ('windowMs' in parsed). Only verifies one property exists — does not validate types of windowMs, maxRequests, or keyPrefix, nor that they are the correct types."
+        }
+      ],
+      "mustNotFire": [
+        {
+          "ruleId": "no-silent-error-handling",
+          "lineHint": 63,
+          "description": "Redis fail-open catch — documented ADR-017 design decision. Rate limiting degrades gracefully rather than blocking all traffic when Redis is unavailable."
+        },
+        {
+          "ruleId": "no-direct-mutation",
+          "lineHint": 103,
+          "description": "entry.count++ mutates module-scoped routeCounters Map entry — intentional mutable shared state"
+        },
+        {
+          "ruleId": "no-direct-mutation",
+          "lineHint": 149,
+          "description": "entries.sort() in getSortedRouteStats — entries is a locally-created array from Array.from().map(), not a parameter"
+        }
+      ],
+      "notes": "Context-OK: Redis fail-open catch at line 63 is documented design decision. Context-OK: routeCounters Map mutations are intentional shared state. Context-OK: getSortedRouteStats sorts a locally-created array, not a parameter. The parseStoredConfig violation is hard — it has a structural check but only verifies property existence, not types."
+    },
+    {
+      "file": "packages/core/src/lib/event-bus.ts",
+      "shouldFire": [
+        {
+          "ruleId": "no-unsafe-type-assertion",
+          "lineHint": 169,
+          "description": "rawData as unknown as Record<string, unknown> — unvalidated external data cast without any runtime check. The function's own docstring says 'data has not been validated' but the comment says 'trust the event routing layer' — contradiction."
+        },
+        {
+          "ruleId": "no-direct-mutation",
+          "lineHint": 130,
+          "description": "handlers.sort() in getOrderedHandlers mutates the parameter array in-place. Array.sort() both mutates AND returns — this silently reorders the subscriptions Map's internal array. Compare to getRecentEvents (line 141) which correctly copies first with [...this.eventLog]."
+        }
+      ],
+      "mustNotFire": [
+        {
+          "ruleId": "no-silent-error-handling",
+          "lineHint": 103,
+          "description": "Pub/sub handler isolation — one subscriber's failure must not break the pipeline"
+        },
+        {
+          "ruleId": "no-unsafe-type-assertion",
+          "lineHint": 44,
+          "description": "handler as EventHandler — safe type widening (EventHandler<T> to EventHandler<unknown>)"
+        },
+        {
+          "ruleId": "no-unsafe-type-assertion",
+          "lineHint": 156,
+          "description": "handler as EventHandler<unknown> follows a typeof === 'function' guard"
+        }
+      ],
+      "notes": "Context-OK: empty catch at line 103 implements pub/sub handler isolation — one subscriber's failure must not break the pipeline. Context-OK: 'handler as EventHandler' at lines 44/67 is safe type widening. Context-OK: line 156 follows a typeof === 'function' guard."
+    },
+    {
+      "file": "packages/core/src/types/stream.ts",
+      "shouldFire": [],
+      "mustNotFire": ["no-unsafe-type-assertion", "no-silent-error-handling", "no-direct-mutation"],
+      "notes": "Clean type definitions file — no violations expected"
+    }
+  ]
+}
