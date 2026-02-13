@@ -1,0 +1,19 @@
+class ${FORMULA_CLASS_NAME} < Formula
+  desc "Mesa code review CLI"
+  homepage "${REPO_URL}"
+  url "${URL}"
+  sha256 "${SHA256}"
+  license "Apache-2.0"
+  version "${VERSION}"
+
+  depends_on "node"
+
+  def install
+    system "npm", "install", *std_npm_args
+    bin.install_symlink libexec.glob("bin/*")
+  end
+
+  test do
+    assert_match "mesa", shell_output("#{bin}/mesa --help")
+  end
+end
