@@ -7,7 +7,33 @@ of the code-review CLI.
 
 - `bun`, `node`, `npm`, `git` installed
 - `gh` authenticated (`gh auth status`)
-- `homebrew-tap` repo cloned locally
+
+## Automated Release (Preferred)
+
+Use the GitHub workflow at `.github/workflows/release-code-review.yml`.
+
+### Trigger via GitHub Actions
+
+1. Bump `packages/code-review/package.json` version and merge to `main`, or
+2. Run the workflow manually (`workflow_dispatch`) and set `version`.
+
+The workflow will:
+
+- run `scripts/release-code-review.sh`
+- create release assets in `mesa-dot-dev/homebrew-tap`
+- update `Formula/code-review.rb` and `Formula/code-review@<version>.rb` on
+  the `staged` branch via `mesa-dot-dev/homebrew-tap-action`
+- rely on `homebrew-tap`'s `test-and-merge` workflow to validate and promote
+  `staged -> main`
+
+### Dry run
+
+Run `Release Code Review CLI` with `dry_run=true` to validate packaging/smoke
+tests without updating Homebrew formulae.
+
+## Manual Fallback
+
+If workflow automation is unavailable, use the manual process below.
 
 ## 1) Bump Version in depot
 
@@ -69,7 +95,7 @@ From `homebrew-tap` root:
 
 ```bash
 brew style Formula/code-review.rb
-brew audit --strict mesa-dot-dev/tap/code-review
+brew audit --strict mesa-dot-dev/homebrew-tap/code-review
 ```
 
 ## 6) Push Formula to staged
