@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import fs from 'node:fs';
+import path from 'node:path';
+import { inspect } from 'node:util';
 import chalk from 'chalk';
 import yargs, { type Argv } from 'yargs';
 import { MesaError } from '../../lib/errors.js';
@@ -112,6 +115,34 @@ const wrapHandler = <T>(
 
 const globalAbortController = new AbortController();
 
+function enableDebugCapture(filePath: string): string {
+  const resolvedPath = path.resolve(filePath);
+  fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
+  fs.appendFileSync(resolvedPath, `\n=== Mesa Debug Session ${new Date().toISOString()} ===\n`, 'utf8');
+
+  const format = (args: unknown[]) =>
+    args
+      .map((arg) => (typeof arg === 'string' ? arg : inspect(arg, { colors: false, depth: 6, breakLength: 120 })))
+      .join(' ');
+
+  const write = (level: 'LOG' | 'INFO' | 'WARN' | 'ERROR', args: unknown[]) => {
+    const line = `${new Date().toISOString()} [${level}] ${format(args)}\n`;
+    try {
+      fs.appendFileSync(resolvedPath, line, 'utf8');
+    } catch {
+      // Ignore logging sink failures.
+    }
+  };
+
+  const fileOnly = (...args: unknown[]) => write('LOG', args);
+  console.log = fileOnly;
+  console.info = fileOnly;
+  console.warn = fileOnly;
+  console.error = fileOnly;
+
+  return resolvedPath;
+}
+
 process.on('SIGINT', () => {
   globalAbortController.abort();
   console.error(chalk.yellow('\nReview cancelled.'));
@@ -181,9 +212,16 @@ yargs(argv)
     wrapHandler('review', (async (argv: ReviewArgv) => {
       // Set logger level based on flags
       if (argv.debug) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const debugLogPath = enableDebugCapture(
+          path.resolve(process.cwd(), '.mesa', '.tmp', `logfile-${timestamp}.txt`)
+        );
         logger.setLevel('debug');
+        logger.info(chalk.gray(`[debug] Writing debug logs to ${debugLogPath}`));
       } else if (argv.verbose) {
         logger.setLevel('verbose');
+      } else {
+        logger.setLevel('normal');
       }
 
       return reviewCommand({
@@ -248,7 +286,7 @@ yargs(argv)
       )
       .command(
         'create [title]',
-        'Create a new rule file',
+        'Create a new rule policy',
         (y: Argv) => {
           y.positional('title', {
             describe: 'Rule title',

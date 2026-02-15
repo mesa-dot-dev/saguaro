@@ -1,5 +1,5 @@
 import type { Reviewer } from '../core/review.js';
-import type { Rule } from '../types/types.js';
+import type { RulePolicy } from '../types/types.js';
 import { AgentExecutionError } from './errors.js';
 import { getFileAtRef, listChangedFilesFromGit } from './git.js';
 import {
@@ -8,11 +8,22 @@ import {
   resolveModelFromResolvedConfig,
 } from './review-model-config.js';
 import { runReviewAgent } from './review-runner.js';
-import { loadConfiguredRules } from './rules.js';
+import { resolveSkillsForFiles } from './skills.js';
 
 export interface ReviewRuntime {
   listChangedFiles(baseRef: string, headRef: string): Promise<string[]> | string[];
-  loadRules(rulesDir?: string): Promise<Rule[]> | Rule[];
+  loadRules(
+    changedFiles: string[],
+    skillsDir?: string
+  ):
+    | Promise<{
+        filesWithRules: Map<string, RulePolicy[]>;
+        rulesLoaded: number;
+      }>
+    | {
+        filesWithRules: Map<string, RulePolicy[]>;
+        rulesLoaded: number;
+      };
   createReviewer(configPath?: string): Reviewer;
 }
 
@@ -31,8 +42,8 @@ export function createNodeReviewRuntime(): ReviewRuntime {
     listChangedFiles(baseRef, headRef) {
       return listChangedFilesFromGit(baseRef, headRef);
     },
-    loadRules(rulesDir) {
-      return loadConfiguredRules(rulesDir);
+    loadRules(changedFiles, skillsDir) {
+      return resolveSkillsForFiles(changedFiles, { explicitSkillsDir: skillsDir });
     },
     createReviewer(configPath) {
       const resolvedConfig = loadReviewAdapterConfig(configPath);

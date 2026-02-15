@@ -1,2 +1,2 @@
 export * from './adapter/review.js';
-export * from './adapter/rules.js';
+export * from './adapter/skills.js';

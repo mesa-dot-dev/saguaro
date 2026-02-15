@@ -3,8 +3,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
 import { runReview } from '../adapter/review.js';
+import type { ReviewEngineOutcome } from '../core/review.js';
 import { getCodebaseContext } from '../indexer/index.js';
-import { NoRulesFoundError } from '../lib/errors.js';
+import { MesaError } from '../lib/errors.js';
 import {
   getDiffs,
   getLocalDiffs,
@@ -14,7 +15,7 @@ import {
 } from '../lib/git.js';
 import { logger } from '../lib/logger.js';
 import { loadValidatedConfig } from '../lib/review-model-config.js';
-import type { ReviewProgressEvent, ReviewResult } from '../types/types.js';
+import type { ReviewProgressEvent, ReviewResult, Violation } from '../types/types.js';
 import { CliSpinner } from './lib/spinner.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -100,7 +101,7 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
 
     const progressReporter = new ReviewCliProgressReporter();
 
-    let outcome: Awaited<ReturnType<typeof runReview>>['outcome'];
+    let outcome: ReviewEngineOutcome;
     try {
       const reviewResult = await runReview({
         baseRef,
@@ -142,9 +143,17 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
       logger.verbose(`  ${outcome.totalChecks} total checks to perform.`);
     }
 
-    if (outcome.kind === 'no-matching-rules') {
+    if (outcome.kind === 'no-matching-skills') {
+      if (options.rules && outcome.rulesLoaded === 0) {
+        throw new MesaError(
+          'RULES_NOT_LOADED',
+          `No rules loaded from ${options.rules}. Expected skill directory structure: <dir>/<rule>/SKILL.md + references/mesa-policy.yaml`,
+          { suggestion: 'Run "mesa init" to generate starter rules, or check the directory structure.' }
+        );
+      }
       if (outcome.rulesLoaded === 0) {
-        throw new NoRulesFoundError();
+        console.log('No rules found for this repository hierarchy. Review passed.');
+        return 0;
       }
       console.log('No rules matched the changed files. Review passed.');
       return 0;
@@ -152,7 +161,7 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
 
     printViolations(outcome.result, options.output, cursorDeeplink, !!options.verbose);
 
-    const hasErrors = outcome.result.violations.some((violation) => violation.severity === 'error');
+    const hasErrors = outcome.result.violations.some((violation: Violation) => violation.severity === 'error');
     return hasErrors ? 1 : 0;
   } catch (error) {
     // All errors propagate to wrapHandler's printError for tiered display.

@@ -26,7 +26,7 @@ export interface ReviewResult {
   };
 }
 
-export interface Rule {
+export interface RulePolicy {
   id: string;
   title: string;
   severity: Severity;
@@ -37,6 +37,16 @@ export interface Rule {
     compliant?: string[];
   };
   tags?: string[];
+  priority?: number;
+}
+
+export interface SkillDefinition {
+  name: string;
+  description: string;
+  skillDir: string;
+  skillFilePath: string;
+  policyFilePath: string;
+  policy: RulePolicy;
 }
 
 export interface ReviewRunSplitProgressEvent {

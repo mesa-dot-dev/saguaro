@@ -1,13 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
-import { STARTER_RULES } from '../../templates/starter-rules.js';
+import { getStarterSkillFiles } from '../../templates/starter-skills.js';
 import { ask, askChoice, createReadline } from './prompt.js';
 
 const mesaDir = '.mesa';
-const rulesDir = path.join(mesaDir, 'rules');
+const skillsDir = '.claude/skills';
 const configPath = path.join(mesaDir, 'config.yaml');
-const rulesKeepPath = path.join(rulesDir, '.gitkeep');
 const envLocalPath = '.env.local';
 const apiKeyEnvName = 'ANTHROPIC_API_KEY';
 const secondary = chalk.hex('#be3c00');
@@ -15,7 +14,7 @@ const tertiary = chalk.hex('#ffecba');
 const DEFAULT_PROVIDER = 'anthropic' as const;
 const DEFAULT_MODEL = 'claude-opus-4-6';
 
-type RuleSetupChoice = 'default' | 'skip';
+type SkillSetupChoice = 'default' | 'skip';
 
 function buildConfigContent(): string {
   return `# Mesa Configuration
@@ -69,10 +68,14 @@ function upsertEnvValue(filePath: string, key: string, value: string): void {
   fs.writeFileSync(filePath, normalized);
 }
 
-function writeBasicRules(dir: string) {
-  for (const filename in STARTER_RULES) {
-    const content = STARTER_RULES[filename];
-    fs.writeFileSync(path.join(dir, filename), content);
+function writeStarterSkills(dir: string) {
+  for (const starter of getStarterSkillFiles()) {
+    const skillFilePath = path.join(dir, starter.skillFilePath);
+    const policyFilePath = path.join(dir, starter.policyFilePath);
+    fs.mkdirSync(path.dirname(skillFilePath), { recursive: true });
+    fs.mkdirSync(path.dirname(policyFilePath), { recursive: true });
+    fs.writeFileSync(skillFilePath, starter.skillMarkdown);
+    fs.writeFileSync(policyFilePath, starter.policyYaml);
   }
 }
 
@@ -84,8 +87,8 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
     return 1;
   }
 
-  fs.mkdirSync(rulesDir, { recursive: true });
-  fs.writeFileSync(rulesKeepPath, '');
+  fs.mkdirSync(mesaDir, { recursive: true });
+  fs.mkdirSync(skillsDir, { recursive: true });
   const rl1 = createReadline();
   let apiKey = '';
   try {
@@ -109,19 +112,19 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   }
 
   const rl2 = createReadline();
-  let ruleSetupChoice: RuleSetupChoice;
+  let skillSetupChoice: SkillSetupChoice;
   try {
     const choice = await askChoice(rl2, secondary('How would you like to set up review rules?'), [
       { id: 'default', label: 'Use Mesa default starter rules' },
       { id: 'skip', label: 'Skip for now (set up rules later)' },
     ] as const);
-    ruleSetupChoice = choice.id;
+    skillSetupChoice = choice.id;
   } finally {
     rl2.close();
   }
 
-  if (ruleSetupChoice === 'default') {
-    writeBasicRules(path.resolve(process.cwd(), rulesDir));
+  if (skillSetupChoice === 'default') {
+    writeStarterSkills(path.resolve(process.cwd(), skillsDir));
     console.log(chalk.gray(`  Added starter rules. Add more with ${tertiary('mesa rules create')}.`));
   } else {
     console.log(chalk.gray(`  Specify your rules with ${secondary('mesa rules create')}.`));
@@ -129,7 +132,7 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
 
   console.log(secondary('\nMesa initialized successfully!'));
   console.log(chalk.gray(`  Created: ${configPath}`));
-  console.log(chalk.gray(`  Created: ${rulesDir}/`));
+  console.log(chalk.gray(`  Created: ${skillsDir}/`));
   if (wroteApiKey) {
     console.log(chalk.gray(`  Updated: ${envLocalPath} (${apiKeyEnvName})`));
   } else {

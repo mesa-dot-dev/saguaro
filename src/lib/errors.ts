@@ -4,7 +4,7 @@ export type MesaErrorCode =
   | 'API_KEY_MISSING'
   | 'GIT_NOT_FOUND'
   | 'GIT_DIFF_TOO_LARGE'
-  | 'NO_RULES_FOUND'
+  | 'RULES_NOT_LOADED'
   | 'AGENT_EXECUTION_FAILED';
 
 export class MesaError extends Error {
@@ -69,15 +69,6 @@ export class GitDiffTooLargeError extends MesaError {
       suggestion: 'Try narrowing the range with --base to reduce the diff size.',
     });
     this.name = 'GitDiffTooLargeError';
-  }
-}
-
-export class NoRulesFoundError extends MesaError {
-  constructor() {
-    super('NO_RULES_FOUND', 'No rules found. Mesa needs rules to know what to check.', {
-      suggestion: 'Create rules with "mesa rules create" or run "mesa init" to generate starter rules.',
-    });
-    this.name = 'NoRulesFoundError';
   }
 }
 

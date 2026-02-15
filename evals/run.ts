@@ -127,7 +127,7 @@ const ZERO_METRICS: EvalMetrics = {
 // ---------------------------------------------------------------------------
 
 function runRubric(rubric: EvalRubric): EvalResult {
-  const rulesPath = path.resolve(evalsDir, 'rules', rubric.id);
+  const rulesPath = path.resolve(evalsDir, 'skills', rubric.id);
   const timestamp = new Date().toISOString();
 
   if (!fs.existsSync(rulesPath)) {

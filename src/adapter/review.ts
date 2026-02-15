@@ -28,7 +28,7 @@ export async function runReview(request: ReviewAdapterRequest, runtime?: ReviewR
   const reviewCore = createReviewCore({
     input: {
       listChangedFiles: (base, head) => changedFilesOverride ?? effectiveRuntime.listChangedFiles(base, head),
-      loadRules: () => effectiveRuntime.loadRules(request.rulesDir),
+      loadRules: (changedFiles) => effectiveRuntime.loadRules(changedFiles, request.rulesDir),
     },
     reviewer: effectiveRuntime.createReviewer(request.configPath),
   });

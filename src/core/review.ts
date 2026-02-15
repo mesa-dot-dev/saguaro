@@ -1,5 +1,4 @@
-import { minimatch } from 'minimatch';
-import type { ReviewProgressCallback, ReviewResult, Rule } from '../types/types.js';
+import type { ReviewProgressCallback, ReviewResult, RulePolicy } from '../types/types.js';
 
 export interface ReviewRequest {
   baseRef: string;
@@ -13,13 +12,21 @@ export interface ReviewRequest {
 
 export interface ReviewInputChannel {
   listChangedFiles(baseRef: string, headRef: string): Promise<string[]> | string[];
-  loadRules(): Promise<Rule[]> | Rule[];
+  loadRules(changedFiles: string[]):
+    | Promise<{
+        filesWithRules: Map<string, RulePolicy[]>;
+        rulesLoaded: number;
+      }>
+    | {
+        filesWithRules: Map<string, RulePolicy[]>;
+        rulesLoaded: number;
+      };
 }
 
 export interface ReviewerInput {
   baseRef: string;
   headRef: string;
-  filesWithRules: Map<string, Rule[]>;
+  filesWithRules: Map<string, RulePolicy[]>;
   verbose?: boolean;
   codebaseContext?: string;
   diffs?: Map<string, string>;
@@ -47,8 +54,8 @@ export interface NoChangedFilesOutcome extends BaseReviewOutcome {
   kind: 'no-changed-files';
 }
 
-export interface NoMatchingRulesOutcome extends BaseReviewOutcome {
-  kind: 'no-matching-rules';
+export interface NoMatchingSkillsOutcome extends BaseReviewOutcome {
+  kind: 'no-matching-skills';
 }
 
 export interface ReviewedOutcome extends BaseReviewOutcome {
@@ -56,7 +63,7 @@ export interface ReviewedOutcome extends BaseReviewOutcome {
   result: ReviewResult;
 }
 
-export type ReviewEngineOutcome = NoChangedFilesOutcome | NoMatchingRulesOutcome | ReviewedOutcome;
+export type ReviewEngineOutcome = NoChangedFilesOutcome | NoMatchingSkillsOutcome | ReviewedOutcome;
 
 export interface ReviewCoreDeps {
   input: ReviewInputChannel;
@@ -79,30 +86,29 @@ export function createReviewCore(deps: ReviewCoreDeps): ReviewCore {
     async review(request: ReviewRequest): Promise<ReviewEngineOutcome> {
       const startedAtMs = clock.nowMs();
 
-      const [changedFiles, rules] = await Promise.all([
-        Promise.resolve(deps.input.listChangedFiles(request.baseRef, request.headRef)),
-        Promise.resolve(deps.input.loadRules()),
-      ]);
+      const changedFiles = await Promise.resolve(deps.input.listChangedFiles(request.baseRef, request.headRef));
+
+      const rulesResolution = await Promise.resolve(deps.input.loadRules(changedFiles));
 
       if (changedFiles.length === 0) {
         return {
           kind: 'no-changed-files',
           changedFiles,
-          rulesLoaded: rules.length,
+          rulesLoaded: rulesResolution.rulesLoaded,
           filesWithRules: 0,
           totalChecks: 0,
           durationMs: clock.nowMs() - startedAtMs,
         };
       }
 
-      const filesWithRulesMap = selectRulesForFiles(changedFiles, rules);
+      const filesWithRulesMap = rulesResolution.filesWithRules;
       const totalChecks = Array.from(filesWithRulesMap.values()).reduce((acc, fileRules) => acc + fileRules.length, 0);
 
       if (filesWithRulesMap.size === 0) {
         return {
-          kind: 'no-matching-rules',
+          kind: 'no-matching-skills',
           changedFiles,
-          rulesLoaded: rules.length,
+          rulesLoaded: rulesResolution.rulesLoaded,
           filesWithRules: 0,
           totalChecks,
           durationMs: clock.nowMs() - startedAtMs,
@@ -132,7 +138,7 @@ export function createReviewCore(deps: ReviewCoreDeps): ReviewCore {
       return {
         kind: 'reviewed',
         changedFiles,
-        rulesLoaded: rules.length,
+        rulesLoaded: rulesResolution.rulesLoaded,
         filesWithRules: filesWithRulesMap.size,
         totalChecks,
         durationMs,
@@ -140,56 +146,4 @@ export function createReviewCore(deps: ReviewCoreDeps): ReviewCore {
       };
     },
   };
-}
-
-function selectRulesForFiles(files: string[], rules: Rule[]): Map<string, Rule[]> {
-  const fileRules = new Map<string, Rule[]>();
-
-  for (const file of files) {
-    const applicableRules = dedupeRulesById(
-      rules.filter((rule) => {
-        if (!rule.globs || rule.globs.length === 0) {
-          return true;
-        }
-
-        let matched = false;
-        let excluded = false;
-        for (const glob of rule.globs) {
-          if (glob.startsWith('!')) {
-            if (minimatch(file, glob.slice(1))) {
-              excluded = true;
-            }
-            continue;
-          }
-
-          if (minimatch(file, glob)) {
-            matched = true;
-          }
-        }
-
-        return matched && !excluded;
-      })
-    );
-
-    if (applicableRules.length > 0) {
-      fileRules.set(file, applicableRules);
-    }
-  }
-
-  return fileRules;
-}
-
-function dedupeRulesById(rules: Rule[]): Rule[] {
-  const seen = new Set<string>();
-  const deduped: Rule[] = [];
-
-  for (const rule of rules) {
-    if (seen.has(rule.id)) {
-      continue;
-    }
-    seen.add(rule.id);
-    deduped.push(rule);
-  }
-
-  return deduped;
 }

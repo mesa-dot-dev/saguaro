@@ -4,11 +4,11 @@ import type { LanguageModel } from 'ai';
 import { generateText, stepCountIs, tool } from 'ai';
 import chalk from 'chalk';
 import { z } from 'zod';
-import type { ReviewProgressCallback, ReviewResult, Rule, Violation } from '../types/types.js';
+import type { ReviewProgressCallback, ReviewResult, RulePolicy, Violation } from '../types/types.js';
 import { logger } from './logger.js';
 
 export interface RunReviewOptions {
-  filesWithRules: Map<string, Rule[]>;
+  filesWithRules: Map<string, RulePolicy[]>;
   diffs: Map<string, string>;
   model: LanguageModel;
   filesPerWorker?: number;
@@ -254,16 +254,19 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
   };
 }
 
-function splitFilesForWorkers(filesWithRules: Map<string, Rule[]>, filesPerWorker: number): Map<string, Rule[]>[] {
+function splitFilesForWorkers(
+  filesWithRules: Map<string, RulePolicy[]>,
+  filesPerWorker: number
+): Map<string, RulePolicy[]>[] {
   const entries = Array.from(filesWithRules.entries());
-  const groups: Map<string, Rule[]>[] = [];
+  const groups: Map<string, RulePolicy[]>[] = [];
   for (let i = 0; i < entries.length; i += filesPerWorker) {
     groups.push(new Map(entries.slice(i, i + filesPerWorker)));
   }
   return groups;
 }
 
-function countRules(filesWithRules: Map<string, Rule[]>): number {
+function countRules(filesWithRules: Map<string, RulePolicy[]>): number {
   const uniqueRules = new Set<string>();
   for (const rules of filesWithRules.values()) {
     for (const rule of rules) {
@@ -407,7 +410,7 @@ function snapLine(
 
 function parseViolationsDetailed(
   text: string,
-  filesWithRules: Map<string, Rule[]>,
+  filesWithRules: Map<string, RulePolicy[]>,
   resolveFile: (path: string) => string | null
 ): ParseViolationsResult {
   const violations: Violation[] = [];
@@ -421,7 +424,7 @@ function parseViolationsDetailed(
     };
   }
 
-  const rulesById = new Map<string, Rule>();
+  const rulesById = new Map<string, RulePolicy>();
   for (const rules of filesWithRules.values()) {
     for (const rule of rules) {
       if (!rulesById.has(rule.id)) {
@@ -483,7 +486,7 @@ function truncateDiff(diff: string): string {
 
 function buildPrompt(options: {
   diffs: Map<string, string>;
-  filesWithRules: Map<string, Rule[]>;
+  filesWithRules: Map<string, RulePolicy[]>;
   codebaseContext?: string;
 }): string {
   const lines: string[] = [];
@@ -520,7 +523,7 @@ function buildPrompt(options: {
   lines.push('## Rules');
   lines.push('');
 
-  const uniqueRules = new Set<Rule>(Array.from(options.filesWithRules.values()).flat());
+  const uniqueRules = new Set<RulePolicy>(Array.from(options.filesWithRules.values()).flat());
   for (const rule of uniqueRules) {
     lines.push(formatRule(rule));
     lines.push('');
@@ -529,7 +532,7 @@ function buildPrompt(options: {
   return lines.join('\n');
 }
 
-function formatRule(rule: Rule): string {
+function formatRule(rule: RulePolicy): string {
   const lines: string[] = [
     `### Rule ID: ${rule.id}`,
     `**Severity:** ${rule.severity}`,

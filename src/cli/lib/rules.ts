@@ -1,13 +1,13 @@
 import boxen from 'boxen';
 import chalk from 'chalk';
 import {
-  createRuleAdapter,
-  deleteRuleAdapter,
-  explainRuleAdapter,
-  listRulesAdapter,
-  locateRulesDirectoryAdapter,
-  validateRulesAdapter,
-} from '../../adapter/rules.js';
+  createSkillAdapter,
+  deleteSkillAdapter,
+  explainSkillAdapter,
+  listSkillsAdapter,
+  locateSkillsDirectoryAdapter,
+  validateSkillsAdapter,
+} from '../../adapter/skills.js';
 import type { Severity } from '../../types/types.js';
 import { ask, createReadline } from './prompt.js';
 
@@ -75,7 +75,8 @@ interface CreateRuleArgv {
 }
 
 const listRules = (argv: ListRulesArgv) => {
-  const { rules } = listRulesAdapter({ rulesDir: argv.rules });
+  const result = listSkillsAdapter({ skillsDir: argv.rules });
+  const rules = result.skills;
   if (!rules.length) {
     console.log(chalk.gray('No rules found. Use "mesa rules create" to add one.'));
     return;
@@ -91,7 +92,8 @@ const listRules = (argv: ListRulesArgv) => {
 };
 
 const explainRule = (argv: ExplainRuleArgv) => {
-  const { rule } = explainRuleAdapter({ rulesDir: argv.rules, ruleId: argv.ruleId });
+  const result = explainSkillAdapter({ skillsDir: argv.rules, skillId: argv.ruleId });
+  const rule = result.skill;
   if (!rule) {
     console.log(chalk.red(`Rule not found: ${argv.ruleId}`));
     return;
@@ -123,7 +125,7 @@ const explainRule = (argv: ExplainRuleArgv) => {
 };
 
 const deleteRule = (argv: DeleteRuleArgv) => {
-  const result = deleteRuleAdapter({ rulesDir: argv.rules, ruleId: argv.ruleId });
+  const result = deleteSkillAdapter({ skillsDir: argv.rules, skillId: argv.ruleId });
   if (!result.deleted) {
     console.log(chalk.red(`Rule not found: ${argv.ruleId}`));
     return;
@@ -132,7 +134,7 @@ const deleteRule = (argv: DeleteRuleArgv) => {
 };
 
 const validateRules = (argv: ValidateRulesArgv): number => {
-  const result = validateRulesAdapter({ rulesDir: argv.rules });
+  const result = validateSkillsAdapter({ skillsDir: argv.rules });
   result.validated.forEach((file) => console.log(chalk.green(`[OK] ${file}`)));
 
   if (result.errors.length > 0) {
@@ -183,16 +185,25 @@ const createRule = async (argv: CreateRuleArgv): Promise<number> => {
     const globHint = await ask(rl, 'Language or glob pattern (e.g., rust, **/*.rs)');
     const globs = GLOB_HINTS[globHint.toLowerCase()] || globHint || '**/*';
     const instructions = buildInstructions(templateKeys[parseInt(typeRaw, 10) - 1], answers);
-
-    const created = createRuleAdapter({
-      rulesDir: argv.rules,
+    const triggerConditions = await ask(rl, 'Trigger cues (what changes should activate this rule?)');
+    const exclusions = await ask(rl, 'Exclusions (what should this rule ignore?)');
+    const description = buildRuleDescription(
       title,
+      Array.isArray(globs) ? globs : [globs],
+      triggerConditions,
+      exclusions
+    );
+
+    const created = createSkillAdapter({
+      skillsDir: argv.rules,
+      title,
+      description,
       severity: severityRaw,
       globs: Array.isArray(globs) ? globs : [globs],
       instructions,
     });
 
-    console.log(chalk.green(`\nCreated: ${created.filePath}`));
+    console.log(chalk.green(`\nCreated: ${created.policyFilePath}`));
     return 0;
   } finally {
     rl.close();
@@ -200,7 +211,8 @@ const createRule = async (argv: CreateRuleArgv): Promise<number> => {
 };
 
 const locateRulesDirectory = (): number => {
-  const { rulesDir } = locateRulesDirectoryAdapter();
+  const result = locateSkillsDirectoryAdapter();
+  const rulesDir = result.skillsDir;
   if (!rulesDir) {
     console.log(chalk.red('No rules directory found. Run "mesa init" first.'));
     return 1;
@@ -227,6 +239,14 @@ function buildInstructions(templateType: string, answers: RuleAnswers): string {
         .map(([key, value]) => `${key}: ${value}`)
         .join('\n');
   }
+}
+
+function buildRuleDescription(title: string, globs: string[], triggerConditions: string, exclusions: string): string {
+  const scope = globs.join(', ');
+  const trigger = triggerConditions.trim().length > 0 ? triggerConditions.trim() : `changes match ${scope}`;
+  const exclusion = exclusions.trim().length > 0 ? exclusions.trim() : 'cases outside the rule scope';
+
+  return `${title}. Enforces this rule in ${scope}. Use when ${trigger}. Do not use for ${exclusion}.`;
 }
 
 export { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, validateRules };
