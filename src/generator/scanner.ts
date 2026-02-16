@@ -1,0 +1,422 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import yaml from 'js-yaml';
+import { isSupportedFile } from '../indexer/parsers/index.js';
+import type { CodebaseIndex } from '../indexer/types.js';
+import type { ScanResult, SelectedFile, ZoneConfig } from './types.js';
+
+const SKIP_DIRS = new Set([
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  '.mesa',
+  'coverage',
+  '.next',
+  '.nuxt',
+  '.output',
+  '.turbo',
+  '__pycache__',
+  '.cache',
+  'vendor',
+  '.venv',
+  'venv',
+  'target',
+  // Test/fixture directories
+  '__tests__',
+  '__snapshots__',
+  '__mocks__',
+  'fixtures',
+  'testdata',
+  'test-data',
+]);
+
+const TEST_FILE_PATTERN = /\.(test|spec|stories|fixture)\./;
+
+const SOURCE_DOC_FILES = new Set(['README.md', 'ARCHITECTURE.md', 'CONTRIBUTING.md']);
+
+const CONFIG_EXACT = new Set([
+  'package.json',
+  'tsconfig.json',
+  'jsconfig.json',
+  'Makefile',
+  'Dockerfile',
+  'Cargo.toml',
+  'go.mod',
+  'pyproject.toml',
+  'requirements.txt',
+  'Gemfile',
+  'compose.yaml',
+  'compose.yml',
+]);
+
+/** Normalize Windows backslash separators to POSIX forward slashes for glob matching. */
+function toPosix(filePath: string): string {
+  return filePath.includes('\\') ? filePath.replaceAll('\\', '/') : filePath;
+}
+
+const SECRET_FILES = new Set([
+  '.env',
+  '.env.local',
+  '.env.development',
+  '.env.production',
+  '.env.staging',
+  '.env.test',
+  '.npmrc',
+  '.netrc',
+  '.pgpass',
+  '.docker/config.json',
+]);
+
+const SECRET_EXTENSIONS = new Set(['.pem', '.key', '.p12', '.pfx', '.jks', '.keystore']);
+
+const CONFIG_PATTERN = /(?:^\.)|(?:config\.)|(?:\.config\.)|(?:rc\.)|(?:rc$)/;
+
+const MAX_CONFIG_BYTES = 40 * 1024;
+const MAX_SELECTED_FILES_PER_ZONE = 30;
+const MAX_FILE_BYTES = 8 * 1024;
+const MAX_ZONE_CONTENT_BYTES = 100 * 1024;
+const MAX_DOC_BYTES = 5 * 1024;
+const MAX_DOCS = 3;
+const MAX_ZONES = 8;
+const MIN_ZONE_FILES = 5;
+
+/**
+ * Scan a codebase: filter to source files, partition into zones,
+ * select representative files using the index, and read their contents.
+ */
+export function scanAndSelectFiles(cwd: string, index: CodebaseIndex | null): ScanResult {
+  const { sourceFiles, extensions, configs, docs } = walkCodebase(cwd);
+
+  const zones = partitionZones(cwd, sourceFiles);
+
+  const zonesWithFiles = zones.map((zone) => selectFilesForZone(cwd, zone, index));
+
+  const totalSourceFiles = sourceFiles.length;
+
+  return { zones: zonesWithFiles, totalSourceFiles, extensions, configs, docs };
+}
+
+interface WalkResult {
+  sourceFiles: string[];
+  extensions: Record<string, number>;
+  configs: Record<string, string>;
+  docs: Record<string, string>;
+}
+
+function walkCodebase(cwd: string): WalkResult {
+  const sourceFiles: string[] = [];
+  const extensions: Record<string, number> = {};
+  const configs: Record<string, string> = {};
+  const docs: Record<string, string> = {};
+  let configBytes = 0;
+
+  function walk(dir: string, relative: string): void {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    const depth = relative === '' ? 0 : relative.split(path.sep).length;
+
+    for (const entry of entries) {
+      const entryRelative = relative === '' ? entry.name : toPosix(path.join(relative, entry.name));
+
+      if (entry.isDirectory()) {
+        if (SKIP_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
+        // Skip common test directories at any depth
+        if (entry.name === 'test' || entry.name === 'tests') continue;
+        walk(path.join(dir, entry.name), entryRelative);
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+      if (depth === 0 && SOURCE_DOC_FILES.has(entry.name) && Object.keys(docs).length < MAX_DOCS) {
+        try {
+          let content = fs.readFileSync(path.join(dir, entry.name), 'utf-8');
+          if (Buffer.byteLength(content, 'utf-8') > MAX_DOC_BYTES) {
+            content = `${content.slice(0, MAX_DOC_BYTES)}\n[truncated]`;
+          }
+          docs[entry.name] = content;
+        } catch {
+          // skip
+        }
+      }
+      if (depth <= 1 && configBytes < MAX_CONFIG_BYTES && isConfigFile(entry.name)) {
+        try {
+          const content = fs.readFileSync(path.join(dir, entry.name), 'utf-8');
+          const byteLen = Buffer.byteLength(content, 'utf-8');
+          if (configBytes + byteLen <= MAX_CONFIG_BYTES) {
+            configs[entryRelative] = content;
+            configBytes += byteLen;
+          }
+        } catch {
+          // skip
+        }
+      }
+      if (!isSupportedFile(entry.name)) continue;
+      if (TEST_FILE_PATTERN.test(entry.name)) continue;
+      if (entry.name.endsWith('.d.ts')) continue;
+
+      sourceFiles.push(entryRelative);
+
+      const ext = entry.name.slice(entry.name.lastIndexOf('.') + 1);
+      if (ext) extensions[ext] = (extensions[ext] ?? 0) + 1;
+    }
+  }
+
+  walk(cwd, '');
+  return { sourceFiles, extensions, configs, docs };
+}
+
+function isConfigFile(name: string): boolean {
+  if (SECRET_FILES.has(name)) return false;
+  const ext = name.slice(name.lastIndexOf('.'));
+  if (SECRET_EXTENSIONS.has(ext)) return false;
+  if (CONFIG_EXACT.has(name)) return true;
+  return CONFIG_PATTERN.test(name);
+}
+
+interface RawZone {
+  name: string;
+  files: string[];
+}
+
+function partitionZones(cwd: string, sourceFiles: string[]): RawZone[] {
+  // Try workspace detection first
+  const workspaceZones = detectWorkspaceZones(cwd, sourceFiles);
+  if (workspaceZones) return workspaceZones;
+
+  // Fall back to top-level directory grouping
+  return groupByTopLevelDir(sourceFiles);
+}
+
+function detectWorkspaceZones(cwd: string, sourceFiles: string[]): RawZone[] | null {
+  // Check package.json for workspaces
+  const pkgPath = path.join(cwd, 'package.json');
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    if (Array.isArray(pkg.workspaces)) {
+      return buildWorkspaceZones(sourceFiles, pkg.workspaces);
+    }
+    if (pkg.workspaces?.packages && Array.isArray(pkg.workspaces.packages)) {
+      return buildWorkspaceZones(sourceFiles, pkg.workspaces.packages);
+    }
+  } catch {
+    // no package.json or invalid
+  }
+
+  const pnpmPath = path.join(cwd, 'pnpm-workspace.yaml');
+  try {
+    const content = fs.readFileSync(pnpmPath, 'utf-8');
+    const parsed = yaml.load(content) as Record<string, unknown> | null;
+    if (parsed && Array.isArray(parsed.packages)) {
+      return buildWorkspaceZones(
+        sourceFiles,
+        parsed.packages.filter((p): p is string => typeof p === 'string')
+      );
+    }
+  } catch {
+    // no pnpm-workspace.yaml or invalid
+  }
+
+  return null;
+}
+
+function buildWorkspaceZones(sourceFiles: string[], patterns: string[]): RawZone[] {
+  // Patterns like "packages/*" or "apps/*" — expand the glob
+  const prefixes: string[] = [];
+
+  for (const pattern of patterns) {
+    const prefix = pattern.replace(/\/\*\*?$/, '');
+    if (prefix.includes('*')) {
+      const dirs = new Set<string>();
+      for (const file of sourceFiles) {
+        const parts = file.split(path.sep);
+        const prefixParts = prefix.split('/').filter(Boolean);
+        if (parts.length > prefixParts.length) {
+          let matches = true;
+          for (let i = 0; i < prefixParts.length; i++) {
+            if (prefixParts[i] !== '*' && prefixParts[i] !== parts[i]) {
+              matches = false;
+              break;
+            }
+          }
+          if (matches) {
+            dirs.add(parts.slice(0, prefixParts.length + 1).join(path.sep));
+          }
+        }
+      }
+      prefixes.push(...dirs);
+    } else {
+      prefixes.push(prefix);
+    }
+  }
+
+  const zones: RawZone[] = [];
+  const assigned = new Set<string>();
+
+  for (const prefix of prefixes) {
+    const zoneFiles = sourceFiles.filter((f) => f.startsWith(prefix + path.sep));
+    if (zoneFiles.length > 0) {
+      zones.push({ name: prefix, files: zoneFiles });
+      for (const f of zoneFiles) assigned.add(f);
+    }
+  }
+
+  const rootFiles = sourceFiles.filter((f) => !assigned.has(f));
+  if (rootFiles.length > 0) {
+    zones.push({ name: 'root', files: rootFiles });
+  }
+
+  return mergeSmallZones(zones);
+}
+
+function groupByTopLevelDir(sourceFiles: string[]): RawZone[] {
+  const byDir = new Map<string, string[]>();
+
+  for (const file of sourceFiles) {
+    const topDir = file.includes(path.sep) ? file.split(path.sep)[0]! : 'root';
+    const bucket = byDir.get(topDir) ?? [];
+    bucket.push(file);
+    byDir.set(topDir, bucket);
+  }
+
+  const zones: RawZone[] = [];
+  for (const [dir, files] of byDir) {
+    zones.push({ name: dir, files });
+  }
+
+  return mergeSmallZones(zones);
+}
+
+function mergeSmallZones(zones: RawZone[]): RawZone[] {
+  if (zones.length <= 1) return zones;
+
+  const sorted = [...zones].sort((a, b) => b.files.length - a.files.length);
+  const kept: RawZone[] = [];
+  const miscFiles: string[] = [];
+
+  for (const zone of sorted) {
+    if (zone.files.length < MIN_ZONE_FILES && kept.length > 0) {
+      miscFiles.push(...zone.files);
+    } else {
+      kept.push(zone);
+    }
+  }
+
+  if (miscFiles.length > 0) {
+    if (kept.length > 0) {
+      const smallest = kept.reduce((a, b) => (a.files.length < b.files.length ? a : b));
+      smallest.files.push(...miscFiles);
+    } else {
+      kept.push({ name: 'root', files: miscFiles });
+    }
+  }
+
+  while (kept.length > MAX_ZONES) {
+    kept.sort((a, b) => a.files.length - b.files.length);
+    const smallest = kept.shift()!;
+    kept[0]!.files.push(...smallest.files);
+  }
+
+  return kept;
+}
+
+const ENTRY_POINT_PATTERNS = /^(index|main|app|server|mod)\.(ts|tsx|js|jsx)$/;
+
+function selectFilesForZone(cwd: string, zone: RawZone, index: CodebaseIndex | null): ZoneConfig {
+  if (zone.files.length <= MAX_SELECTED_FILES_PER_ZONE) {
+    const selectedFiles = readFiles(cwd, zone.files, index);
+    return { name: zone.name, files: zone.files, selectedFiles };
+  }
+
+  const scored = zone.files.map((filePath) => ({
+    path: filePath,
+    score: scoreFile(filePath, index),
+  }));
+
+  scored.sort((a, b) => b.score - a.score);
+
+  const selected = new Set<string>();
+  const coveredDirs = new Set<string>();
+
+  for (const { path: filePath } of scored) {
+    if (selected.size >= MAX_SELECTED_FILES_PER_ZONE) break;
+    selected.add(filePath);
+    const dir = filePath.includes(path.sep) ? path.dirname(filePath) : '.';
+    coveredDirs.add(dir);
+  }
+
+  const allDirs = new Set(zone.files.map((f) => (f.includes(path.sep) ? path.dirname(f) : '.')));
+  for (const dir of allDirs) {
+    if (coveredDirs.has(dir)) continue;
+    if (selected.size >= MAX_SELECTED_FILES_PER_ZONE) break;
+    const fileFromDir = scored.find((s) => !selected.has(s.path) && path.dirname(s.path) === dir);
+    if (fileFromDir) {
+      selected.add(fileFromDir.path);
+      coveredDirs.add(dir);
+    }
+  }
+
+  const selectedFiles = readFiles(cwd, [...selected], index);
+  return { name: zone.name, files: zone.files, selectedFiles };
+}
+
+function scoreFile(filePath: string, index: CodebaseIndex | null): number {
+  let score = 0;
+  const fileName = path.basename(filePath);
+
+  if (index) {
+    const entry = index.files[filePath];
+    if (entry) {
+      score += entry.importedBy.length * 3;
+      const typeExports = entry.exports.filter((e) => e.kind === 'type' || e.kind === 'interface' || e.kind === 'enum');
+      if (entry.exports.length > 0 && typeExports.length / entry.exports.length > 0.5) {
+        score += 2;
+      }
+      score += entry.exports.length;
+    }
+  }
+
+  if (ENTRY_POINT_PATTERNS.test(fileName)) {
+    score += 2;
+  }
+
+  return score;
+}
+
+function readFiles(cwd: string, filePaths: string[], index: CodebaseIndex | null): SelectedFile[] {
+  const selected: SelectedFile[] = [];
+  let totalBytes = 0;
+
+  const scored = filePaths.map((p) => ({ path: p, score: scoreFile(p, index) })).sort((a, b) => b.score - a.score);
+
+  for (const { path: filePath } of scored) {
+    if (totalBytes >= MAX_ZONE_CONTENT_BYTES) break;
+
+    const absolutePath = path.join(cwd, filePath);
+    try {
+      let content = fs.readFileSync(absolutePath, 'utf-8');
+      let byteLen = Buffer.byteLength(content, 'utf-8');
+
+      if (byteLen > MAX_FILE_BYTES) {
+        content = `${content.slice(0, MAX_FILE_BYTES)}\n[truncated at 8KB]`;
+        byteLen = MAX_FILE_BYTES;
+      }
+
+      if (totalBytes + byteLen > MAX_ZONE_CONTENT_BYTES) continue;
+
+      const importedByCount = index?.files[filePath]?.importedBy.length ?? 0;
+
+      selected.push({ path: filePath, content, importedByCount });
+      totalBytes += byteLen;
+    } catch {
+      // skip
+    }
+  }
+
+  return selected;
+}

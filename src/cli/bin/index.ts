@@ -8,6 +8,7 @@ import yargs, { type Argv } from 'yargs';
 import { MesaError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import checkHandler from '../lib/check.js';
+import { generateRulesCommand } from '../lib/generate.js';
 import indexCmdHandler from '../lib/index-cmd.js';
 import initHandler from '../lib/init.js';
 import { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, validateRules } from '../lib/rules.js';
@@ -298,6 +299,34 @@ yargs(argv)
             .option('instructions', { describe: 'Rule instructions' });
         },
         wrapHandler('rules-create', createRule as (argv: unknown) => Promise<number>)
+      )
+      .command(
+        'generate',
+        'Generate review rules by analyzing your codebase',
+        (y: Argv) => {
+          y.option('v', {
+            alias: 'verbose',
+            describe: 'Show detailed progress',
+            type: 'boolean',
+            default: false,
+          })
+            .option('debug', {
+              describe: 'Show debug output',
+              type: 'boolean',
+              default: false,
+            })
+            .option('c', {
+              alias: 'config',
+              describe: 'Path to config file',
+              type: 'string',
+            });
+        },
+        wrapHandler('rules-generate', ((argv: { verbose?: boolean; debug?: boolean; config?: string }) => {
+          return generateRulesCommand({
+            ...argv,
+            abortSignal: globalAbortController.signal,
+          });
+        }) as (argv: unknown) => Promise<number>)
       );
   })
   .command(

@@ -249,6 +249,7 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
       infos: allViolations.filter((v) => v.severity === 'info').length,
       inputTokens: totalInputTokens,
       outputTokens: totalOutputTokens,
+      // Opus 4.6 pricing is : $5 per million input tokens and $25 per million output tokens
       cost: (totalInputTokens / 1000000) * 5 + (totalOutputTokens / 1000000) * 25,
     },
   };

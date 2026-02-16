@@ -1,0 +1,336 @@
+import path from 'node:path';
+import type { LanguageModel } from 'ai';
+import { generateObject } from 'ai';
+import { minimatch } from 'minimatch';
+import { z } from 'zod';
+import { buildIndex } from '../indexer/build.js';
+import { JsonIndexStore } from '../indexer/store.js';
+import type { CodebaseIndex } from '../indexer/types.js';
+import { loadReviewAdapterConfig, resolveModelFromResolvedConfig } from '../lib/review-model-config.js';
+import type { RulePolicy } from '../types/types.js';
+import { computeArchitecturalContext } from './architecture.js';
+import { scanAndSelectFiles } from './scanner.js';
+import { synthesizeRules } from './synthesis.js';
+import {
+  type GenerateRulesOptions,
+  type GeneratorResult,
+  type RuleProposal,
+  RuleProposalSchema,
+  type ScanResult,
+  type ZoneAnalysisResult,
+  type ZoneConfig,
+} from './types.js';
+
+const ZONE_ANALYSIS_SYSTEM = `You are a senior developer extracting code review rules from a zone of a codebase.
+
+Your goal is to discover the patterns and conventions that a senior reviewer would enforce on every PR touching this area.
+
+## What Makes a Good Rule
+
+Rules capture what a senior reviewer carries in their head:
+- **Architecture enforcement**: "We use Drizzle query builder, not raw SQL", "Auth flows go through this middleware", "API routes follow this structure"
+- **Bug prevention**: silent error swallowing, injection risks, race conditions, missing validation at system boundaries
+- **Conventions specific to this codebase**: patterns you discover by reading the actual code, not generic best practices
+
+Each rule should represent a distinct, reusable pattern — not a description of what one specific function does.
+
+## Architectural Boundaries
+
+Pay attention to how the codebase is structured, not just how individual files are written:
+- **Layer separation**: Directories with no I/O imports (node:fs, node:child_process) are pure logic layers. Protect this boundary.
+- **Dependency direction**: If directory A never imports from directory B, that's likely intentional. Enforce unidirectional dependency flow.
+- **Interface boundaries**: Directories that define interfaces implemented elsewhere represent abstraction layers.
+
+If an Architectural Overview section is provided, use it to identify these structural patterns.
+
+## What NOT To Emit
+
+- Rules that duplicate linters/compilers (formatting, unused imports, type errors)
+- Rules about a single specific function rather than a reusable pattern
+- Vague or unenforceable rules ("ensure code quality", "follow best practices")
+- Rules about test fixtures, eval data, or generated files
+- Meta/self-referential rules (rules about rules)
+- Generic best practices that apply to any codebase (e.g., "don't commit secrets", "use HTTPS"). Only emit rules that reflect patterns specific to THIS codebase.
+- **Aspirational rules** — only emit rules about patterns you directly observed in the provided code. Do not invent conventions you think *should* exist.
+
+## Glob Scoping
+
+Scope globs to the zone's directory structure. Use paths like \`src/subsystem/**/*.ts\`, not \`**/*.ts\`.
+
+## Instructions Quality
+
+Each rule's instructions field will be read by a different AI to enforce the rule on git diffs. Write instructions that are specific and actionable — a reviewer should know exactly what to flag and what's acceptable.
+
+When referencing specific patterns (regex, function names, file paths), verify them against the code provided above. Do not guess — if you cannot confirm a detail from the provided code, leave it out of the instructions.`;
+
+function zoneRuleTarget(sourceFileCount: number): number {
+  if (sourceFileCount < 30) return 10;
+  if (sourceFileCount < 100) return 15;
+  return 20;
+}
+
+function overallRuleTarget(totalSourceFiles: number): number {
+  if (totalSourceFiles < 100) return 12;
+  if (totalSourceFiles < 500) return 20;
+  return 30;
+}
+
+export async function orchestrate(options: GenerateRulesOptions): Promise<GeneratorResult> {
+  const cwd = options.cwd ?? process.cwd();
+  const startMs = Date.now();
+  const { modelConfig } = loadReviewAdapterConfig(options.configPath);
+  const model = resolveModelFromResolvedConfig(modelConfig);
+  options.onProgress?.({ type: 'indexing' });
+  const mesaCacheDir = path.join(cwd, '.mesa', 'cache');
+  const store = new JsonIndexStore(mesaCacheDir);
+  let index: CodebaseIndex | null = null;
+  try {
+    index = await buildIndex({ rootDir: cwd, store });
+  } catch {
+    // Index build failed — proceed without it (file selection falls back to heuristics)
+  }
+  const scanResult = scanAndSelectFiles(cwd, index);
+
+  options.onProgress?.({
+    type: 'scan_complete',
+    totalFiles: scanResult.totalSourceFiles,
+    zoneCount: scanResult.zones.length,
+    extensions: scanResult.extensions,
+  });
+
+  const zoneResults = await analyzeZonesInParallel(scanResult, model, index, options.onProgress, options.abortSignal);
+
+  let totalInputTokens = zoneResults.reduce((sum, r) => sum + r.inputTokens, 0);
+  let totalOutputTokens = zoneResults.reduce((sum, r) => sum + r.outputTokens, 0);
+
+  const allCandidates = zoneResults.flatMap((r) => r.rules);
+  const merged = deterministicMerge(allCandidates, scanResult);
+  const target = overallRuleTarget(scanResult.totalSourceFiles);
+
+  let finalRules: RuleProposal[];
+
+  if (merged.length > 0) {
+    options.onProgress?.({
+      type: 'synthesis_started',
+      candidateCount: merged.length,
+    });
+
+    const synthesisStartMs = Date.now();
+
+    const synthesisResult = await synthesizeRules({
+      candidates: merged,
+      model,
+      ruleTarget: target,
+      abortSignal: options.abortSignal,
+    });
+
+    totalInputTokens += synthesisResult.inputTokens;
+    totalOutputTokens += synthesisResult.outputTokens;
+    finalRules = synthesisResult.rules;
+
+    options.onProgress?.({
+      type: 'synthesis_completed',
+      candidateCount: merged.length,
+      finalCount: finalRules.length,
+      durationMs: Date.now() - synthesisStartMs,
+    });
+  } else {
+    finalRules = merged;
+  }
+  const rules: RulePolicy[] = finalRules.map(proposalToRule);
+  const durationMs = Date.now() - startMs;
+
+  options.onProgress?.({
+    type: 'generator_complete',
+    totalRules: rules.length,
+    durationMs,
+  });
+
+  return {
+    rules,
+    summary: {
+      filesScanned: scanResult.totalSourceFiles,
+      rulesGenerated: rules.length,
+      durationMs,
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
+    },
+  };
+}
+
+async function analyzeZonesInParallel(
+  scanResult: ScanResult,
+  model: LanguageModel,
+  index: CodebaseIndex | null,
+  onProgress: GenerateRulesOptions['onProgress'],
+  abortSignal?: AbortSignal
+): Promise<ZoneAnalysisResult[]> {
+  const promises = scanResult.zones.map((zone) => analyzeZone(zone, scanResult, model, index, onProgress, abortSignal));
+  return Promise.all(promises);
+}
+
+async function analyzeZone(
+  zone: ZoneConfig,
+  scanResult: ScanResult,
+  model: LanguageModel,
+  index: CodebaseIndex | null,
+  onProgress: GenerateRulesOptions['onProgress'],
+  abortSignal?: AbortSignal
+): Promise<ZoneAnalysisResult> {
+  const startMs = Date.now();
+  const target = zoneRuleTarget(zone.files.length);
+
+  onProgress?.({
+    type: 'zone_started',
+    zoneName: zone.name,
+    fileCount: zone.files.length,
+    selectedFileCount: zone.selectedFiles.length,
+  });
+
+  const prompt = buildZonePrompt(zone, scanResult, target, index);
+
+  const result = await generateObject({
+    model,
+    schema: z.object({
+      rules: z.array(RuleProposalSchema),
+    }),
+    system: ZONE_ANALYSIS_SYSTEM,
+    prompt,
+    abortSignal,
+  });
+
+  const rules = result.object.rules.slice(0, target + 5);
+  const durationMs = Date.now() - startMs;
+
+  onProgress?.({
+    type: 'zone_completed',
+    zoneName: zone.name,
+    rulesProposed: rules.length,
+    durationMs,
+  });
+
+  return {
+    zoneName: zone.name,
+    rules,
+    inputTokens: result.usage.inputTokens ?? 0,
+    outputTokens: result.usage.outputTokens ?? 0,
+  };
+}
+
+function buildZonePrompt(
+  zone: ZoneConfig,
+  scanResult: ScanResult,
+  target: number,
+  index: CodebaseIndex | null
+): string {
+  const lines: string[] = [];
+
+  lines.push(`## Zone: ${zone.name}`);
+  lines.push(`${zone.files.length} source files, ${zone.selectedFiles.length} included below.`);
+  lines.push(`Target: ~${target} rules. Quality over quantity.`);
+  lines.push('');
+
+  // Project context — configs
+  if (Object.keys(scanResult.configs).length > 0) {
+    lines.push('## Project Configuration');
+    for (const [configPath, content] of Object.entries(scanResult.configs)) {
+      lines.push(`### ${configPath}`);
+      lines.push('```');
+      lines.push(content.length > 3000 ? `${content.slice(0, 3000)}\n[truncated]` : content);
+      lines.push('```');
+      lines.push('');
+    }
+  }
+
+  // Project context — docs
+  if (Object.keys(scanResult.docs).length > 0) {
+    lines.push('## Project Documentation (may be outdated — validate against actual code)');
+    for (const [docPath, content] of Object.entries(scanResult.docs)) {
+      lines.push(`### ${docPath}`);
+      lines.push(content);
+      lines.push('');
+    }
+  }
+
+  // Architectural context from import graph
+  const archContext = computeArchitecturalContext(index, zone.files);
+  if (archContext) {
+    lines.push(archContext);
+  }
+
+  // File tree
+  lines.push('## File Tree (all source files in this zone)');
+  lines.push('```');
+  lines.push(zone.files.join('\n'));
+  lines.push('```');
+  lines.push('');
+
+  // File contents
+  lines.push('## File Contents');
+  lines.push('');
+  for (const file of zone.selectedFiles) {
+    const ext = path.extname(file.path).slice(1) || 'txt';
+    const importAnnotation = file.importedByCount > 0 ? ` (imported by ${file.importedByCount} files)` : '';
+    lines.push(`### ${file.path}${importAnnotation}`);
+    lines.push(`\`\`\`${ext}`);
+    lines.push(file.content);
+    lines.push('```');
+    lines.push('');
+  }
+
+  lines.push('Extract review rules from both the code patterns and architectural structure you observe.');
+
+  return lines.join('\n');
+}
+
+function deterministicMerge(candidates: RuleProposal[], scanResult: ScanResult): RuleProposal[] {
+  const allSourceFiles = scanResult.zones.flatMap((z) => z.files);
+  const byId = new Map<string, RuleProposal>();
+  for (const rule of candidates) {
+    const existing = byId.get(rule.id);
+    if (!existing) {
+      byId.set(rule.id, rule);
+      continue;
+    }
+    // Keep whichever matches more files
+    const existingMatches = countGlobMatches(existing.globs, allSourceFiles);
+    const newMatches = countGlobMatches(rule.globs, allSourceFiles);
+    if (newMatches > existingMatches) {
+      byId.set(rule.id, rule);
+    }
+  }
+
+  const validated: RuleProposal[] = [];
+  for (const rule of byId.values()) {
+    const matchCount = countGlobMatches(rule.globs, allSourceFiles);
+    if (matchCount >= 2) {
+      validated.push(rule);
+    }
+  }
+
+  return validated.filter((rule) => {
+    if (!rule.id || !rule.instructions || rule.instructions.trim().length === 0) return false;
+    if (!rule.globs || rule.globs.length === 0) return false;
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(rule.id)) return false;
+    return true;
+  });
+}
+
+function countGlobMatches(globs: string[], files: string[]): number {
+  let count = 0;
+  for (const file of files) {
+    if (globs.some((glob) => minimatch(file, glob))) {
+      count++;
+    }
+  }
+  return count;
+}
+function proposalToRule(proposal: RuleProposal): RulePolicy {
+  return {
+    id: proposal.id,
+    title: proposal.title,
+    severity: proposal.severity,
+    globs: proposal.globs,
+    instructions: proposal.instructions,
+  };
+}
