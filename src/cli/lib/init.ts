@@ -45,7 +45,7 @@ review:
   max_steps_size: 50
 
   # Number of files to include in each worker batch
-  files_per_worker: 3
+  files_per_worker: 2
 `;
 }
 

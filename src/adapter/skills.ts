@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import yaml from 'js-yaml';
+import { toKebabCase } from '../lib/constants.js';
 import {
+  findRepoRoot,
   loadParsedSkillsFromDirectory,
   parseSkillFiles,
   resolveSkillsDir,
@@ -61,6 +63,7 @@ export interface ValidateSkillsAdapterResult {
 }
 
 export interface CreateSkillAdapterRequest {
+  scope?: string;
   skillsDir?: string;
   title: string;
   description?: string;
@@ -68,6 +71,11 @@ export interface CreateSkillAdapterRequest {
   globs: string[];
   instructions: string;
   id?: string;
+  repoRoot?: string;
+  examples?: {
+    violations?: string[];
+    compliant?: string[];
+  };
 }
 
 export interface CreateSkillAdapterResult {
@@ -153,8 +161,75 @@ export function validateSkillsAdapter(request: ValidateSkillsAdapterRequest): Va
   };
 }
 
+function buildSkillMarkdown(opts: {
+  id: string;
+  description: string;
+  title: string;
+  severity: Severity;
+  globs: string[];
+  instructions: string;
+  examples?: { violations?: string[]; compliant?: string[] };
+}): string {
+  const lines: string[] = [];
+
+  // Frontmatter
+  lines.push('---');
+  lines.push(`name: ${opts.id}`);
+  lines.push(`description: ${JSON.stringify(opts.description)}`);
+  lines.push('---');
+  lines.push('');
+
+  // Rule header
+  lines.push(`## Rule: ${opts.title}`);
+  lines.push('');
+  lines.push(`**Severity:** ${opts.severity}`);
+  lines.push(`**Target:** ${opts.globs.join(', ')}`);
+  lines.push('');
+
+  // Instructions (already has ## sections from the LLM)
+  lines.push(opts.instructions);
+  lines.push('');
+
+  // Examples
+  if (opts.examples?.violations?.length) {
+    lines.push('### Violations');
+    lines.push('');
+    lines.push('```');
+    for (const v of opts.examples.violations) {
+      lines.push(v);
+    }
+    lines.push('```');
+    lines.push('');
+  }
+
+  if (opts.examples?.compliant?.length) {
+    lines.push('### Compliant');
+    lines.push('');
+    lines.push('```');
+    for (const c of opts.examples.compliant) {
+      lines.push(c);
+    }
+    lines.push('```');
+    lines.push('');
+  }
+
+  // Reference to structured policy
+  lines.push('Full policy data: [references/mesa-policy.yaml](references/mesa-policy.yaml)');
+  lines.push('');
+
+  return lines.join('\n');
+}
+
 export function createSkillAdapter(request: CreateSkillAdapterRequest): CreateSkillAdapterResult {
-  const skillsDir = resolveSkillsDirForCreate(request.skillsDir);
+  const repoRoot = request.repoRoot ?? findRepoRoot();
+  let skillsDir: string;
+
+  if (request.scope) {
+    skillsDir = path.join(repoRoot, request.scope, '.claude', 'skills');
+  } else {
+    skillsDir = resolveSkillsDirForCreate(request.skillsDir, repoRoot);
+  }
+
   if (!fs.existsSync(skillsDir)) {
     fs.mkdirSync(skillsDir, { recursive: true });
   }
@@ -176,12 +251,21 @@ export function createSkillAdapter(request: CreateSkillAdapterRequest): CreateSk
     severity: request.severity,
     globs: request.globs,
     instructions: request.instructions,
+    ...(request.examples && { examples: request.examples }),
   };
 
   const description =
     request.description ??
     `${request.title}. Enforces this rule in ${request.globs.join(', ')}. Use when changed code matches this scope and touches behavior covered by the rule. Do not use for unrelated refactors outside scope.`;
-  const skillMarkdown = `---\nname: ${uniqueId}\ndescription: ${description}\n---\n\nThis skill enforces the ${request.title} policy.\n\nPolicy source: references/mesa-policy.yaml\n`;
+  const skillMarkdown = buildSkillMarkdown({
+    id: uniqueId,
+    description,
+    title: request.title,
+    severity: request.severity,
+    globs: request.globs,
+    instructions: request.instructions,
+    examples: request.examples,
+  });
   fs.writeFileSync(skillFilePath, skillMarkdown);
   fs.writeFileSync(policyFilePath, yaml.dump(policy, { noRefs: true, lineWidth: -1 }));
 
@@ -215,13 +299,6 @@ function loadAdapterSkills(skillsDir: string): AdapterSkill[] {
 
 function resolveExistingSkillsDirOrEmpty(skillsDir?: string): string | undefined {
   return resolveSkillsDir(skillsDir) ?? undefined;
-}
-
-function toKebabCase(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
 }
 
 function findUniqueSkillId(existingIds: Set<string>, baseId: string): string {

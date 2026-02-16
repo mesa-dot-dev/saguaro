@@ -14,7 +14,6 @@ import { synthesizeRules } from './synthesis.js';
 import {
   type GenerateRulesOptions,
   type GeneratorResult,
-  type RuleProposal,
   RuleProposalSchema,
   type ScanResult,
   type ZoneAnalysisResult,
@@ -107,7 +106,7 @@ export async function orchestrate(options: GenerateRulesOptions): Promise<Genera
   const merged = deterministicMerge(allCandidates, scanResult);
   const target = overallRuleTarget(scanResult.totalSourceFiles);
 
-  let finalRules: RuleProposal[];
+  let finalRules: RulePolicy[];
 
   if (merged.length > 0) {
     options.onProgress?.({
@@ -137,7 +136,7 @@ export async function orchestrate(options: GenerateRulesOptions): Promise<Genera
   } else {
     finalRules = merged;
   }
-  const rules: RulePolicy[] = finalRules.map(proposalToRule);
+  const rules: RulePolicy[] = finalRules;
   const durationMs = Date.now() - startMs;
 
   options.onProgress?.({
@@ -283,9 +282,9 @@ function buildZonePrompt(
   return lines.join('\n');
 }
 
-function deterministicMerge(candidates: RuleProposal[], scanResult: ScanResult): RuleProposal[] {
+function deterministicMerge(candidates: RulePolicy[], scanResult: ScanResult): RulePolicy[] {
   const allSourceFiles = scanResult.zones.flatMap((z) => z.files);
-  const byId = new Map<string, RuleProposal>();
+  const byId = new Map<string, RulePolicy>();
   for (const rule of candidates) {
     const existing = byId.get(rule.id);
     if (!existing) {
@@ -300,7 +299,7 @@ function deterministicMerge(candidates: RuleProposal[], scanResult: ScanResult):
     }
   }
 
-  const validated: RuleProposal[] = [];
+  const validated: RulePolicy[] = [];
   for (const rule of byId.values()) {
     const matchCount = countGlobMatches(rule.globs, allSourceFiles);
     if (matchCount >= 2) {
@@ -324,13 +323,4 @@ function countGlobMatches(globs: string[], files: string[]): number {
     }
   }
   return count;
-}
-function proposalToRule(proposal: RuleProposal): RulePolicy {
-  return {
-    id: proposal.id,
-    title: proposal.title,
-    severity: proposal.severity,
-    globs: proposal.globs,
-    instructions: proposal.instructions,
-  };
 }

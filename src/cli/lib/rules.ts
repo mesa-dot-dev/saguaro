@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import boxen from 'boxen';
 import chalk from 'chalk';
 import {
@@ -8,49 +10,16 @@ import {
   locateSkillsDirectoryAdapter,
   validateSkillsAdapter,
 } from '../../adapter/skills.js';
+import { loadValidatedConfig, resolveApiKey, resolveModelFromResolvedConfig } from '../../lib/review-model-config.js';
+import { generateRule } from '../../lib/rule-generator.js';
+import { previewRule } from '../../lib/rule-preview.js';
+import { discoverScopeOptions } from '../../lib/scope-discovery.js';
+import { findRepoRoot } from '../../lib/skills.js';
+import { analyzeTarget } from '../../lib/target-analysis.js';
+import { resolveTargetInput } from '../../lib/target-resolver.js';
 import type { Severity } from '../../types/types.js';
-import { ask, createReadline } from './prompt.js';
-
-interface RuleTemplate {
-  name: string;
-  prompts: string[];
-  fields: string[];
-}
-
-const RULE_TEMPLATES: Record<string, RuleTemplate> = {
-  ban: {
-    name: 'Ban a pattern',
-    prompts: ['What pattern to ban?', 'Why is it bad?', 'What to use instead?'],
-    fields: ['pattern', 'reason', 'instead'],
-  },
-  require: {
-    name: 'Require a pattern',
-    prompts: ['What pattern is required?', 'When is it required?', 'Why is it important?'],
-    fields: ['pattern', 'when', 'reason'],
-  },
-  structure: {
-    name: 'File structure',
-    prompts: ['What must files contain?', 'Why is it required?'],
-    fields: ['must_contain', 'reason'],
-  },
-  custom: {
-    name: 'Custom (full control)',
-    prompts: ['Describe the rule'],
-    fields: ['instructions'],
-  },
-};
-
-const GLOB_HINTS: Record<string, string | string[]> = {
-  rust: '**/*.rs',
-  typescript: '**/*.{ts,tsx}',
-  js: '**/*.js',
-  python: '**/*.py',
-  javascript: '**/*.js',
-};
-
-interface RuleAnswers {
-  [key: string]: string;
-}
+import { ask, askChoice, createReadline } from './prompt.js';
+import { CliSpinner } from './spinner.js';
 
 interface ListRulesArgv {
   rules?: string;
@@ -71,6 +40,13 @@ interface ValidateRulesArgv {
 }
 
 interface CreateRuleArgv {
+  target?: string;
+  intent?: string;
+  scope?: string;
+  debug?: boolean;
+  skipPreview?: boolean;
+  title?: string;
+  severity?: string;
   rules?: string;
 }
 
@@ -149,62 +125,264 @@ const validateRules = (argv: ValidateRulesArgv): number => {
   return 0;
 };
 
+function buildScopeChoices(repoRoot: string) {
+  return discoverScopeOptions(repoRoot).map((opt) => ({
+    id: opt.path,
+    label: opt.path === '.' ? opt.label : `${opt.path} (${opt.type === 'existing-skills' ? 'has rules' : 'package'})`,
+  }));
+}
+
 const createRule = async (argv: CreateRuleArgv): Promise<number> => {
-  if (!process.stdin.isTTY) {
-    console.log(chalk.red('Interactive terminal required for rule creation.'));
+  if (!process.stdin.isTTY && !argv.intent) {
+    console.log(chalk.red('Interactive terminal required for rule creation, or provide --intent flag.'));
     return 1;
   }
 
+  const repoRoot = findRepoRoot();
   const rl = createReadline();
+
   try {
-    console.log(chalk.bold('\nWhat kind of rule?'));
-    const templateKeys = Object.keys(RULE_TEMPLATES);
-    templateKeys.forEach((key, index) => {
-      console.log(`  ${index + 1}. ${chalk.bold(RULE_TEMPLATES[key].name)}`);
-    });
+    // 1. Target selection
+    let targetPath = argv.target;
+    if (!targetPath && process.stdin.isTTY) {
+      const raw = await ask(rl, 'What code should this rule check? (path, keyword, or "global")');
+      const resolution = resolveTargetInput(raw, repoRoot);
 
-    const typeRaw = (await ask(rl, 'Choose (1-4)')).trim();
-    if (!['1', '2', '3', '4'].includes(typeRaw)) {
-      console.log(chalk.red('Choose 1-4'));
+      switch (resolution.type) {
+        case 'exact':
+          targetPath = resolution.path;
+          console.log(chalk.green(`✓ Target: ${targetPath === '.' ? 'repo-wide' : targetPath}`));
+          break;
+
+        case 'search':
+          if (resolution.matches.length === 0) {
+            console.log(chalk.yellow(`No directories found matching "${raw}". Showing all packages...`));
+            const selected = await askChoice(rl, 'What code should this rule check?', buildScopeChoices(repoRoot));
+            targetPath = selected.id;
+          } else {
+            const searchChoices = resolution.matches.map((m) => ({ id: m, label: m }));
+            const selected = await askChoice(rl, `Found directories matching "${raw}":`, searchChoices);
+            targetPath = selected.id;
+          }
+          break;
+
+        case 'browse': {
+          const selected = await askChoice(rl, 'What code should this rule check?', buildScopeChoices(repoRoot));
+          targetPath = selected.id;
+          break;
+        }
+      }
+    }
+
+    if (!targetPath) {
+      console.log(chalk.red('No target specified. Use: mesa rules create <target>'));
       return 1;
     }
 
-    const template = RULE_TEMPLATES[templateKeys[parseInt(typeRaw, 10) - 1]];
-    const answers: RuleAnswers = {};
-    for (let i = 0; i < template.prompts.length; i += 1) {
-      answers[template.fields[i]] = await ask(rl, template.prompts[i]);
+    // 2. Intent collection
+    let intent = argv.intent;
+    if (!intent && process.stdin.isTTY) {
+      intent = await ask(rl, 'What should be different about this code?');
     }
 
-    const title = await ask(rl, 'Rule title');
-    const severityRaw = ((await ask(rl, 'Severity (error/warning/info)')) || 'error') as Severity;
-    if (!['error', 'warning', 'info'].includes(severityRaw)) {
-      console.log(chalk.red('Severity must be: error, warning, or info'));
+    if (!intent) {
+      console.log(chalk.red('No intent specified. Use: mesa rules create <target> --intent "..."'));
       return 1;
     }
 
-    const globHint = await ask(rl, 'Language or glob pattern (e.g., rust, **/*.rs)');
-    const globs = GLOB_HINTS[globHint.toLowerCase()] || globHint || '**/*';
-    const instructions = buildInstructions(templateKeys[parseInt(typeRaw, 10) - 1], answers);
-    const triggerConditions = await ask(rl, 'Trigger cues (what changes should activate this rule?)');
-    const exclusions = await ask(rl, 'Exclusions (what should this rule ignore?)');
-    const description = buildRuleDescription(
-      title,
-      Array.isArray(globs) ? globs : [globs],
-      triggerConditions,
-      exclusions
+    // Close readline before spinner — they conflict on stdin
+    rl.close();
+
+    // 3. Set up debug logging
+    let debugLog: ((label: string, content: string) => void) | undefined;
+    let debugLogPath: string | undefined;
+    if (argv.debug) {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      debugLogPath = path.resolve(process.cwd(), '.mesa', '.tmp', `rule-create-${timestamp}.txt`);
+      fs.mkdirSync(path.dirname(debugLogPath), { recursive: true });
+      fs.writeFileSync(debugLogPath, `=== Mesa Rule Create Debug ${new Date().toISOString()} ===\n\n`);
+      debugLog = (label: string, content: string) => {
+        const entry = `--- ${label} [${new Date().toISOString()}] ---\n${content}\n\n`;
+        fs.appendFileSync(debugLogPath!, entry);
+      };
+      debugLog('Input', `target=${targetPath}\nintent=${intent}`);
+      console.log(chalk.gray(`[debug] Writing debug log to ${debugLogPath}`));
+    }
+
+    // 4. Analyze target
+    const target = analyzeTarget({ targetPath, repoRoot });
+    console.log(
+      chalk.gray(
+        `Analyzed ${chalk.bold(target.relativePath)}: ${target.files.length} files, ` +
+          `detected: ${target.detectedLanguages.join(', ') || 'unknown'}`
+      )
+    );
+    debugLog?.(
+      'Target analysis',
+      JSON.stringify(
+        {
+          resolvedPath: target.resolvedPath,
+          relativePath: target.relativePath,
+          fileCount: target.files.length,
+          languages: target.detectedLanguages,
+          globs: target.suggestedGlobs,
+          placements: target.placements.length,
+        },
+        null,
+        2
+      )
     );
 
-    const created = createSkillAdapter({
-      skillsDir: argv.rules,
-      title,
-      description,
-      severity: severityRaw,
-      globs: Array.isArray(globs) ? globs : [globs],
-      instructions,
-    });
+    // 5. Generate rule via LLM
+    const spinner = new CliSpinner();
+    spinner.start('Generating rule...');
 
-    console.log(chalk.green(`\nCreated: ${created.policyFilePath}`));
-    return 0;
+    try {
+      const config = loadValidatedConfig();
+      const apiKey = resolveApiKey(config);
+      const model = resolveModelFromResolvedConfig({
+        provider: config.model.provider,
+        model: config.model.name,
+        apiKey,
+      });
+
+      const result = await generateRule({
+        intent,
+        target,
+        model,
+        title: argv.title,
+        severity: argv.severity as Severity | undefined,
+        repoRoot,
+        debugLog,
+      });
+
+      spinner.stop();
+
+      const policy = result.policy;
+
+      // 6. Preview (unless --no-preview)
+      if (!argv.skipPreview && policy.examples?.violations?.length) {
+        const preview = previewRule({
+          targetDir: repoRoot,
+          globs: policy.globs,
+          violationPatterns: policy.examples.violations,
+        });
+
+        console.log('');
+        console.log(chalk.bold(`Generated: ${policy.title}`) + chalk.gray(` (${policy.severity})`));
+        console.log(chalk.gray(`Target: ${policy.globs.join(', ')}`));
+        console.log('');
+
+        if (preview.flaggedCount > 0) {
+          console.log(chalk.red(`Would flag (${preview.flaggedCount} files):`));
+          for (const file of preview.flagged.slice(0, 5)) {
+            const relPath = path.relative(repoRoot, file.filePath);
+            if (file.matches.length > 0) {
+              const match = file.matches[0];
+              console.log(
+                chalk.red(`  ✗ ${relPath}:${match.line}`) + chalk.gray(` — ${match.content.trim().slice(0, 60)}`)
+              );
+            } else {
+              console.log(chalk.red(`  ✗ ${relPath}`));
+            }
+          }
+          if (preview.flaggedCount > 5) {
+            console.log(chalk.gray(`  ... and ${preview.flaggedCount - 5} more`));
+          }
+        }
+
+        if (preview.passedCount > 0) {
+          console.log(chalk.green(`\nWould pass (${preview.passedCount} files):`));
+          for (const file of preview.passed.slice(0, 3)) {
+            const relPath = path.relative(repoRoot, file.filePath);
+            console.log(chalk.green(`  ✓ ${relPath}`));
+          }
+          if (preview.passedCount > 3) {
+            console.log(chalk.gray(`  ... and ${preview.passedCount - 3} more`));
+          }
+        }
+
+        if (preview.flaggedCount === 0 && preview.passedCount === 0) {
+          console.log(chalk.yellow('No files matched the target globs.'));
+        }
+
+        console.log('');
+
+        // Ask for confirmation (re-open readline)
+        if (process.stdin.isTTY) {
+          const confirmRl = createReadline();
+          try {
+            const action = await ask(confirmRl, '[A]ccept, [C]ancel');
+            const choice = action.toLowerCase().trim();
+            if (choice === 'c' || choice === 'cancel') {
+              console.log(chalk.gray('Cancelled.'));
+              return 0;
+            }
+          } finally {
+            confirmRl.close();
+          }
+        }
+      }
+
+      // 7. Placement selection
+      let selectedPlacement = target.placements.find((p) => p.recommended) ??
+        target.placements[0] ?? {
+          skillsDir: path.join(repoRoot, '.claude', 'skills'),
+          label: 'Repo root (global)',
+          reason: 'Fallback — no placements computed',
+          recommended: true,
+          type: 'root' as const,
+        };
+
+      if (argv.scope) {
+        // User explicitly specified scope — override placement
+        selectedPlacement = {
+          skillsDir: path.join(repoRoot, argv.scope, '.claude', 'skills'),
+          label: `${argv.scope} (user-specified)`,
+          reason: 'Explicitly provided via --scope',
+          recommended: true,
+          type: 'collocated',
+        };
+      } else if (process.stdin.isTTY && target.placements.length > 1) {
+        const placementRl = createReadline();
+        try {
+          const choices = target.placements.map((p) => ({
+            id: p.skillsDir,
+            label: `${p.label}${p.recommended ? ' (recommended)' : ''}${p.type === 'existing' ? ' [has rules]' : ''}`,
+          }));
+
+          const selected = await askChoice(placementRl, 'Where should this rule be saved?', choices);
+          selectedPlacement = target.placements.find((p) => p.skillsDir === selected.id) ?? selectedPlacement;
+        } finally {
+          placementRl.close();
+        }
+      }
+
+      // 8. Write to disk
+      const created = createSkillAdapter({
+        skillsDir: selectedPlacement.skillsDir,
+        title: policy.title,
+        severity: policy.severity,
+        globs: policy.globs,
+        instructions: policy.instructions,
+        id: policy.id,
+        repoRoot,
+        examples: policy.examples,
+      });
+
+      debugLog?.('Written to', `policy: ${created.policyFilePath}\nskill: ${created.skillFilePath}`);
+      console.log(chalk.green(`\nCreated: ${created.policyFilePath}`));
+      if (debugLogPath) {
+        console.log(chalk.gray(`Debug log: ${debugLogPath}`));
+      }
+      return 0;
+    } catch (error) {
+      spinner.stop();
+      const message = error instanceof Error ? error.message : String(error);
+      debugLog?.('Error', message);
+      console.log(chalk.red(`\nFailed to generate rule: ${message}`));
+      return 1;
+    }
   } finally {
     rl.close();
   }
@@ -221,32 +399,5 @@ const locateRulesDirectory = (): number => {
   console.log(chalk.gray(rulesDir));
   return 0;
 };
-
-function buildInstructions(templateType: string, answers: RuleAnswers): string {
-  switch (templateType) {
-    case 'ban':
-      return [`Do not use: ${answers.pattern}`, `Reason: ${answers.reason}`, `Use instead: ${answers.instead}`].join(
-        '\n'
-      );
-    case 'require':
-      return [`Required pattern: ${answers.pattern}`, `When: ${answers.when}`, `Reason: ${answers.reason}`].join('\n');
-    case 'structure':
-      return [`Files must contain: ${answers.must_contain}`, `Reason: ${answers.reason}`].join('\n');
-    case 'custom':
-      return answers.instructions;
-    default:
-      return Object.entries(answers)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join('\n');
-  }
-}
-
-function buildRuleDescription(title: string, globs: string[], triggerConditions: string, exclusions: string): string {
-  const scope = globs.join(', ');
-  const trigger = triggerConditions.trim().length > 0 ? triggerConditions.trim() : `changes match ${scope}`;
-  const exclusion = exclusions.trim().length > 0 ? exclusions.trim() : 'cases outside the rule scope';
-
-  return `${title}. Enforces this rule in ${scope}. Use when ${trigger}. Do not use for ${exclusion}.`;
-}
 
 export { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, validateRules };

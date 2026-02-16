@@ -286,17 +286,19 @@ yargs(argv)
         wrapHandler('rules-delete', deleteRule as (argv: unknown) => void)
       )
       .command(
-        'create [title]',
+        'create [target]',
         'Create a new rule policy',
         (y: Argv) => {
-          y.positional('title', {
-            describe: 'Rule title',
+          y.positional('target', {
+            describe: 'Directory path the rule applies to (e.g., src/cli, packages/web)',
             type: 'string',
           })
-            .option('id', { describe: 'Rule ID (kebab-case)' })
-            .option('severity', { describe: 'Rule severity', default: 'error' })
-            .option('globs', { describe: 'Comma-separated glob patterns' })
-            .option('instructions', { describe: 'Rule instructions' });
+            .option('intent', { describe: 'What the rule should enforce', type: 'string' })
+            .option('scope', { describe: 'Where to save the rule (overrides placement suggestion)', type: 'string' })
+            .option('severity', { describe: 'Rule severity (error/warning/info)', type: 'string' })
+            .option('title', { describe: 'Rule title (auto-inferred if not provided)', type: 'string' })
+            .option('debug', { describe: 'Write debug log', type: 'boolean', default: false })
+            .option('skip-preview', { describe: 'Skip preview step', type: 'boolean', default: false });
         },
         wrapHandler('rules-create', createRule as (argv: unknown) => Promise<number>)
       )

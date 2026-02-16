@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { RulePolicy, Severity } from '../types/types.js';
+import type { RulePolicy } from '../types/types.js';
 
 /**
  * Intentionally excludes `examples` and `tags` — the rule adapter does not
@@ -40,17 +40,9 @@ export interface ScanResult {
   docs: Record<string, string>;
 }
 
-export interface RuleProposal {
-  id: string;
-  title: string;
-  severity: Severity;
-  globs: string[];
-  instructions: string;
-}
-
 export interface ZoneAnalysisResult {
   zoneName: string;
-  rules: RuleProposal[];
+  rules: RulePolicy[];
   inputTokens: number;
   outputTokens: number;
 }
@@ -66,44 +58,44 @@ export interface GeneratorResult {
   };
 }
 
-export interface GeneratorIndexingEvent {
+interface GeneratorIndexingEvent {
   type: 'indexing';
 }
 
-export interface GeneratorScanCompleteEvent {
+interface GeneratorScanCompleteEvent {
   type: 'scan_complete';
   totalFiles: number;
   zoneCount: number;
   extensions: Record<string, number>;
 }
 
-export interface GeneratorZoneStartedEvent {
+interface GeneratorZoneStartedEvent {
   type: 'zone_started';
   zoneName: string;
   fileCount: number;
   selectedFileCount: number;
 }
 
-export interface GeneratorZoneCompletedEvent {
+interface GeneratorZoneCompletedEvent {
   type: 'zone_completed';
   zoneName: string;
   rulesProposed: number;
   durationMs: number;
 }
 
-export interface GeneratorSynthesisStartedEvent {
+interface GeneratorSynthesisStartedEvent {
   type: 'synthesis_started';
   candidateCount: number;
 }
 
-export interface GeneratorSynthesisCompletedEvent {
+interface GeneratorSynthesisCompletedEvent {
   type: 'synthesis_completed';
   candidateCount: number;
   finalCount: number;
   durationMs: number;
 }
 
-export interface GeneratorCompleteEvent {
+interface GeneratorCompleteEvent {
   type: 'generator_complete';
   totalRules: number;
   durationMs: number;

@@ -1,7 +1,8 @@
 import type { LanguageModel } from 'ai';
 import { generateObject } from 'ai';
 import { z } from 'zod';
-import { type RuleProposal, RuleProposalSchema } from './types.js';
+import type { RulePolicy } from '../types/types.js';
+import { RuleProposalSchema } from './types.js';
 
 const SYNTHESIS_PROMPT = `You are a senior engineering lead reviewing candidate code review rules generated from different zones of a codebase.
 
@@ -28,14 +29,14 @@ If a rule uses universal globs like \`**/*.ts\`, either narrow the globs to the 
 
 Return the consolidated rules. Each rule must have: id, title, severity, globs, instructions.`;
 
-export interface SynthesisResult {
-  rules: RuleProposal[];
+interface SynthesisResult {
+  rules: RulePolicy[];
   inputTokens: number;
   outputTokens: number;
 }
 
 export async function synthesizeRules(options: {
-  candidates: RuleProposal[];
+  candidates: RulePolicy[];
   model: LanguageModel;
   ruleTarget: number;
   abortSignal?: AbortSignal;

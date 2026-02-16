@@ -24,7 +24,7 @@ const SkillFrontmatterSchema = z
   })
   .passthrough();
 
-const SkillPolicySchema = z
+export const SkillPolicySchema = z
   .object({
     id: z.string().min(1),
     title: z.string().min(1),
@@ -99,7 +99,10 @@ export function resolveSkillsDir(explicitSkillsDir?: string, startDir = process.
 }
 
 export function resolveSkillsDirForCreate(explicitSkillsDir?: string, startDir = process.cwd()): string {
-  return resolveSkillsDir(explicitSkillsDir, startDir) ?? path.resolve(findRepoRoot(startDir), '.claude', 'skills');
+  if (explicitSkillsDir) {
+    return path.resolve(explicitSkillsDir);
+  }
+  return resolveSkillsDir(undefined, startDir) ?? path.resolve(findRepoRoot(startDir), '.claude', 'skills');
 }
 
 export function parseSkillFiles(skillsDir: string): { parsed: ParsedSkillFile[]; issues: SkillFileIssue[] } {
