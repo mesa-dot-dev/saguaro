@@ -25,6 +25,7 @@
     "@ai-sdk/anthropic": "^3.0.38",
     "@ai-sdk/google": "^3.0.22",
     "@ai-sdk/openai": "^3.0.26",
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "@swc/core": "^1.15.11",
     "ai": "^6.0.75",
     "boxen": "^5.1.2",

@@ -1,4 +1,5 @@
 import { createReviewCore, type ReviewEngineOutcome } from '../core/review.js';
+import { getDiffs } from '../lib/git.js';
 import { createNodeReviewRuntime, type ReviewRuntime } from '../lib/review-runtime.js';
 import type { ReviewProgressCallback } from '../types/types.js';
 
@@ -11,7 +12,7 @@ export interface ReviewAdapterRequest {
   configPath?: string;
   /** Markdown section with import graph + blast radius context from the codebase indexer */
   codebaseContext?: string;
-  /** Pre-computed diffs keyed by file path */
+  /** Pre-computed diffs keyed by file path. Computed automatically from refs if omitted. */
   diffs?: Map<string, string>;
   onProgress?: ReviewProgressCallback;
   abortSignal?: AbortSignal;
@@ -24,6 +25,9 @@ export interface ReviewAdapterResult {
 export async function runReview(request: ReviewAdapterRequest, runtime?: ReviewRuntime): Promise<ReviewAdapterResult> {
   const effectiveRuntime = runtime ?? createNodeReviewRuntime();
   const changedFilesOverride = request.changedFilesOverride;
+
+  // Always ensure diffs are available — the review is meaningless without them
+  const diffs = request.diffs ?? getDiffs(request.baseRef, request.headRef);
 
   const reviewCore = createReviewCore({
     input: {
@@ -38,7 +42,7 @@ export async function runReview(request: ReviewAdapterRequest, runtime?: ReviewR
     headRef: request.headRef,
     verbose: request.verbose,
     codebaseContext: request.codebaseContext,
-    diffs: request.diffs,
+    diffs,
     onProgress: request.onProgress,
     abortSignal: request.abortSignal,
   });

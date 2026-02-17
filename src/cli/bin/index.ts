@@ -350,7 +350,7 @@ yargs(argv)
     'serve',
     'Run Mesa as an MCP server for Claude/Cursor integration',
     () => {},
-    wrapHandler('serve', serveHandler as (argv: unknown) => Promise<number>)
+    wrapHandler('serve', serveHandler as (argv: unknown) => Promise<void>)
   )
   .command(
     'index',

@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
 import { findRepoRoot } from '../../lib/skills.js';
+import { getMcpJsonConfig } from '../../mcp/config.js';
+import { getMcpSkillFiles } from '../../templates/mcp-skills.js';
 import { getStarterSkillFiles } from '../../templates/starter-skills.js';
 import { ask, askChoice, createReadline } from './prompt.js';
 
@@ -80,6 +82,22 @@ function writeStarterSkills(dir: string) {
   }
 }
 
+const mcpJsonPath = '.mcp.json';
+
+function writeMcpJson(): void {
+  const fullPath = path.resolve(process.cwd(), mcpJsonPath);
+  const content = JSON.stringify(getMcpJsonConfig(), null, 2);
+  fs.writeFileSync(fullPath, `${content}\n`);
+}
+
+function writeMcpSkills(skillsDirPath: string): void {
+  for (const skill of getMcpSkillFiles()) {
+    const fullPath = path.join(skillsDirPath, skill.skillFilePath);
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, skill.content);
+  }
+}
+
 const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   const { force } = argv;
   const repoRoot = findRepoRoot();
@@ -115,6 +133,12 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
     upsertEnvValue(path.join(repoRoot, envLocalPath), apiKeyEnvName, apiKey);
   }
 
+  // Write .mcp.json for Claude Code auto-discovery
+  writeMcpJson();
+
+  // Write MCP skill files for slash commands
+  writeMcpSkills(path.resolve(process.cwd(), skillsDir));
+
   const rl2 = createReadline();
   let skillSetupChoice: SkillSetupChoice;
   try {
@@ -141,6 +165,10 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   console.log(secondary('\nMesa initialized successfully!'));
   console.log(chalk.gray(`  Created: ${relMesaDir}/config.yaml`));
   console.log(chalk.gray(`  Created: ${relSkillsDir}/`));
+  console.log(chalk.gray(`  Created: ${mcpJsonPath}`));
+  console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-review/`));
+  console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-createrule/`));
+  console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-generaterules/`));
   if (wroteApiKey) {
     console.log(chalk.gray(`  Updated: ${relEnvPath} (${apiKeyEnvName})`));
   } else {

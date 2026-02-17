@@ -1,12 +1,7 @@
-import chalk from 'chalk';
+import { startMcpServer } from '../../mcp/server.js';
 
-// interface ServeArgv {
-//   [key: string]: unknown;
-// }
-
-const serveHandler = async (): Promise<number> => {
-  console.log(chalk.red('Serve command not implemented'));
-  return 1;
+const serveHandler = async (): Promise<void> => {
+  await startMcpServer({ transport: 'stdio' });
 };
 
 export default serveHandler;
