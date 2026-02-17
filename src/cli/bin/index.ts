@@ -385,16 +385,15 @@ yargs(argv)
         false, // hidden — internal command called by the hook itself
         (y: Argv) => {
           y.option('c', {
-              alias: 'config',
-              describe: 'Path to config file',
-              type: 'string',
-            })
-            .option('v', {
-              alias: 'verbose',
-              describe: 'Show detailed progress',
-              type: 'boolean',
-              default: false,
-            });
+            alias: 'config',
+            describe: 'Path to config file',
+            type: 'string',
+          }).option('v', {
+            alias: 'verbose',
+            describe: 'Show detailed progress',
+            type: 'boolean',
+            default: false,
+          });
         },
         wrapHandler('hook-run', runHook as (argv: unknown) => Promise<number>)
       );
