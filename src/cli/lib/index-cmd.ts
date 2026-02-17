@@ -2,13 +2,14 @@ import path from 'node:path';
 import chalk from 'chalk';
 import { buildIndex } from '../../indexer/build.js';
 import { JsonIndexStore } from '../../indexer/store.js';
+import { findRepoRoot } from '../../lib/skills.js';
 
 interface IndexArgv {
   verbose?: boolean;
 }
 
 const indexHandler = async (argv: IndexArgv) => {
-  const rootDir = process.cwd();
+  const rootDir = findRepoRoot();
   const mesaCacheDir = path.join(rootDir, '.mesa', 'cache');
   const store = new JsonIndexStore(mesaCacheDir);
 

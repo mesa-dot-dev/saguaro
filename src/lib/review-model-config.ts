@@ -9,6 +9,7 @@ import yaml from 'js-yaml';
 import { z } from 'zod';
 import { ApiKeyMissingError, ConfigInvalidError, ConfigMissingError } from './errors.js';
 import { logger } from './logger.js';
+import { findRepoRoot } from './skills.js';
 
 // ---------------------------------------------------------------------------
 // Zod config schema
@@ -160,7 +161,8 @@ function resolveMesaConfigPath(configPath?: string): string | null {
   const envPath = process.env.MESA_CONFIG;
   if (envPath && fs.existsSync(envPath)) return envPath;
 
-  const defaultPath = path.resolve(process.cwd(), '.mesa', 'config.yaml');
+  const repoRoot = findRepoRoot();
+  const defaultPath = path.resolve(repoRoot, '.mesa', 'config.yaml');
   if (fs.existsSync(defaultPath)) return defaultPath;
 
   return null;

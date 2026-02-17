@@ -7,6 +7,7 @@ import chalk from 'chalk';
 import yargs, { type Argv } from 'yargs';
 import { MesaError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
+import { findRepoRoot } from '../../lib/skills.js';
 import checkHandler from '../lib/check.js';
 import { generateRulesCommand } from '../lib/generate.js';
 import indexCmdHandler from '../lib/index-cmd.js';
@@ -215,7 +216,7 @@ yargs(argv)
       if (argv.debug) {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const debugLogPath = enableDebugCapture(
-          path.resolve(process.cwd(), '.mesa', '.tmp', `logfile-${timestamp}.txt`)
+          path.resolve(findRepoRoot(), '.mesa', '.tmp', `logfile-${timestamp}.txt`)
         );
         logger.setLevel('debug');
         logger.info(chalk.gray(`[debug] Writing debug logs to ${debugLogPath}`));

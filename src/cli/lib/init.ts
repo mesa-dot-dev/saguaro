@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
+import { findRepoRoot } from '../../lib/skills.js';
 import { getStarterSkillFiles } from '../../templates/starter-skills.js';
 import { ask, askChoice, createReadline } from './prompt.js';
 
@@ -81,14 +82,17 @@ function writeStarterSkills(dir: string) {
 
 const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   const { force } = argv;
+  const repoRoot = findRepoRoot();
+  const rootMesaDir = path.join(repoRoot, mesaDir);
+  const rootSkillsDir = path.join(repoRoot, skillsDir);
 
-  if (fs.existsSync(mesaDir) && !force) {
+  if (fs.existsSync(rootMesaDir) && !force) {
     console.log(chalk.red(`Mesa already initialized in this directory. Use ${secondary('--force')} to overwrite.`));
     return 1;
   }
 
-  fs.mkdirSync(mesaDir, { recursive: true });
-  fs.mkdirSync(skillsDir, { recursive: true });
+  fs.mkdirSync(rootMesaDir, { recursive: true });
+  fs.mkdirSync(rootSkillsDir, { recursive: true });
   const rl1 = createReadline();
   let apiKey = '';
   try {
@@ -106,9 +110,9 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   const wroteApiKey = apiKey.length > 0;
 
   // Write config and env before rule generation (config must exist for other commands)
-  fs.writeFileSync(configPath, buildConfigContent());
+  fs.writeFileSync(path.join(repoRoot, configPath), buildConfigContent());
   if (wroteApiKey) {
-    upsertEnvValue(path.resolve(process.cwd(), envLocalPath), apiKeyEnvName, apiKey);
+    upsertEnvValue(path.join(repoRoot, envLocalPath), apiKeyEnvName, apiKey);
   }
 
   const rl2 = createReadline();
@@ -124,17 +128,21 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   }
 
   if (skillSetupChoice === 'default') {
-    writeStarterSkills(path.resolve(process.cwd(), skillsDir));
+    writeStarterSkills(rootSkillsDir);
     console.log(chalk.gray(`  Added starter rules. Add more with ${tertiary('mesa rules create')}.`));
   } else {
     console.log(chalk.gray(`  Specify your rules with ${secondary('mesa rules create')}.`));
   }
 
+  const relMesaDir = path.relative(process.cwd(), rootMesaDir) || mesaDir;
+  const relSkillsDir = path.relative(process.cwd(), rootSkillsDir) || skillsDir;
+  const relEnvPath = path.relative(process.cwd(), path.join(repoRoot, envLocalPath)) || envLocalPath;
+
   console.log(secondary('\nMesa initialized successfully!'));
-  console.log(chalk.gray(`  Created: ${configPath}`));
-  console.log(chalk.gray(`  Created: ${skillsDir}/`));
+  console.log(chalk.gray(`  Created: ${relMesaDir}/config.yaml`));
+  console.log(chalk.gray(`  Created: ${relSkillsDir}/`));
   if (wroteApiKey) {
-    console.log(chalk.gray(`  Updated: ${envLocalPath} (${apiKeyEnvName})`));
+    console.log(chalk.gray(`  Updated: ${relEnvPath} (${apiKeyEnvName})`));
   } else {
     console.log(chalk.gray(`  Add ${apiKeyEnvName} in your environment (.env.local, .env).`));
   }

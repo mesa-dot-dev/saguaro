@@ -107,12 +107,16 @@ export const STARTER_RULE_SKILLS: StarterRuleSkill[] = [
     examples: {
       violations: [
         'useMemo(() => items.filter(i => i.score > threshold), [items])',
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional code example
         'useCallback(() => fetch(`/api/${orgSlug}`), [])',
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional code example
         'useEffect(() => { document.title = `${name} - App` }, [])',
       ],
       compliant: [
         'useMemo(() => items.filter(i => i.score > threshold), [items, threshold])',
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional code example
         'useCallback(() => fetch(`/api/${orgSlug}`), [orgSlug])',
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional code example
         'useEffect(() => { document.title = `${name} - App` }, [name])',
       ],
     },

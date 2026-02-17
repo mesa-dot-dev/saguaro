@@ -7,6 +7,7 @@ import { buildIndex } from '../indexer/build.js';
 import { JsonIndexStore } from '../indexer/store.js';
 import type { CodebaseIndex } from '../indexer/types.js';
 import { loadReviewAdapterConfig, resolveModelFromResolvedConfig } from '../lib/review-model-config.js';
+import { findRepoRoot } from '../lib/skills.js';
 import type { RulePolicy } from '../types/types.js';
 import { computeArchitecturalContext } from './architecture.js';
 import { scanAndSelectFiles } from './scanner.js';
@@ -80,7 +81,7 @@ export async function orchestrate(options: GenerateRulesOptions): Promise<Genera
   const { modelConfig } = loadReviewAdapterConfig(options.configPath);
   const model = resolveModelFromResolvedConfig(modelConfig);
   options.onProgress?.({ type: 'indexing' });
-  const mesaCacheDir = path.join(cwd, '.mesa', 'cache');
+  const mesaCacheDir = path.join(findRepoRoot(cwd), '.mesa', 'cache');
   const store = new JsonIndexStore(mesaCacheDir);
   let index: CodebaseIndex | null = null;
   try {

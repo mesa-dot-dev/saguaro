@@ -84,10 +84,11 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
     // Compute codebase context for the indexer (graceful — never blocks review)
     let codebaseContext = '';
     if (indexSettings.enabled && changedFiles.length > 0) {
-      // rootDir = repo root (indexing scope), cacheDir = alongside config (cwd/.mesa/cache)
+      // rootDir = repo root (indexing scope), cacheDir = alongside config (repo-root/.mesa/cache)
+      const repoRoot = getRepoRoot();
       codebaseContext = await getCodebaseContext({
-        rootDir: getRepoRoot(),
-        cacheDir: path.join(process.cwd(), '.mesa', 'cache'),
+        rootDir: repoRoot,
+        cacheDir: path.join(repoRoot, '.mesa', 'cache'),
         changedFiles,
         blastRadiusDepth: indexSettings.blastRadiusDepth,
         tokenBudget: indexSettings.contextTokenBudget,

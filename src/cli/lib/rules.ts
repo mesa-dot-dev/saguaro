@@ -198,7 +198,7 @@ const createRule = async (argv: CreateRuleArgv): Promise<number> => {
     let debugLogPath: string | undefined;
     if (argv.debug) {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      debugLogPath = path.resolve(process.cwd(), '.mesa', '.tmp', `rule-create-${timestamp}.txt`);
+      debugLogPath = path.resolve(findRepoRoot(), '.mesa', '.tmp', `rule-create-${timestamp}.txt`);
       fs.mkdirSync(path.dirname(debugLogPath), { recursive: true });
       fs.writeFileSync(debugLogPath, `=== Mesa Rule Create Debug ${new Date().toISOString()} ===\n\n`);
       debugLog = (label: string, content: string) => {
