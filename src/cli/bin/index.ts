@@ -10,6 +10,7 @@ import { logger } from '../../lib/logger.js';
 import { findRepoRoot } from '../../lib/skills.js';
 import checkHandler from '../lib/check.js';
 import { generateRulesCommand } from '../lib/generate.js';
+import { installHook, runHook, uninstallHook } from '../lib/hook.js';
 import indexCmdHandler from '../lib/index-cmd.js';
 import initHandler from '../lib/init.js';
 import { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, validateRules } from '../lib/rules.js';
@@ -365,4 +366,37 @@ yargs(argv)
     },
     wrapHandler('index', indexCmdHandler as (argv: unknown) => Promise<void>)
   )
+  .command('hook <command>', 'Manage Claude Code review hook', (y: Argv) => {
+    y.demandCommand(1, 'Please specify a hook subcommand. Run "mesa hook --help" for options.')
+      .command(
+        'install',
+        'Install the Claude Code Stop hook for automatic reviews',
+        {},
+        wrapHandler('hook-install', installHook as (argv: unknown) => Promise<number>)
+      )
+      .command(
+        'uninstall',
+        'Remove the Claude Code review hook',
+        {},
+        wrapHandler('hook-uninstall', uninstallHook as (argv: unknown) => Promise<number>)
+      )
+      .command(
+        'run',
+        false, // hidden — internal command called by the hook itself
+        (y: Argv) => {
+          y.option('c', {
+              alias: 'config',
+              describe: 'Path to config file',
+              type: 'string',
+            })
+            .option('v', {
+              alias: 'verbose',
+              describe: 'Show detailed progress',
+              type: 'boolean',
+              default: false,
+            });
+        },
+        wrapHandler('hook-run', runHook as (argv: unknown) => Promise<number>)
+      );
+  })
   .parse();

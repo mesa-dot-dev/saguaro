@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const VALID_GIT_REF = /^[a-zA-Z0-9][a-zA-Z0-9/_.\-^~]*$/;
 
@@ -100,6 +102,60 @@ export function getFileAtRef(ref: string, filePath: string): string | null {
   } catch {
     return null;
   }
+}
+
+export function listUntrackedFiles(): string[] {
+  assertInsideGitRepo();
+
+  const output = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], {
+    encoding: 'utf8',
+  });
+
+  return output
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+export function getUntrackedDiffs(): Map<string, string> {
+  const repoRoot = getRepoRoot();
+  const untrackedFiles = listUntrackedFiles();
+  const result = new Map<string, string>();
+
+  for (const filePath of untrackedFiles) {
+    const absolutePath = path.join(repoRoot, filePath);
+    try {
+      const content = fs.readFileSync(absolutePath, 'utf8');
+      const lines = content.split('\n');
+      const additions = lines.map((line) => `+${line}`).join('\n');
+      const lineCount = lines.length;
+
+      const syntheticDiff = [
+        `diff --git a/${filePath} b/${filePath}`,
+        'new file mode 100644',
+        '--- /dev/null',
+        `+++ b/${filePath}`,
+        `@@ -0,0 +1,${lineCount} @@`,
+        additions,
+      ].join('\n');
+
+      result.set(filePath, syntheticDiff);
+    } catch {
+      // Skip files that can't be read (binary, permission issues, etc.)
+    }
+  }
+
+  return result;
+}
+
+export function getDefaultBranch(): string {
+  for (const candidate of ['main', 'master']) {
+    try {
+      execFileSync('git', ['rev-parse', '--verify', candidate], { stdio: 'ignore' });
+      return candidate;
+    } catch {}
+  }
+  return 'main';
 }
 
 function assertValidGitRef(ref: string, label: string): void {
