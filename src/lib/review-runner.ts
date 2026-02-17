@@ -77,6 +77,17 @@ If no violations are found across all files, respond with exactly: No violations
 - Be concise. No preamble, no summary, no explanation beyond the violation format.
 - When a file's diff says "No diff available", skip that file entirely.`;
 
+export function deduplicateViolations(violations: Violation[]): Violation[] {
+  const seen = new Map<string, Violation>();
+  for (const v of violations) {
+    const key = `${v.ruleId}::${v.file}::${v.line ?? ''}`;
+    if (!seen.has(key)) {
+      seen.set(key, v);
+    }
+  }
+  return Array.from(seen.values());
+}
+
 export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewResult> {
   const runStartedAtMs = Date.now();
   const resolveFile = options.resolveFile ?? createDefaultFileResolver();
@@ -225,7 +236,7 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
   const totalToolCalls = parseResults.reduce((count, result) => count + result.toolCalls, 0);
   const totalMatched = parseResults.reduce((count, result) => count + result.matchedLines, 0);
   const totalIgnored = parseResults.reduce((count, result) => count + result.ignoredLines, 0);
-  const allViolations = parseResults.flatMap((result) => result.violations);
+  const allViolations = deduplicateViolations(parseResults.flatMap((result) => result.violations));
   const totalInputTokens = parseResults.reduce((count, result) => count + result.inputTokens, 0);
   const totalOutputTokens = parseResults.reduce((count, result) => count + result.outputTokens, 0);
 

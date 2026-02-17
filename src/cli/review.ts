@@ -328,14 +328,22 @@ function printViolations(
     return;
   }
 
-  for (const v of result.violations) {
-    const icon = v.severity === 'error' ? '✗' : v.severity === 'warning' ? '⚠' : 'ℹ';
-    const lineInfo = v.line ? `:${v.line}` : '';
-    console.log(`${icon} ${v.file}${lineInfo} [${v.severity}]`);
-    console.log(`  Rule: ${v.ruleId}`);
-    console.log(`  ${v.message}`);
-    if (v.suggestion) {
-      console.log(`  Suggestion: ${v.suggestion}`);
+  const groups = groupViolationsByRule(result.violations);
+  for (const [ruleId, violations] of groups) {
+    const severity = violations[0].severity;
+    const icon = severity === 'error' ? '✗' : severity === 'warning' ? '⚠' : 'ℹ';
+
+    if (violations.length === 1) {
+      const v = violations[0];
+      const lineInfo = v.line ? `:${v.line}` : '';
+      console.log(`${icon} ${ruleId} [${severity}]`);
+      console.log(`  ${v.file}${lineInfo} — ${v.message}`);
+    } else {
+      console.log(`${icon} ${ruleId} [${severity}] — ${violations.length} violations`);
+      violations.forEach((v, i) => {
+        const lineInfo = v.line ? `:${v.line}` : '';
+        console.log(`  ${i + 1}. ${v.file}${lineInfo} — ${v.message}`);
+      });
     }
     console.log();
   }
@@ -387,12 +395,37 @@ function buildCursorPromptText(result: ReviewResult): string {
   lines.push('');
   lines.push('Violations:');
 
-  result.violations.forEach((violation, index) => {
-    const loc = `${violation.file}${violation.line ? `:${violation.line}` : ''}`;
-    lines.push(`${index + 1}. ${loc} [${violation.severity}] ${violation.ruleId} - ${violation.message}`);
-  });
+  const groups = groupViolationsByRule(result.violations);
+  for (const [ruleId, violations] of groups) {
+    const severity = violations[0].severity;
+    lines.push('');
+    if (violations.length === 1) {
+      const v = violations[0];
+      const loc = `${v.file}${v.line ? `:${v.line}` : ''}`;
+      lines.push(`${ruleId} [${severity}]: ${loc} - ${v.message}`);
+    } else {
+      lines.push(`${ruleId} [${severity}]:`);
+      violations.forEach((v, i) => {
+        const loc = `${v.file}${v.line ? `:${v.line}` : ''}`;
+        lines.push(`  ${i + 1}. ${loc} - ${v.message}`);
+      });
+    }
+  }
 
   return lines.join('\n');
+}
+
+export function groupViolationsByRule(violations: Violation[]): Map<string, Violation[]> {
+  const groups = new Map<string, Violation[]>();
+  for (const v of violations) {
+    const existing = groups.get(v.ruleId);
+    if (existing) {
+      existing.push(v);
+    } else {
+      groups.set(v.ruleId, [v]);
+    }
+  }
+  return groups;
 }
 
 function buildCursorPromptLink(promptText: string): string | null {
