@@ -10,15 +10,17 @@ export interface McpJsonConfig {
   };
 }
 
-function isLocalDevBuild(): boolean {
+const HOMEBREW_BIN_PREFIXES = ['/opt/homebrew/bin/', '/usr/local/bin/'];
+
+function isHomebrewInstall(): boolean {
   const script = process.argv[1] ?? '';
-  return script.includes('dist/cli/bin');
+  return HOMEBREW_BIN_PREFIXES.some((prefix) => script.startsWith(prefix));
 }
 
 export function getMcpJsonConfig(): McpJsonConfig {
-  const localDev = isLocalDevBuild();
-  const command = localDev ? 'node' : 'mesa';
-  const args = localDev ? [process.argv[1], 'serve'] : ['serve'];
+  const homebrew = isHomebrewInstall();
+  const command = homebrew ? 'mesa' : 'node';
+  const args = homebrew ? ['serve'] : [process.argv[1], 'serve'];
 
   return {
     mcpServers: {
