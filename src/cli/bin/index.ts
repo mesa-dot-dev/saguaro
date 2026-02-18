@@ -260,7 +260,7 @@ yargs(argv)
           alias: 'config',
           describe: 'Path to Mesa config file',
           type: 'string',
-          default: '.mesa/config.yaml',
+          defaultDescription: '.mesa/config.yaml',
         })
         .option('rules', {
           describe: 'Path to rules directory',

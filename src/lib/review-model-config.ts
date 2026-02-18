@@ -115,8 +115,9 @@ export function resolveApiKey(config: MesaConfig): string {
 }
 
 function loadLocalEnvFiles(): void {
-  dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), quiet: true });
-  dotenv.config({ path: path.resolve(process.cwd(), '.env'), quiet: true });
+  const repoRoot = findRepoRoot();
+  dotenv.config({ path: path.resolve(repoRoot, '.env.local'), quiet: true });
+  dotenv.config({ path: path.resolve(repoRoot, '.env'), quiet: true });
 }
 
 export function resolveModelFromResolvedConfig(config: ResolvedModelConfig): LanguageModel {
