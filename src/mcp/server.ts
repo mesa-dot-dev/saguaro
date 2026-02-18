@@ -83,6 +83,33 @@ export function createMesaMcpServer(): McpServer {
     () => handleToolCall('mesa_validate_rules', {})
   );
 
+  server.registerTool(
+    'mesa_generate_rules',
+    {
+      description:
+        'Run the full rule generation pipeline (zone scanning, import graph indexing, LLM analysis, synthesis). Returns proposed rules without writing them. Use mesa_create_rule to persist accepted rules.',
+    },
+    () => handleToolCall('mesa_generate_rules', {})
+  );
+
+  server.registerTool(
+    'mesa_generate_rule',
+    {
+      description:
+        'Generate a single review rule for a target directory. Analyzes the code, generates a rule via LLM, and returns the proposal with a preview of which files would be flagged. Use mesa_create_rule to persist the accepted rule.',
+      inputSchema: {
+        target: z.string().describe('Target directory path relative to repo root (e.g., "src/cli", "packages/web")'),
+        intent: z.string().describe('What convention or pattern the rule should enforce'),
+        title: z.string().optional().describe('Optional rule title (inferred from intent if omitted)'),
+        severity: z
+          .enum(['error', 'warning', 'info'])
+          .optional()
+          .describe('Optional severity level (inferred if omitted)'),
+      },
+    },
+    (args) => handleToolCall('mesa_generate_rule', args)
+  );
+
   return server;
 }
 

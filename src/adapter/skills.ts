@@ -1,7 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import yaml from 'js-yaml';
+import { generateRules } from '../generator/index.js';
 import { toKebabCase } from '../lib/constants.js';
+import { loadValidatedConfig, resolveApiKey, resolveModelFromResolvedConfig } from '../lib/review-model-config.js';
+import { generateRule } from '../lib/rule-generator.js';
+import type { PreviewRuleResult } from '../lib/rule-preview.js';
+import { previewRule } from '../lib/rule-preview.js';
 import {
   findRepoRoot,
   loadParsedSkillsFromDirectory,
@@ -10,6 +15,7 @@ import {
   resolveSkillsDirForCreate,
   validateParsedSkills,
 } from '../lib/skills.js';
+import { analyzeTarget } from '../lib/target-analysis.js';
 import type { RulePolicy, Severity } from '../types/types.js';
 
 export interface AdapterSkill extends RulePolicy {
@@ -84,6 +90,37 @@ export interface CreateSkillAdapterResult {
   skillFilePath: string;
   policyFilePath: string;
   skill: AdapterSkill;
+}
+
+export interface GenerateRulesAdapterResult {
+  rules: RulePolicy[];
+  summary: {
+    filesScanned: number;
+    rulesGenerated: number;
+    durationMs: number;
+  };
+}
+
+export interface GenerateRuleAdapterRequest {
+  target: string;
+  intent: string;
+  title?: string;
+  severity?: Severity;
+}
+
+export interface GenerateRuleAdapterResult {
+  rule: RulePolicy;
+  preview: {
+    flaggedCount: number;
+    passedCount: number;
+    flaggedFiles: string[];
+    passedFiles: string[];
+  };
+  placements: {
+    label: string;
+    scope: string;
+    recommended: boolean;
+  }[];
 }
 
 export interface LocateSkillsDirectoryAdapterResult {
@@ -280,6 +317,75 @@ export function createSkillAdapter(request: CreateSkillAdapterRequest): CreateSk
       description,
       skillDir,
     },
+  };
+}
+
+export async function generateRulesAdapter(): Promise<GenerateRulesAdapterResult> {
+  const result = await generateRules({ cwd: process.cwd() });
+
+  return {
+    rules: result.rules,
+    summary: {
+      filesScanned: result.summary.filesScanned,
+      rulesGenerated: result.summary.rulesGenerated,
+      durationMs: result.summary.durationMs,
+    },
+  };
+}
+
+export async function generateRuleAdapter(request: GenerateRuleAdapterRequest): Promise<GenerateRuleAdapterResult> {
+  const repoRoot = findRepoRoot();
+  const target = analyzeTarget({ targetPath: request.target, repoRoot });
+
+  const config = loadValidatedConfig();
+  const apiKey = resolveApiKey(config);
+  const model = resolveModelFromResolvedConfig({
+    provider: config.model.provider,
+    model: config.model.name,
+    apiKey,
+  });
+
+  const result = await generateRule({
+    intent: request.intent,
+    target,
+    model,
+    title: request.title,
+    severity: request.severity,
+    repoRoot,
+  });
+
+  const violationPatterns = result.policy.examples?.violations ?? [];
+  let preview: PreviewRuleResult = {
+    flagged: [],
+    passed: [],
+    totalFiles: 0,
+    flaggedCount: 0,
+    passedCount: 0,
+  };
+
+  if (violationPatterns.length > 0) {
+    preview = previewRule({
+      targetDir: target.resolvedPath,
+      globs: result.policy.globs,
+      violationPatterns,
+    });
+  }
+
+  const placements = target.placements.map((p) => ({
+    label: p.label,
+    scope: path.relative(repoRoot, path.resolve(p.skillsDir, '..', '..')),
+    recommended: p.recommended,
+  }));
+
+  return {
+    rule: result.policy,
+    preview: {
+      flaggedCount: preview.flaggedCount,
+      passedCount: preview.passedCount,
+      flaggedFiles: preview.flagged.map((f) => path.relative(repoRoot, f.filePath)),
+      passedFiles: preview.passed.map((f) => path.relative(repoRoot, f.filePath)),
+    },
+    placements,
   };
 }
 

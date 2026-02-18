@@ -7,6 +7,8 @@ import {
   createSkillAdapter,
   deleteSkillAdapter,
   explainSkillAdapter,
+  generateRuleAdapter,
+  generateRulesAdapter,
   listSkillsAdapter,
   validateSkillsAdapter,
 } from '../../adapter/skills.js';
@@ -135,6 +137,30 @@ function handleDeleteRule(args: Record<string, unknown>): CallToolResult {
   return jsonResult({ deleted: true, id: ruleId });
 }
 
+async function handleGenerateRules(): Promise<CallToolResult> {
+  debug('mesa_generate_rules called');
+  const result = await generateRulesAdapter();
+  debug(`mesa_generate_rules returning ${result.rules.length} rules`);
+  return jsonResult(result);
+}
+
+async function handleGenerateRule(args: Record<string, unknown>): Promise<CallToolResult> {
+  debug('mesa_generate_rule called', args);
+  const target = args.target as string;
+  const intent = args.intent as string;
+
+  if (!target || !intent) {
+    return errorResult('target and intent are required');
+  }
+
+  const title = args.title as string | undefined;
+  const severity = args.severity as 'error' | 'warning' | 'info' | undefined;
+
+  const result = await generateRuleAdapter({ target, intent, title, severity });
+  debug('mesa_generate_rule returning', { ruleId: result.rule.id });
+  return jsonResult(result);
+}
+
 async function handleReview(args: Record<string, unknown>): Promise<CallToolResult> {
   const baseRef = (args.base_branch as string) ?? 'main';
   const headRef = (args.head_branch as string) ?? 'HEAD';
@@ -198,6 +224,22 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
       return handleCreateRule(args);
     case 'mesa_delete_rule':
       return handleDeleteRule(args);
+    case 'mesa_generate_rules':
+      try {
+        return await handleGenerateRules();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        debug('mesa_generate_rules EXCEPTION', { error: message, stack: err instanceof Error ? err.stack : undefined });
+        return errorResult(`Rule generation failed: ${message}`);
+      }
+    case 'mesa_generate_rule':
+      try {
+        return await handleGenerateRule(args);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        debug('mesa_generate_rule EXCEPTION', { error: message, stack: err instanceof Error ? err.stack : undefined });
+        return errorResult(`Rule generation failed: ${message}`);
+      }
     case 'mesa_review':
       try {
         return await handleReview(args);

@@ -22,23 +22,80 @@ If no violations are found, confirm the changes look clean.
       skillFilePath: 'mesa-createrule/SKILL.md',
       content: `---
 name: mesa-createrule
-description: Create a new Mesa code review rule
+description: Generate a single Mesa review rule using the AI pipeline with preview and approval
 ---
-Ask the user what coding pattern or convention they want to enforce and which files
-it applies to. Then use the mesa_create_rule MCP tool to create the rule.
-Confirm the created rule details with the user.
+## Flow
+
+1. **Gather inputs** — Ask the user for:
+   - **Target directory** (e.g., "src/cli", "packages/web") — the code area the rule applies to
+   - **Intent** — what convention or pattern the rule should enforce
+   - Optionally: a title and severity
+
+2. **Generate proposal** — Call the \`mesa_generate_rule\` MCP tool with the target and intent.
+   Tell the user this may take 15-30 seconds while the pipeline analyzes their code.
+
+3. **Present the proposal** — Show the user:
+   - **Rule title, ID, severity, and globs**
+   - **Instructions** (the full rule body)
+   - **Preview data**: how many files would be flagged vs. passed, and which files
+   - **Placement options**: where the rule can be saved (collocated, package, root) with the recommended option marked
+
+4. **Ask for approval** — Present three options:
+   - **Accept** — proceed to write the rule as-is
+   - **Edit** — let the user modify fields (title, severity, instructions, globs) then re-confirm
+   - **Cancel** — discard the proposal
+
+5. **Choose placement** — If the user accepts, present the placement options and ask which scope to use.
+
+6. **Write the rule** — Call \`mesa_create_rule\` with the final rule fields and the selected scope.
+   Report the created rule ID and file path.
 `,
     },
     {
       skillFilePath: 'mesa-generaterules/SKILL.md',
       content: `---
 name: mesa-generaterules
-description: Auto-generate Mesa review rules by analyzing codebase patterns
+description: Auto-generate Mesa review rules using the full AI pipeline with approval before writing
 ---
-Ask the user which directory or package to analyze for patterns.
-Use mesa_list_rules to show what rules already exist.
-Then analyze the codebase and use mesa_create_rule to generate rules
-that capture the conventions and patterns found in the code.
+## Flow
+
+1. **Start the pipeline** — Call the \`mesa_generate_rules\` MCP tool.
+   Tell the user this runs a multi-stage pipeline (zone scanning, import graph indexing, LLM analysis, synthesis/dedup) and may take 30-60 seconds.
+
+2. **Present summary** — When the tool returns, show:
+   - Files scanned
+   - Rules generated
+   - Duration
+   - A compact list of all generated rules (ID + one-line description each)
+
+3. **Choose review mode** — Always ask the user how they want to review the generated rules. Present these options:
+   - **Accept all** — Create all rules as-is without individual review
+   - **Bulk review by group** — Group rules by package/domain (inferred from their glob patterns) and let the user accept or skip entire groups at a time
+   - **Review individually** — Go through each rule one by one for Accept/Skip/Edit decisions
+   - **Skip all** — Discard all generated rules
+
+4. **Execute the chosen review mode:**
+
+   **If "Accept all":** proceed directly to writing all rules.
+
+   **If "Bulk review by group":** Group rules by their target area based on glob patterns (e.g., all rules with \`packages/web/**\` globs form a "Web Package" group). Present the groups with rule counts and a brief description, then let the user select which groups to accept. All rules in non-selected groups are skipped.
+
+   **If "Review individually":** For each rule, present:
+   - **Title**, **ID**, **severity**
+   - **Globs** (file patterns)
+   - **Instructions** (the full rule body)
+   - **Examples** (violations and compliant snippets, if present)
+
+   Then ask: **Accept / Skip / Edit**
+   - **Accept** — mark for creation
+   - **Skip** — discard this rule
+   - **Edit** — let the user modify fields, then re-confirm
+
+   **If "Skip all":** discard everything and confirm.
+
+5. **Write accepted rules** — For each accepted rule, call \`mesa_create_rule\` with the rule fields.
+
+6. **Final summary** — Report how many rules were accepted, skipped, and created, with their IDs and file paths.
 `,
     },
   ];

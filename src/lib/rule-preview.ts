@@ -23,7 +23,7 @@ interface PreviewRuleRequest {
   violationPatterns: string[]; // string patterns to search for (from examples.violations)
 }
 
-interface PreviewRuleResult {
+export interface PreviewRuleResult {
   flagged: PreviewFlaggedFile[];
   passed: PreviewPassedFile[];
   totalFiles: number;
