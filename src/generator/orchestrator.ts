@@ -69,11 +69,11 @@ function zoneRuleTarget(sourceFileCount: number): number {
   return 20;
 }
 
-function overallRuleTarget(totalSourceFiles: number): number {
-  if (totalSourceFiles < 100) return 12;
-  if (totalSourceFiles < 500) return 20;
-  return 30;
-}
+/** Minimum instruction length to be considered actionable (not vague). */
+const MIN_INSTRUCTIONS_LENGTH = 80;
+
+/** Globs that match everything — a sign the rule isn't scoped to a subsystem. */
+const UNSCOPED_GLOB_PATTERNS = ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx', '**/*.py', '**/*'];
 
 export async function orchestrate(options: GenerateRulesOptions): Promise<GeneratorResult> {
   const cwd = options.cwd ?? process.cwd();
@@ -81,7 +81,8 @@ export async function orchestrate(options: GenerateRulesOptions): Promise<Genera
   const { modelConfig } = loadReviewAdapterConfig(options.configPath);
   const model = resolveModelFromResolvedConfig(modelConfig);
   options.onProgress?.({ type: 'indexing' });
-  const mesaCacheDir = path.join(findRepoRoot(cwd), '.mesa', 'cache');
+  const repoRoot = findRepoRoot(cwd);
+  const mesaCacheDir = path.join(repoRoot, '.mesa', 'cache');
   const store = new JsonIndexStore(mesaCacheDir);
   let index: CodebaseIndex | null = null;
   try {
@@ -89,7 +90,7 @@ export async function orchestrate(options: GenerateRulesOptions): Promise<Genera
   } catch {
     // Index build failed — proceed without it (file selection falls back to heuristics)
   }
-  const scanResult = scanAndSelectFiles(cwd, index);
+  const scanResult = scanAndSelectFiles(cwd, repoRoot, index);
 
   options.onProgress?.({
     type: 'scan_complete',
@@ -105,7 +106,6 @@ export async function orchestrate(options: GenerateRulesOptions): Promise<Genera
 
   const allCandidates = zoneResults.flatMap((r) => r.rules);
   const merged = deterministicMerge(allCandidates, scanResult);
-  const target = overallRuleTarget(scanResult.totalSourceFiles);
 
   let finalRules: RulePolicy[];
 
@@ -120,7 +120,6 @@ export async function orchestrate(options: GenerateRulesOptions): Promise<Genera
     const synthesisResult = await synthesizeRules({
       candidates: merged,
       model,
-      ruleTarget: target,
       abortSignal: options.abortSignal,
     });
 
@@ -300,18 +299,23 @@ function deterministicMerge(candidates: RulePolicy[], scanResult: ScanResult): R
     }
   }
 
-  const validated: RulePolicy[] = [];
-  for (const rule of byId.values()) {
-    const matchCount = countGlobMatches(rule.globs, allSourceFiles);
-    if (matchCount >= 2) {
-      validated.push(rule);
-    }
-  }
-
-  return validated.filter((rule) => {
+  return [...byId.values()].filter((rule) => {
+    // Format validation
     if (!rule.id || !rule.instructions || rule.instructions.trim().length === 0) return false;
     if (!rule.globs || rule.globs.length === 0) return false;
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(rule.id)) return false;
+
+    // Coverage: must match at least 2 files
+    const matchCount = countGlobMatches(rule.globs, allSourceFiles);
+    if (matchCount < 2) return false;
+
+    // Unscoped globs: every glob is a universal wildcard with no directory prefix
+    const allUnscoped = rule.globs.every((g) => UNSCOPED_GLOB_PATTERNS.includes(g));
+    if (allUnscoped) return false;
+
+    // Vague instructions: too short to be actionable
+    if (rule.instructions.trim().length < MIN_INSTRUCTIONS_LENGTH) return false;
+
     return true;
   });
 }

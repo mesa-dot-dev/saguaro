@@ -8,6 +8,7 @@ import { createSkillAdapter } from '../../adapter/skills.js';
 import type { GeneratorProgressEvent } from '../../generator/index.js';
 import { generateRules } from '../../generator/index.js';
 import { logger } from '../../lib/logger.js';
+import { computePlacementFromGlobs } from '../../lib/skills.js';
 import type { RulePolicy } from '../../types/types.js';
 import { createReadline } from './prompt.js';
 import { CliSpinner } from './spinner.js';
@@ -29,27 +30,43 @@ export async function generateRulesCommand(argv: GenerateRulesArgv): Promise<num
   const spinner = new CliSpinner();
   spinner.start('Scanning codebase...');
 
+  let totalZones = 0;
+  let zonesCompleted = 0;
+
   const onProgress = (event: GeneratorProgressEvent): void => {
     switch (event.type) {
       case 'indexing':
         spinner.update('Building codebase index...');
         break;
       case 'scan_complete':
+        totalZones = event.zoneCount;
         spinner.update(
           `Scanned ${event.totalFiles} source files (${event.zoneCount} zone${event.zoneCount > 1 ? 's' : ''})`
         );
         logger.verbose(chalk.gray(`  Extensions: ${formatExtensions(event.extensions)}`));
         break;
       case 'zone_started':
-        spinner.start(`Analyzing zone "${event.zoneName}" (${event.selectedFileCount}/${event.fileCount} files)...`);
+        // Don't restart the spinner per-zone — zones run in parallel so
+        // only one spinner message would be visible anyway. Instead, show
+        // an aggregate "Analyzing N zones" message set once below.
+        if (zonesCompleted === 0) {
+          spinner.start(
+            totalZones > 1
+              ? `Analyzing ${totalZones} zones...`
+              : `Analyzing zone "${event.zoneName}" (${event.selectedFileCount}/${event.fileCount} files)...`
+          );
+        }
         break;
       case 'zone_completed':
-        spinner.stop();
-        console.log(
+        zonesCompleted++;
+        spinner.log(
           chalk.gray(
             `  Zone "${event.zoneName}" — ${event.rulesProposed} candidates (${(event.durationMs / 1000).toFixed(1)}s)`
           )
         );
+        if (zonesCompleted < totalZones) {
+          spinner.update(`Analyzing zones (${zonesCompleted}/${totalZones} complete)...`);
+        }
         break;
       case 'synthesis_started':
         spinner.start(`Consolidating ${event.candidateCount} candidates...`);
@@ -94,16 +111,18 @@ export async function generateRulesCommand(argv: GenerateRulesArgv): Promise<num
     return 0;
   }
 
-  let skillsDir = '';
+  const writtenDirs = new Set<string>();
   for (const rule of accepted) {
+    const scope = computePlacementFromGlobs(rule.globs);
     const created = createSkillAdapter({
       id: rule.id,
       title: rule.title,
       severity: rule.severity,
       globs: rule.globs,
       instructions: rule.instructions,
+      scope,
     });
-    skillsDir = created.skillsDir;
+    writtenDirs.add(created.skillsDir);
   }
 
   const durationSec = (result.summary.durationMs / 1000).toFixed(1);
@@ -112,7 +131,15 @@ export async function generateRulesCommand(argv: GenerateRulesArgv): Promise<num
   const cost = (inputTokens / 1000000) * 5 + (outputTokens / 1000000) * 25;
   const tokenStr = `${(inputTokens / 1000).toFixed(1)}K input + ${(outputTokens / 1000).toFixed(1)}K output`;
 
-  console.log(chalk.green(`\n${accepted.length} rule(s) written to ${skillsDir}`));
+  const dirs = Array.from(writtenDirs).sort();
+  if (dirs.length === 1) {
+    console.log(chalk.green(`\n${accepted.length} rule(s) written to ${dirs[0]}`));
+  } else {
+    console.log(chalk.green(`\n${accepted.length} rule(s) written across ${dirs.length} directories:`));
+    for (const dir of dirs) {
+      console.log(chalk.green(`  ${dir}`));
+    }
+  }
   if (accepted.length < result.rules.length) {
     console.log(chalk.gray(`  (${result.rules.length - accepted.length} rule(s) skipped)`));
   }

@@ -1,11 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { GitNotFoundError } from './errors.js';
 
 const VALID_GIT_REF = /^[a-zA-Z0-9][a-zA-Z0-9/_.\-^~]*$/;
 
 export function listChangedFilesFromGit(baseRef: string, headRef: string): string[] {
-  assertInsideGitRepo();
+  requireGitRepo();
   assertValidGitRef(baseRef, 'base branch');
   assertValidGitRef(headRef, 'head ref');
 
@@ -29,7 +30,7 @@ export function listChangedFilesFromGit(baseRef: string, headRef: string): strin
 }
 
 export function listLocalChangedFilesFromGit(): string[] {
-  assertInsideGitRepo();
+  requireGitRepo();
 
   const output = execFileSync('git', ['diff', '--name-only', '--diff-filter=ACMR', 'HEAD'], {
     encoding: 'utf8',
@@ -41,16 +42,16 @@ export function listLocalChangedFilesFromGit(): string[] {
     .filter((line) => line.length > 0);
 }
 
-function assertInsideGitRepo(): void {
+export function requireGitRepo(): void {
   try {
     execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { stdio: 'ignore' });
   } catch {
-    throw new Error('Not a git repository');
+    throw new GitNotFoundError();
   }
 }
 
 export function getDiffs(baseRef: string, headRef: string): Map<string, string> {
-  assertInsideGitRepo();
+  requireGitRepo();
   assertValidGitRef(baseRef, 'base branch');
   assertValidGitRef(headRef, 'head ref');
 
@@ -73,7 +74,7 @@ export function getDiffs(baseRef: string, headRef: string): Map<string, string> 
 }
 
 export function getLocalDiffs(): Map<string, string> {
-  assertInsideGitRepo();
+  requireGitRepo();
 
   const output = execFileSync('git', ['diff', 'HEAD'], {
     encoding: 'utf8',
@@ -104,7 +105,7 @@ export function getRepoRoot(): string {
   try {
     return execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
   } catch {
-    throw new Error('Not a git repository');
+    throw new GitNotFoundError();
   }
 }
 
@@ -124,7 +125,7 @@ export function getFileAtRef(ref: string, filePath: string): string | null {
 }
 
 export function listUntrackedFiles(): string[] {
-  assertInsideGitRepo();
+  requireGitRepo();
 
   const output = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], {
     encoding: 'utf8',

@@ -10,6 +10,13 @@ export class CliSpinner {
   private text = '';
 
   start(text: string): void {
+    // Clear any existing interval to prevent leaks when start() is called
+    // multiple times without an intervening stop().
+    if (this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
+    }
+
     this.text = text;
     this.isRunning = true;
 

@@ -6,6 +6,7 @@ import { inspect } from 'node:util';
 import chalk from 'chalk';
 import yargs, { type Argv } from 'yargs';
 import { MesaError } from '../../lib/errors.js';
+import { requireGitRepo } from '../../lib/git.js';
 import { logger } from '../../lib/logger.js';
 import { findRepoRoot } from '../../lib/skills.js';
 import checkHandler from '../lib/check.js';
@@ -397,5 +398,15 @@ yargs(argv)
         },
         wrapHandler('hook-run', runHook as (argv: unknown) => Promise<number>)
       );
+  })
+  .middleware((argv) => {
+    const command = argv._[0];
+    if (!command || command === 'init') return;
+    try {
+      requireGitRepo();
+    } catch (error) {
+      printError(error);
+      process.exit(1);
+    }
   })
   .parse();

@@ -280,6 +280,42 @@ export function resolveSkillsForFiles(
   };
 }
 
+const GLOB_WILDCARD_CHARS = /[*?{[]/;
+export function computePlacementFromGlobs(globs: string[]): string | undefined {
+  const positiveGlobs = globs.filter((g) => !g.startsWith('!'));
+
+  const staticPrefixes: string[] = [];
+  for (const glob of positiveGlobs) {
+    const segments = glob.split('/');
+    const staticSegments: string[] = [];
+    for (const segment of segments) {
+      if (GLOB_WILDCARD_CHARS.test(segment)) break;
+      staticSegments.push(segment);
+    }
+    if (staticSegments.length > 0) {
+      staticPrefixes.push(staticSegments.join('/'));
+    }
+  }
+
+  if (staticPrefixes.length === 0) return undefined;
+
+  const firstSegments = staticPrefixes[0]!.split('/');
+  const commonSegments: string[] = [];
+
+  for (let i = 0; i < firstSegments.length; i++) {
+    const segment = firstSegments[i]!;
+    if (staticPrefixes.every((prefix) => prefix.split('/')[i] === segment)) {
+      commonSegments.push(segment);
+    } else {
+      break;
+    }
+  }
+
+  if (commonSegments.length === 0) return undefined;
+
+  return commonSegments.join('/');
+}
+
 function extractFrontmatter(markdown: string): string | null {
   const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   return match ? match[1] : null;
