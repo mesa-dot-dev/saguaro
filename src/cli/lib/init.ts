@@ -5,6 +5,7 @@ import { findRepoRoot } from '../../lib/skills.js';
 import { getMcpJsonConfig } from '../../mcp/config.js';
 import { getMcpSkillFiles } from '../../templates/mcp-skills.js';
 import { getStarterSkillFiles } from '../../templates/starter-skills.js';
+import { generateRulesCommand } from './generate.js';
 import { installHook } from './hook.js';
 import { ask, askChoice, createReadline } from './prompt.js';
 
@@ -18,7 +19,7 @@ const tertiary = chalk.hex('#ffecba');
 const DEFAULT_PROVIDER = 'anthropic' as const;
 const DEFAULT_MODEL = 'claude-opus-4-6';
 
-type SkillSetupChoice = 'default' | 'skip';
+type SkillSetupChoice = 'default' | 'generate' | 'skip';
 
 function buildConfigContent(): string {
   return `# Mesa Configuration
@@ -145,6 +146,7 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   try {
     const choice = await askChoice(rl2, secondary('How would you like to set up review rules?'), [
       { id: 'default', label: 'Use Mesa default starter rules' },
+      { id: 'generate', label: 'Generate rules from your codebase (AI-powered)' },
       { id: 'skip', label: 'Skip for now (set up rules later)' },
     ] as const);
     skillSetupChoice = choice.id;
@@ -155,6 +157,16 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   if (skillSetupChoice === 'default') {
     writeStarterSkills(rootSkillsDir);
     console.log(chalk.gray(`  Added starter rules. Add more with ${tertiary('mesa rules create')}.`));
+  } else if (skillSetupChoice === 'generate') {
+    if (wroteApiKey) {
+      await generateRulesCommand({ config: path.join(repoRoot, configPath) });
+    } else {
+      console.log(
+        chalk.yellow(
+          `  Rule generation requires an API key. Set ${apiKeyEnvName} in .env.local then run ${tertiary('mesa rules generate')}.`
+        )
+      );
+    }
   } else {
     console.log(chalk.gray(`  Specify your rules with ${secondary('mesa rules create')}.`));
   }
