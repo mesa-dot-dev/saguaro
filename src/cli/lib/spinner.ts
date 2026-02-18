@@ -57,7 +57,7 @@ export class CliSpinner {
 
   private render(): void {
     const frame = this.frames[this.frameIndex];
-    process.stdout.write(`\r${accent(frame)} ${this.text}`);
+    process.stdout.write(`\r\x1b[2K${accent(frame)} ${this.text}`);
   }
 
   private clearLine(): void {

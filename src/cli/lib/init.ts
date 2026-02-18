@@ -145,9 +145,9 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   let skillSetupChoice: SkillSetupChoice;
   try {
     const choice = await askChoice(rl2, secondary('How would you like to set up review rules?'), [
-      { id: 'default', label: 'Use Mesa default starter rules' },
-      { id: 'generate', label: 'Generate rules from your codebase (AI-powered)' },
-      { id: 'skip', label: 'Skip for now (set up rules later)' },
+      { id: 'generate', label: 'Generate rules from your codebase' },
+      { id: 'default', label: 'Use Mesa starter rules' },
+      { id: 'skip', label: 'Skip and create rules manually' },
     ] as const);
     skillSetupChoice = choice.id;
   } finally {
@@ -158,15 +158,7 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
     writeStarterSkills(rootSkillsDir);
     console.log(chalk.gray(`  Added starter rules. Add more with ${tertiary('mesa rules create')}.`));
   } else if (skillSetupChoice === 'generate') {
-    if (wroteApiKey) {
-      await generateRulesCommand({ config: path.join(repoRoot, configPath) });
-    } else {
-      console.log(
-        chalk.yellow(
-          `  Rule generation requires an API key. Set ${apiKeyEnvName} in .env.local then run ${tertiary('mesa rules generate')}.`
-        )
-      );
-    }
+    await generateRulesCommand({ config: path.join(repoRoot, configPath) });
   } else {
     console.log(chalk.gray(`  Specify your rules with ${secondary('mesa rules create')}.`));
   }
