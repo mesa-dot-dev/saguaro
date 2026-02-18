@@ -20,7 +20,7 @@ Drop any rule matching these patterns:
 
 **Generic advice with codebase-specific names** — A rule where the underlying advice is boilerplate that applies to any codebase, just dressed up with specific function/class names from this codebase. Example: "use the logger instead of console.log" is generic advice even if it names the specific logger functions. Test: if you removed the specific names, would the rule still sound like something every codebase should do? If yes, drop it.
 
-**Too niche to trigger** — A rule whose globs match only 1-2 files in the entire codebase. The rule may be technically correct but the surface area is too small to justify including it in a review ruleset.
+**Too niche to trigger** — A rule whose globs match only 1-2 files in the entire codebase. The rule may be technically correct but the surface area is too small to justify including it in a review ruleset. **Exception**: Rules enforcing architectural boundaries (layer separation, dependency direction, I/O purity) are valuable even for small directories because they protect the boundary as the codebase grows — keep them.
 
 **Linter/compiler territory** — Rules about formatting, unused imports, type errors, naming conventions, or anything a linter or compiler already catches.
 

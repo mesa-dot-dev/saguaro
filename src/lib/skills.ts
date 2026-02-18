@@ -312,6 +312,12 @@ export function computePlacementFromGlobs(globs: string[]): string | undefined {
   }
 
   if (commonSegments.length === 0) return undefined;
+  const lastSegment = commonSegments[commonSegments.length - 1]!;
+  if (lastSegment.includes('.') && !GLOB_WILDCARD_CHARS.test(lastSegment)) {
+    commonSegments.pop();
+  }
+
+  if (commonSegments.length === 0) return undefined;
 
   return commonSegments.join('/');
 }

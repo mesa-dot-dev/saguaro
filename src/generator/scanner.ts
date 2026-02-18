@@ -95,25 +95,28 @@ export function scanAndSelectFiles(cwd: string, repoRoot: string, index: Codebas
   // Partition zones using cwd-relative paths (preserves local directory structure
   // for workspace detection and top-level grouping).
   const zones = partitionZones(cwd, sourceFiles);
+  const zonesWithFiles = zones.map((zone) => selectFilesForZone(cwd, zone, index));
 
   // Rebase cwd-relative paths to repo-root-relative so downstream consumers
   // (LLM prompts, glob generation, rule placement) use consistent paths.
   const cwdOffset = toPosix(path.relative(repoRoot, cwd));
-  const rebasedZones: RawZone[] = cwdOffset
-    ? zones.map((zone) => ({
+  const rebasedZones: ZoneConfig[] = cwdOffset
+    ? zonesWithFiles.map((zone) => ({
         name: `${cwdOffset}/${zone.name}`,
         files: zone.files.map((f) => `${cwdOffset}/${f}`),
+        selectedFiles: zone.selectedFiles.map((sf) => ({
+          ...sf,
+          path: `${cwdOffset}/${sf.path}`,
+        })),
       }))
-    : zones;
+    : zonesWithFiles;
 
   const rebasedConfigs: Record<string, string> = {};
   for (const [key, value] of Object.entries(configs)) {
     rebasedConfigs[cwdOffset ? `${cwdOffset}/${key}` : key] = value;
   }
 
-  const zonesWithFiles = rebasedZones.map((zone) => selectFilesForZone(repoRoot, zone, index));
-
-  return { zones: zonesWithFiles, totalSourceFiles: sourceFiles.length, extensions, configs: rebasedConfigs, docs };
+  return { zones: rebasedZones, totalSourceFiles: sourceFiles.length, extensions, configs: rebasedConfigs, docs };
 }
 
 interface WalkResult {

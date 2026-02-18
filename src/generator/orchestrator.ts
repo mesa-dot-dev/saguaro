@@ -99,7 +99,15 @@ export async function orchestrate(options: GenerateRulesOptions): Promise<Genera
     extensions: scanResult.extensions,
   });
 
-  const zoneResults = await analyzeZonesInParallel(scanResult, model, index, options.onProgress, options.abortSignal);
+  const cwdOffset = path.relative(repoRoot, cwd).replaceAll('\\', '/');
+  const zoneResults = await analyzeZonesInParallel(
+    scanResult,
+    model,
+    index,
+    cwdOffset,
+    options.onProgress,
+    options.abortSignal
+  );
 
   let totalInputTokens = zoneResults.reduce((sum, r) => sum + r.inputTokens, 0);
   let totalOutputTokens = zoneResults.reduce((sum, r) => sum + r.outputTokens, 0);
@@ -161,10 +169,13 @@ async function analyzeZonesInParallel(
   scanResult: ScanResult,
   model: LanguageModel,
   index: CodebaseIndex | null,
+  cwdOffset: string,
   onProgress: GenerateRulesOptions['onProgress'],
   abortSignal?: AbortSignal
 ): Promise<ZoneAnalysisResult[]> {
-  const promises = scanResult.zones.map((zone) => analyzeZone(zone, scanResult, model, index, onProgress, abortSignal));
+  const promises = scanResult.zones.map((zone) =>
+    analyzeZone(zone, scanResult, model, index, cwdOffset, onProgress, abortSignal)
+  );
   return Promise.all(promises);
 }
 
@@ -173,6 +184,7 @@ async function analyzeZone(
   scanResult: ScanResult,
   model: LanguageModel,
   index: CodebaseIndex | null,
+  cwdOffset: string,
   onProgress: GenerateRulesOptions['onProgress'],
   abortSignal?: AbortSignal
 ): Promise<ZoneAnalysisResult> {
@@ -186,7 +198,7 @@ async function analyzeZone(
     selectedFileCount: zone.selectedFiles.length,
   });
 
-  const prompt = buildZonePrompt(zone, scanResult, target, index);
+  const prompt = buildZonePrompt(zone, scanResult, target, index, cwdOffset);
 
   const result = await generateObject({
     model,
@@ -220,7 +232,8 @@ function buildZonePrompt(
   zone: ZoneConfig,
   scanResult: ScanResult,
   target: number,
-  index: CodebaseIndex | null
+  index: CodebaseIndex | null,
+  cwdOffset: string
 ): string {
   const lines: string[] = [];
 
@@ -251,8 +264,11 @@ function buildZonePrompt(
     }
   }
 
-  // Architectural context from import graph
-  const archContext = computeArchitecturalContext(index, zone.files);
+  // Architectural context from import graph — strip cwdOffset so paths
+  // match the cwd-scoped index keys.
+  const cwdPrefix = cwdOffset ? `${cwdOffset}/` : '';
+  const indexFiles = cwdPrefix ? zone.files.map((f) => f.slice(cwdPrefix.length)) : zone.files;
+  const archContext = computeArchitecturalContext(index, indexFiles);
   if (archContext) {
     lines.push(archContext);
   }
@@ -304,10 +320,10 @@ function deterministicMerge(candidates: RulePolicy[], scanResult: ScanResult): R
     if (!rule.id || !rule.instructions || rule.instructions.trim().length === 0) return false;
     if (!rule.globs || rule.globs.length === 0) return false;
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(rule.id)) return false;
-
-    // Coverage: must match at least 2 files
     const matchCount = countGlobMatches(rule.globs, allSourceFiles);
-    if (matchCount < 2) return false;
+    const directoryScoped = rule.globs.every((g) => g.includes('/') && !UNSCOPED_GLOB_PATTERNS.includes(g));
+    const minMatches = directoryScoped ? 1 : 2;
+    if (matchCount < minMatches) return false;
 
     // Unscoped globs: every glob is a universal wildcard with no directory prefix
     const allUnscoped = rule.globs.every((g) => UNSCOPED_GLOB_PATTERNS.includes(g));
