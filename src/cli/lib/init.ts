@@ -5,6 +5,7 @@ import { findRepoRoot } from '../../lib/skills.js';
 import { getMcpJsonConfig } from '../../mcp/config.js';
 import { getMcpSkillFiles } from '../../templates/mcp-skills.js';
 import { getStarterSkillFiles } from '../../templates/starter-skills.js';
+import { installHook } from './hook.js';
 import { ask, askChoice, createReadline } from './prompt.js';
 
 const mesaDir = '.mesa';
@@ -158,6 +159,7 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
     console.log(chalk.gray(`  Specify your rules with ${secondary('mesa rules create')}.`));
   }
 
+  await installHook();
   const relMesaDir = path.relative(process.cwd(), rootMesaDir) || mesaDir;
   const relSkillsDir = path.relative(process.cwd(), rootSkillsDir) || skillsDir;
   const relEnvPath = path.relative(process.cwd(), path.join(repoRoot, envLocalPath)) || envLocalPath;
@@ -169,6 +171,7 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-review/`));
   console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-createrule/`));
   console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-generaterules/`));
+  console.log(chalk.gray(`  Updated: .claude/settings.json (Claude Code integration)`));
   if (wroteApiKey) {
     console.log(chalk.gray(`  Updated: ${relEnvPath} (${apiKeyEnvName})`));
   } else {

@@ -80,7 +80,6 @@ function resolveMesaCommand(): string {
     execFileSync('which', ['mesa'], { stdio: 'ignore' });
     return HOOK_COMMAND;
   } catch {
-    // Fall back to absolute path: node <dist>/cli/bin/index.js hook run
     const distBin = path.resolve(findRepoRoot(), 'packages', 'code-review', 'dist', 'cli', 'bin', 'index.js');
     return `node ${distBin} hook run`;
   }
@@ -118,23 +117,10 @@ export async function installHook(): Promise<number> {
     return 0;
   }
 
-  // Check if mesa is on PATH
-  try {
-    execFileSync('which', ['mesa'], { stdio: 'ignore' });
-  } catch {
-    logger.info(
-      chalk.yellow(`Warning: "mesa" was not found on PATH. The hook may not work unless mesa is globally installed.`)
-    );
-  }
-
   settings.hooks.Stop.push(buildHookEntry());
   writeSettings(settingsPath, settings);
 
-  const relPath = path.relative(process.cwd(), settingsPath);
-  logger.info(secondary('Mesa hook installed successfully!'));
-  logger.info(chalk.gray(`  Updated: ${relPath}`));
-  logger.info(chalk.gray('  Hook: Stop → mesa hook run'));
-  logger.info(chalk.gray(`\n  Claude Code will now run mesa review after each response.`));
+  logger.info(secondary('Mesa review Claude Code hook installed.'));
 
   return 0;
 }
@@ -182,7 +168,6 @@ export interface HookRunArgv {
 
 export async function runHook(argv: HookRunArgv): Promise<number> {
   const input = argv.input ?? readStdinInput();
-
   // Loop prevention: if Claude is already fixing violations from a previous
   // Stop hook run, let it finish without re-triggering a review.
   if (input?.stop_hook_active) {
@@ -195,12 +180,9 @@ export async function runHook(argv: HookRunArgv): Promise<number> {
   });
 
   if (decision.decision === 'block') {
-    // Write violations to stderr — Claude Code feeds this back as context
     // Exit code 2 tells Claude Code to block and provide feedback
     process.stderr.write(decision.reason ?? 'Code review found violations.');
     return 2;
   }
-
-  // Exit 0 = allow stop
   return 0;
 }
