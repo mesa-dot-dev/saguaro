@@ -166,52 +166,111 @@ if (isHelp) {
 
 yargs(argv)
   .scriptName(secondary('mesa'))
-  .usage(`${secondary('mesa')} <command> ${tertiary('[options]')}`)
+  .usage(
+    '\n' +
+      "No-noise code review that enforces your team's rules and patterns.\n\n" +
+      `${secondary('Use with Claude Code:')}\n` +
+      '  mesa init sets up MCP integration and a review hook automatically.\n' +
+      '  Available slash commands inside Claude Code:\n\n' +
+      `    ${secondary('/mesa-review')}          Run a code review. optiionally specifiy a branch / head ref.\n` +
+      `    ${secondary('/mesa-createrule')}      Create a new review rule\n` +
+      `    ${secondary('/mesa-generaterules')}   Auto-generate rules from your codebase\n\n` +
+      '  Mesa also adds a configurable hook that automatically reviews code\n' +
+      '  after each iteration Claude Code makes to your codebase. If violations\n' +
+      '  are found, Claude is blocked and asked to fix them before completing.'
+  )
   .version(resolvePackageVersion())
   .demandCommand(1, 'Please specify a command')
   .help(true)
-  .wrap(80)
+  .wrap(90)
+  .updateStrings({ 'Commands:': 'CLI Commands:' })
+  .epilog(
+    `${secondary('Getting started:')}\n` +
+      `  $ mesa init                   Set up Mesa and enable automatic reviews\n` +
+      `  $ mesa rules generate         Auto-generate rules from your codebase\n` +
+      `  $ mesa review                 Run a review manually\n\n` +
+      `${secondary('Rules:')}\n` +
+      `  Rules live in .claude/skills/ as version-controlled files. Each rule\n` +
+      `  defines what to check, which files it applies to, and its severity.\n` +
+      `  Rules can be colocated with packages for monorepo support.`
+  )
+  // ---------------------------------------------------------------------------
+  // mesa init
+  // ---------------------------------------------------------------------------
+  .command(
+    'init',
+    'Set up Mesa in your repo (config, rules, hooks, Claude Code integration)',
+    (y: Argv) => {
+      y.usage(
+        `${secondary('mesa init')} ${tertiary('[options]')}\n\n` +
+          'Creates .mesa/config.yaml, .claude/skills/ for rules, .mcp.json for\n' +
+          'Claude Code MCP integration, and installs a Claude Code review hook.\n' +
+          'Optionally generates starter rules to get going immediately.'
+      )
+        .option('force', {
+          describe: 'Overwrite existing configuration',
+          type: 'boolean',
+          default: false,
+        })
+        .example('$0 init', 'Interactive setup with API key and starter rules')
+        .example('$0 init --force', 'Re-initialize, overwriting existing config');
+    },
+    wrapHandler('init', initHandler as (argv: unknown) => Promise<number>)
+  )
+  // ---------------------------------------------------------------------------
+  // mesa review
+  // ---------------------------------------------------------------------------
   .command(
     'review',
-    'Run an AI-assisted code review',
+    'Review code changes against your rules',
     (y: Argv) => {
-      y.option('b', {
-        alias: 'base',
-        describe: 'Base branch to diff against',
-        type: 'string',
-      })
-        .option('head', {
-          describe: 'Head ref to diff against',
+      y.usage(
+        `${secondary('mesa review')} ${tertiary('[options]')}\n\nDiff two git refs and check changed files against matching rules.\nExits 0 when clean, 1 when violations are found.`
+      )
+        .option('b', {
+          alias: 'base',
+          describe: 'Base branch to diff against',
           type: 'string',
+          defaultDescription: 'main',
+        })
+        .option('head', {
+          describe: 'Head ref to review',
+          type: 'string',
+          defaultDescription: 'HEAD',
         })
         .option('o', {
           alias: 'output',
-          describe: 'Output format: console, json',
+          describe: 'Output format',
           type: 'string',
           choices: ['console', 'json'] as const,
           default: 'console',
         })
         .option('v', {
           alias: 'verbose',
-          describe: 'Show detailed progress',
+          describe: 'Show detailed progress and file-level status',
           type: 'boolean',
           default: false,
         })
         .option('debug', {
-          describe: 'Show debug output (prompts, raw LLM responses)',
+          describe: 'Write debug logs (prompts, LLM responses) to .mesa/.tmp/',
           type: 'boolean',
           default: false,
         })
         .option('c', {
           alias: 'config',
-          describe: 'Path to config file',
+          describe: 'Path to Mesa config file',
           type: 'string',
           default: '.mesa/config.yaml',
         })
         .option('rules', {
           describe: 'Path to rules directory',
           type: 'string',
-        });
+          defaultDescription: '.claude/skills/',
+        })
+        .example('$0 review', 'Review current branch against main')
+        .example('$0 review -b develop', 'Review against a different base branch')
+        .example('$0 review -o json', 'Output as JSON for CI pipelines')
+        .example('$0 review --head origin/feat', 'Compare two remote refs');
     },
     wrapHandler('review', (async (argv: ReviewArgv) => {
       // Set logger level based on flags
@@ -239,27 +298,30 @@ yargs(argv)
       });
     }) as (argv: unknown) => Promise<number>)
   )
-  .command(
-    'init',
-    'Initialize Mesa in a repository',
-    (y: Argv) => {
-      y.option('force', {
-        describe: 'Overwrite existing configuration',
-        type: 'boolean',
-        default: false,
-      });
-    },
-    wrapHandler('init', initHandler as (argv: unknown) => Promise<number>)
-  )
-  .command('rules <command>', 'Manage and inspect rules', (y: Argv) => {
-    y.demandCommand(1, 'Please specify a rules subcommand. Run "mesa rules --help" for options.')
-      .command('list', 'List all defined rules', {}, wrapHandler('rules-list', listRules as (argv: unknown) => void))
+  // ---------------------------------------------------------------------------
+  // mesa rules
+  // ---------------------------------------------------------------------------
+  .command('rules <command>', 'Create, list, and manage review rules', (y: Argv) => {
+    y.usage(
+      `${secondary('mesa rules')} <command>\n\n` +
+        'Rules define what Mesa checks during a review. Each rule has a title,\n' +
+        'severity (error/warning/info), file patterns (globs), and instructions\n' +
+        'for the reviewer. Rules are stored in .claude/skills/ as version-\n' +
+        'controlled files and can be colocated with packages.'
+    )
+      .demandCommand(1, 'Please specify a rules subcommand. Run "mesa rules --help" for options.')
+      .command(
+        'list',
+        'List all rules with their IDs, titles, and severity',
+        {},
+        wrapHandler('rules-list', listRules as (argv: unknown) => void)
+      )
       .command(
         'explain <ruleId>',
-        'Show detailed information about a rule',
+        'Show full details for a rule (instructions, globs, examples)',
         (y: Argv) => {
           y.positional('ruleId', {
-            describe: 'Rule ID',
+            describe: 'Rule ID (e.g. no-console-log)',
             type: 'string',
           });
         },
@@ -267,22 +329,22 @@ yargs(argv)
       )
       .command(
         'validate',
-        'Validate rule files',
+        'Check all rule files for correct structure',
         {},
         wrapHandler('rules-validate', validateRules as (argv: unknown) => number)
       )
       .command(
         'locate',
-        'Locate the rules directory',
+        'Print the path to the rules directory',
         {},
         wrapHandler('rules-locate', () => locateRulesDirectory()) as (argv: unknown) => Promise<void>
       )
       .command(
         'delete <ruleId>',
-        'Delete a rule',
+        'Delete a rule by its ID',
         (y: Argv) => {
           y.positional('ruleId', {
-            describe: 'Rule ID',
+            describe: 'Rule ID to delete (e.g. no-console-log)',
             type: 'string',
           });
         },
@@ -290,41 +352,70 @@ yargs(argv)
       )
       .command(
         'create [target]',
-        'Create a new rule policy',
+        'Interactively create a new rule with AI assistance',
         (y: Argv) => {
-          y.positional('target', {
-            describe: 'Directory path the rule applies to (e.g., src/cli, packages/web)',
-            type: 'string',
-          })
-            .option('intent', { describe: 'What the rule should enforce', type: 'string' })
-            .option('scope', { describe: 'Where to save the rule (overrides placement suggestion)', type: 'string' })
-            .option('severity', { describe: 'Rule severity (error/warning/info)', type: 'string' })
-            .option('title', { describe: 'Rule title (auto-inferred if not provided)', type: 'string' })
+          y.usage(
+            `${secondary('mesa rules create')} ${tertiary('[target] [options]')}\n\n` +
+              'Walk through an interactive flow to define a new review rule.\n' +
+              'Mesa analyzes the target directory, generates rule instructions\n' +
+              'with AI, previews which files would match, and saves the rule\n' +
+              'to .claude/skills/.'
+          )
+            .positional('target', {
+              describe: 'Directory the rule targets (e.g. src/api, packages/web)',
+              type: 'string',
+            })
+            .option('intent', {
+              describe: 'What the rule should enforce (e.g. "no direct DB queries in handlers")',
+              type: 'string',
+            })
+            .option('scope', {
+              describe: 'Where to save the rule: repo root or a package directory',
+              type: 'string',
+            })
+            .option('severity', {
+              describe: 'Rule severity: error, warning, or info',
+              type: 'string',
+            })
+            .option('title', {
+              describe: 'Rule title (auto-generated from intent if omitted)',
+              type: 'string',
+            })
             .option('debug', { describe: 'Write debug log', type: 'boolean', default: false })
-            .option('skip-preview', { describe: 'Skip preview step', type: 'boolean', default: false });
+            .option('skip-preview', { describe: 'Skip the file-match preview step', type: 'boolean', default: false })
+            .example('$0 rules create src/api', 'Create a rule scoped to src/api')
+            .example('$0 rules create --intent "no console.log"', 'Create a rule from a description');
         },
         wrapHandler('rules-create', createRule as (argv: unknown) => Promise<number>)
       )
       .command(
         'generate',
-        'Generate review rules by analyzing your codebase',
+        'Auto-generate rules by analyzing your codebase patterns',
         (y: Argv) => {
-          y.option('v', {
-            alias: 'verbose',
-            describe: 'Show detailed progress',
-            type: 'boolean',
-            default: false,
-          })
+          y.usage(
+            `${secondary('mesa rules generate')} ${tertiary('[options]')}\n\n` +
+              'Scans your codebase, detects conventions and patterns, and\n' +
+              'proposes review rules. You review each proposed rule interactively\n' +
+              'and choose which ones to keep.'
+          )
+            .option('v', {
+              alias: 'verbose',
+              describe: 'Show progress as zones are analyzed',
+              type: 'boolean',
+              default: false,
+            })
             .option('debug', {
-              describe: 'Show debug output',
+              describe: 'Show debug output (prompts, LLM responses)',
               type: 'boolean',
               default: false,
             })
             .option('c', {
               alias: 'config',
-              describe: 'Path to config file',
+              describe: 'Path to Mesa config file',
               type: 'string',
-            });
+            })
+            .example('$0 rules generate', 'Scan codebase and propose rules')
+            .example('$0 rules generate -v', 'Generate with detailed progress');
         },
         wrapHandler('rules-generate', ((argv: { verbose?: boolean; debug?: boolean; config?: string }) => {
           return generateRulesCommand({
@@ -334,9 +425,12 @@ yargs(argv)
         }) as (argv: unknown) => Promise<number>)
       );
   })
+  // ---------------------------------------------------------------------------
+  // mesa check — hidden (not yet implemented)
+  // ---------------------------------------------------------------------------
   .command(
     'check <rule-id> [file]',
-    'Check a specific rule against a file or code snippet',
+    false, // hidden — not yet implemented
     (y: Argv) => {
       y.positional('rule-id', {
         describe: 'Rule ID to check',
@@ -348,37 +442,78 @@ yargs(argv)
     },
     wrapHandler('check', checkHandler as (argv: unknown) => Promise<number>)
   )
+  // ---------------------------------------------------------------------------
+  // mesa serve — hidden (auto-started by Claude Code via .mcp.json)
+  // ---------------------------------------------------------------------------
   .command(
     'serve',
-    'Run Mesa as an MCP server for Claude/Cursor integration',
+    false, // hidden — started automatically by Claude Code
     () => {},
     wrapHandler('serve', serveHandler as (argv: unknown) => Promise<void>)
   )
+  // ---------------------------------------------------------------------------
+  // mesa index
+  // ---------------------------------------------------------------------------
   .command(
     'index',
-    'Build or rebuild the codebase index',
+    'Build the import graph for richer review context',
     (y: Argv) => {
-      y.option('v', {
-        alias: 'verbose',
-        describe: 'Show detailed progress',
-        type: 'boolean',
-        default: false,
-      });
+      y.usage(
+        `${secondary('mesa index')} ${tertiary('[options]')}\n\n` +
+          'Builds an import graph of your codebase so reviews understand how\n' +
+          'changes propagate across files. Saved to .mesa/cache/index.json.\n' +
+          'Rebuilt incrementally on subsequent runs. Reviews work without an\n' +
+          'index but produce better results with one.'
+      )
+        .option('v', {
+          alias: 'verbose',
+          describe: 'Show progress as files are parsed',
+          type: 'boolean',
+          default: false,
+        })
+        .example('$0 index', 'Build or update the codebase index')
+        .example('$0 index -v', 'Build with detailed progress');
     },
     wrapHandler('index', indexCmdHandler as (argv: unknown) => Promise<void>)
   )
-  .command('hook <command>', 'Manage Claude Code review hook', (y: Argv) => {
-    y.demandCommand(1, 'Please specify a hook subcommand. Run "mesa hook --help" for options.')
+  // ---------------------------------------------------------------------------
+  // mesa hook
+  // ---------------------------------------------------------------------------
+  .command('hook <command>', 'Enable or disable automatic reviews in Claude Code', (y: Argv) => {
+    y.usage(
+      `${secondary('mesa hook')} <command>\n\n` +
+        'When Claude Code finishes writing code, Mesa can automatically review\n' +
+        'the uncommitted changes against your rules. If violations are found,\n' +
+        'Claude is blocked and asked to fix them before completing.\n\n' +
+        'This is installed automatically by mesa init. Use these commands to\n' +
+        'enable or disable automatic reviews after setup.'
+    )
+      .demandCommand(1, 'Please specify a hook subcommand. Run "mesa hook --help" for options.')
       .command(
         'install',
-        'Install the Claude Code Stop hook for automatic reviews',
-        {},
+        'Enable automatic reviews after Claude Code writes code',
+        (y: Argv) => {
+          y.usage(
+            `${secondary('mesa hook install')}\n\n` +
+              'Enables automatic code review in Claude Code. After Claude Code\n' +
+              'finishes writing code, Mesa reviews all uncommitted changes against\n' +
+              'your rules. If violations are found, Claude is blocked and asked to\n' +
+              'fix them before completing.\n\n' +
+              'This is installed automatically by mesa init.'
+          );
+        },
         wrapHandler('hook-install', installHook as (argv: unknown) => Promise<number>)
       )
       .command(
         'uninstall',
-        'Remove the Claude Code review hook',
-        {},
+        'Disable automatic reviews in Claude Code',
+        (y: Argv) => {
+          y.usage(
+            `${secondary('mesa hook uninstall')}\n\n` +
+              'Disables automatic code review. Claude Code will no longer review\n' +
+              'changes after writing code. You can still run mesa review manually.'
+          );
+        },
         wrapHandler('hook-uninstall', uninstallHook as (argv: unknown) => Promise<number>)
       )
       .command(
