@@ -9,14 +9,23 @@ export function listChangedFilesFromGit(baseRef: string, headRef: string): strin
   assertValidGitRef(baseRef, 'base branch');
   assertValidGitRef(headRef, 'head ref');
 
-  const output = execFileSync('git', ['diff', '--name-only', '--diff-filter=ACMR', `${baseRef}...${headRef}`], {
+  const diffTarget = headRef === 'HEAD' ? getMergeBase(baseRef) : `${baseRef}...${headRef}`;
+
+  const output = execFileSync('git', ['diff', '--name-only', '--diff-filter=ACMR', diffTarget], {
     encoding: 'utf8',
   });
 
-  return output
+  const files = output
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
+
+  if (headRef === 'HEAD') {
+    const untracked = listUntrackedFiles();
+    return [...new Set([...files, ...untracked])];
+  }
+
+  return files;
 }
 
 export function listLocalChangedFilesFromGit(): string[] {
@@ -45,12 +54,22 @@ export function getDiffs(baseRef: string, headRef: string): Map<string, string> 
   assertValidGitRef(baseRef, 'base branch');
   assertValidGitRef(headRef, 'head ref');
 
-  const output = execFileSync('git', ['diff', `${baseRef}...${headRef}`], {
+  const diffTarget = headRef === 'HEAD' ? getMergeBase(baseRef) : `${baseRef}...${headRef}`;
+
+  const output = execFileSync('git', ['diff', diffTarget], {
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024,
   });
 
-  return parseDiffByFile(output);
+  const diffs = parseDiffByFile(output);
+
+  if (headRef === 'HEAD') {
+    for (const [file, diff] of getUntrackedDiffs()) {
+      diffs.set(file, diff);
+    }
+  }
+
+  return diffs;
 }
 
 export function getLocalDiffs(): Map<string, string> {
@@ -156,6 +175,10 @@ export function getDefaultBranch(): string {
     } catch {}
   }
   return 'main';
+}
+
+function getMergeBase(baseRef: string): string {
+  return execFileSync('git', ['merge-base', baseRef, 'HEAD'], { encoding: 'utf8' }).trim();
 }
 
 function assertValidGitRef(ref: string, label: string): void {

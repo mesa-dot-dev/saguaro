@@ -6,13 +6,7 @@ import { runReview } from '../adapter/review.js';
 import type { ReviewEngineOutcome } from '../core/review.js';
 import { getCodebaseContext } from '../indexer/index.js';
 import { MesaError } from '../lib/errors.js';
-import {
-  getDiffs,
-  getLocalDiffs,
-  getRepoRoot,
-  listChangedFilesFromGit,
-  listLocalChangedFilesFromGit,
-} from '../lib/git.js';
+import { getDiffs, getRepoRoot, listChangedFilesFromGit } from '../lib/git.js';
 import { logger } from '../lib/logger.js';
 import { loadValidatedConfig } from '../lib/review-model-config.js';
 import type { ReviewProgressEvent, ReviewResult, Violation } from '../types/types.js';
@@ -41,12 +35,8 @@ interface WorkerParseSummaryDetail {
 }
 
 export async function reviewCommand(options: ReviewOptions): Promise<number> {
-  const explicitlySetRefs = options.base !== undefined || options.head !== undefined;
   const baseRef = options.base ?? 'main';
   const headRef = options.head ?? 'HEAD';
-  let changedFiles: string[] = [];
-  let diffs: Map<string, string> = new Map();
-  let usingLocalDiff = false;
 
   try {
     const config = loadValidatedConfig(options.config);
@@ -57,25 +47,10 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
       contextTokenBudget: config.index.context_token_budget,
     };
 
-    // Prefer local working-tree diff when no refs were explicitly provided.
-    if (!explicitlySetRefs) {
-      changedFiles = listLocalChangedFilesFromGit();
-      if (changedFiles.length > 0) {
-        diffs = getLocalDiffs();
-        usingLocalDiff = true;
-      }
-    }
+    const changedFiles = listChangedFilesFromGit(baseRef, headRef);
+    const diffs = getDiffs(baseRef, headRef);
 
-    if (!usingLocalDiff) {
-      changedFiles = listChangedFilesFromGit(baseRef, headRef);
-      diffs = getDiffs(baseRef, headRef);
-    }
-
-    if (usingLocalDiff) {
-      console.log(chalk.gray('Starting Mesa code review of your local changes (diff vs HEAD).'));
-    } else {
-      console.log(chalk.gray(`Starting Mesa code review comparing ${CLI_ACCENT(baseRef)} → ${CLI_ACCENT(headRef)}.`));
-    }
+    console.log(chalk.gray(`Starting Mesa code review comparing ${CLI_ACCENT(baseRef)} → ${CLI_ACCENT(headRef)}.`));
 
     if (options.verbose) {
       logger.verbose(`\nPre-computed diffs for ${diffs.size} files.`);
@@ -107,7 +82,6 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
       const reviewResult = await runReview({
         baseRef,
         headRef,
-        changedFilesOverride: usingLocalDiff ? changedFiles : undefined,
         rulesDir: options.rules,
         verbose: options.verbose,
         configPath: options.config,
