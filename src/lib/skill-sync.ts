@@ -1,75 +1,46 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import yaml from 'js-yaml';
-import type { RulePolicy } from '../types/types.js';
-import { loadMesaRules } from './mesa-rules.js';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 export interface SyncResult {
-  generated: string[]; // rule IDs that were synced
-  removed: string[]; // rule IDs whose skill dirs were cleaned up
+  synced: boolean; // whether the mesa-rules skill was written
+  removed: string[]; // legacy per-rule skill dirs that were cleaned up
   errors: string[]; // any errors encountered
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 const SKILLS_DIR = '.claude/skills';
-const GITIGNORE_FILE = '.gitignore';
-const POLICY_SIDECAR = 'references/mesa-policy.yaml';
+const MESA_SKILL_NAME = 'mesa-rules';
 const SKILL_FILE = 'SKILL.md';
+const GITIGNORE_FILE = '.gitignore';
+const LEGACY_POLICY_SIDECAR = 'references/mesa-policy.yaml';
 
 const GITIGNORE_BLOCK_START = '# mesa-generated (do not edit this block)';
 const GITIGNORE_BLOCK_END = '# end mesa-generated';
 
-// ---------------------------------------------------------------------------
-// SKILL.md generation
-// ---------------------------------------------------------------------------
+const MESA_RULES_SKILL = `---
+name: mesa-rules
+description: >
+  REQUIRED before ANY file edit or creation. Run mesa rules for
+  <paths> to load applicable code review rules. Do NOT skip this
+  step. If you have not loaded rules for the files you are about
+  to modify, you must invoke this skill first.
+---
 
-function buildSkillMarkdown(policy: RulePolicy): string {
-  const globsList = policy.globs.join(', ');
-  const description = `${policy.title}. Enforces this rule in ${globsList}. Use when changed code matches this scope and touches behavior covered by the rule. Do not use for unrelated refactors outside scope.`;
+Before editing or creating any files, determine which files and
+directories you plan to touch, then run:
 
-  const frontmatter = ['---', `name: ${policy.id}`, `description: ${JSON.stringify(description)}`, '---'].join('\n');
+    mesa rules for <path1> <path2> ...
 
-  const body = [
-    '',
-    `This skill enforces the ${policy.title} policy.`,
-    '',
-    'Machine-readable policy is defined in references/mesa-policy.yaml.',
-    '',
-  ].join('\n');
+You may pass specific files or directories. The command returns
+only rules whose globs match the given paths.
 
-  return frontmatter + body;
-}
+Follow ALL returned rules when implementing your changes. If a
+rule says not to do something, do not do it.
 
-// ---------------------------------------------------------------------------
-// Gitignore management
-// ---------------------------------------------------------------------------
+If you later need to edit files in a different area of the
+codebase, run the command again for that scope before proceeding.
+`;
 
-/**
- * Build the mesa-managed gitignore block content for the given rule IDs.
- * Returns `null` if there are no rule IDs (block should be removed).
- */
-function buildGitignoreBlock(ruleIds: string[]): string | null {
-  if (ruleIds.length === 0) return null;
-
-  const sorted = [...ruleIds].sort((a, b) => a.localeCompare(b));
-  const lines = [GITIGNORE_BLOCK_START, ...sorted.map((id) => `${SKILLS_DIR}/${id}/`), GITIGNORE_BLOCK_END];
-  return lines.join('\n');
-}
-
-/**
- * Read, update, and write the `.gitignore` file with the mesa-managed block.
- * - If the block exists, replace it
- * - If not, append it
- * - If no rules remain, remove the block entirely
- */
-function updateGitignore(repoRoot: string, ruleIds: string[]): void {
+function updateGitignore(repoRoot: string): void {
   const gitignorePath = path.join(repoRoot, GITIGNORE_FILE);
   let content = '';
 
@@ -81,147 +52,91 @@ function updateGitignore(repoRoot: string, ruleIds: string[]): void {
     `${escapeRegExp(GITIGNORE_BLOCK_START)}[\\s\\S]*?${escapeRegExp(GITIGNORE_BLOCK_END)}`
   );
 
+  const newBlock = [GITIGNORE_BLOCK_START, `${SKILLS_DIR}/${MESA_SKILL_NAME}/`, GITIGNORE_BLOCK_END].join('\n');
+
   const hasExistingBlock = blockPattern.test(content);
-  const newBlock = buildGitignoreBlock(ruleIds);
 
   if (hasExistingBlock) {
-    if (newBlock) {
-      // Replace existing block
-      content = content.replace(blockPattern, newBlock);
-    } else {
-      // Remove the block entirely (including surrounding blank lines)
-      content = content.replace(
-        new RegExp(`\\n?${escapeRegExp(GITIGNORE_BLOCK_START)}[\\s\\S]*?${escapeRegExp(GITIGNORE_BLOCK_END)}\\n?`),
-        '\n'
-      );
-      // Clean up trailing whitespace
-      content = `${content.replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
-    }
-  } else if (newBlock) {
-    // Append the block
+    content = content.replace(blockPattern, newBlock);
+  } else {
     const trimmed = content.trimEnd();
     content = trimmed.length > 0 ? `${trimmed}\n\n${newBlock}\n` : `${newBlock}\n`;
   }
 
-  // Only write if there's actual content or the file already existed
-  if (content.trim().length > 0 || fs.existsSync(gitignorePath)) {
-    fs.writeFileSync(gitignorePath, content, 'utf8');
-  }
+  fs.writeFileSync(gitignorePath, content, 'utf8');
 }
 
 function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// ---------------------------------------------------------------------------
-// Skill directory management
-// ---------------------------------------------------------------------------
-
 /**
- * Write a single skill directory for a rule policy.
+ * Find legacy mesa-managed skill directories (those with `references/mesa-policy.yaml`).
+ * These were generated by the old per-rule sync and should be removed.
  */
-function writeSkillDir(repoRoot: string, policy: RulePolicy): void {
-  const skillDir = path.join(repoRoot, SKILLS_DIR, policy.id);
-  const referencesDir = path.join(skillDir, 'references');
-
-  fs.mkdirSync(referencesDir, { recursive: true });
-
-  // Write SKILL.md
-  const skillContent = buildSkillMarkdown(policy);
-  fs.writeFileSync(path.join(skillDir, SKILL_FILE), skillContent, 'utf8');
-
-  // Write mesa-policy.yaml
-  const policyYaml = yaml.dump(policy, {
-    lineWidth: -1,
-    quotingType: '"',
-    forceQuotes: false,
-  });
-  fs.writeFileSync(path.join(skillDir, POLICY_SIDECAR), policyYaml, 'utf8');
-}
-
-/**
- * Find all mesa-managed skill directories (those that contain `references/mesa-policy.yaml`).
- * Returns a map of rule ID (directory name) to the absolute skill directory path.
- */
-function findMesaManagedSkillDirs(repoRoot: string): Map<string, string> {
+function findLegacySkillDirs(repoRoot: string): Map<string, string> {
   const skillsDir = path.join(repoRoot, SKILLS_DIR);
-  const managed = new Map<string, string>();
+  const legacy = new Map<string, string>();
 
   if (!fs.existsSync(skillsDir)) {
-    return managed;
+    return legacy;
   }
 
   const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
+    if (entry.name === MESA_SKILL_NAME) continue;
 
     const skillDir = path.join(skillsDir, entry.name);
-    const policyPath = path.join(skillDir, POLICY_SIDECAR);
+    const policyPath = path.join(skillDir, LEGACY_POLICY_SIDECAR);
 
     if (fs.existsSync(policyPath)) {
-      managed.set(entry.name, skillDir);
+      legacy.set(entry.name, skillDir);
     }
   }
 
-  return managed;
+  return legacy;
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
 /**
- * Sync `.claude/skills/<id>/` directories from parsed `.mesa/rules/*.md` files.
- *
- * - Generates a skill directory for each rule
- * - Cleans up orphaned skill directories (mesa-managed but no longer in rules)
- * - Updates `.gitignore` with a mesa-managed block
+ * Sync a single `.claude/skills/mesa-rules/SKILL.md` that teaches Claude Code
+ * how to discover applicable rules via the `mesa rules for` CLI command.
  */
 export function syncSkillsFromRules(repoRoot: string): SyncResult {
-  const { rules, errors: parseErrors } = loadMesaRules(repoRoot);
-
-  const generated: string[] = [];
   const removed: string[] = [];
-  const errors: string[] = parseErrors.map((e) => `Parse error in ${e.filePath}: ${e.message}`);
+  const errors: string[] = [];
 
-  // Build set of current rule IDs
-  const currentRuleIds = new Set<string>();
-  for (const rule of rules) {
-    currentRuleIds.add(rule.policy.id);
+  // Write the single mesa-rules skill
+  let synced = false;
+  try {
+    const skillDir = path.join(repoRoot, SKILLS_DIR, MESA_SKILL_NAME);
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, SKILL_FILE), MESA_RULES_SKILL, 'utf8');
+    synced = true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    errors.push(`Failed to write mesa-rules skill: ${message}`);
   }
 
-  // Generate skill dirs for each rule
-  for (const rule of rules) {
+  // Clean up legacy per-rule skill directories
+  const legacyDirs = findLegacySkillDirs(repoRoot);
+  for (const [id, dirPath] of legacyDirs) {
     try {
-      writeSkillDir(repoRoot, rule.policy);
-      generated.push(rule.policy.id);
+      fs.rmSync(dirPath, { recursive: true, force: true });
+      removed.push(id);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      errors.push(`Failed to write skill for rule "${rule.policy.id}": ${message}`);
-    }
-  }
-
-  // Clean up orphaned skill directories
-  const existingManaged = findMesaManagedSkillDirs(repoRoot);
-  for (const [id, dirPath] of existingManaged) {
-    if (!currentRuleIds.has(id)) {
-      try {
-        fs.rmSync(dirPath, { recursive: true, force: true });
-        removed.push(id);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        errors.push(`Failed to remove orphaned skill dir "${id}": ${message}`);
-      }
+      errors.push(`Failed to remove legacy skill dir "${id}": ${message}`);
     }
   }
 
   // Update .gitignore
   try {
-    updateGitignore(repoRoot, generated);
+    updateGitignore(repoRoot);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     errors.push(`Failed to update .gitignore: ${message}`);
   }
 
-  return { generated, removed, errors };
+  return { synced, removed, errors };
 }

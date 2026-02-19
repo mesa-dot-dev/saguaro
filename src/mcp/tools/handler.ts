@@ -4,17 +4,17 @@ import path from 'node:path';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { runReview } from '../../adapter/review.js';
 import {
-  createSkillAdapter,
-  deleteSkillAdapter,
-  explainSkillAdapter,
+  createRuleAdapter,
+  deleteRuleAdapter,
+  explainRuleAdapter,
   generateRuleAdapter,
-  listSkillsAdapter,
-  validateSkillsAdapter,
+  listRulesAdapter,
+  validateRulesAdapter,
   writeGeneratedRules,
-} from '../../adapter/skills.js';
+} from '../../adapter/rules.js';
 import { generateRules } from '../../generator/index.js';
+import { findRepoRoot } from '../../lib/rule-resolution.js';
 import { syncSkillsFromRules } from '../../lib/skill-sync.js';
-import { findRepoRoot } from '../../lib/skills.js';
 import type { RulePolicy, Severity } from '../../types/types.js';
 
 // ---------------------------------------------------------------------------
@@ -48,14 +48,14 @@ function errorResult(message: string): CallToolResult {
 
 function handleListRules(args: Record<string, unknown>): CallToolResult {
   debug('mesa_list_rules called', args);
-  const { skills } = listSkillsAdapter();
+  const { rules } = listRulesAdapter();
   const tags = args.tags as string[] | undefined;
 
-  const mapped = skills.map((s) => ({
-    id: s.id,
-    title: s.title,
-    severity: s.severity,
-    tags: s.tags ?? [],
+  const mapped = rules.map((rule) => ({
+    id: rule.id,
+    title: rule.title,
+    severity: rule.severity,
+    tags: rule.tags ?? [],
   }));
 
   const filtered = tags?.length ? mapped.filter((r) => r.tags.some((t) => tags.includes(t))) : mapped;
@@ -71,25 +71,25 @@ function handleExplainRule(args: Record<string, unknown>): CallToolResult {
     return errorResult('rule_id is required');
   }
 
-  const { skill } = explainSkillAdapter({ skillId: ruleId });
-  if (!skill) {
+  const { rule } = explainRuleAdapter({ ruleId });
+  if (!rule) {
     return errorResult(`Rule not found: ${ruleId}`);
   }
 
   return jsonResult({
-    id: skill.id,
-    title: skill.title,
-    severity: skill.severity,
-    globs: skill.globs,
-    instructions: skill.instructions,
-    tags: skill.tags ?? [],
-    examples: skill.examples,
+    id: rule.id,
+    title: rule.title,
+    severity: rule.severity,
+    globs: rule.globs,
+    instructions: rule.instructions,
+    tags: rule.tags ?? [],
+    examples: rule.examples,
   });
 }
 
 function handleValidateRules(): CallToolResult {
   debug('mesa_validate_rules called');
-  const { validated, errors } = validateSkillsAdapter();
+  const { validated, errors } = validateRulesAdapter();
   debug(`mesa_validate_rules: ${validated.length} validated, ${errors.length} errors`);
   return jsonResult({
     valid: errors.length === 0,
@@ -111,7 +111,7 @@ function handleCreateRule(args: Record<string, unknown>): CallToolResult {
     return errorResult('title, severity, globs, and instructions are required');
   }
 
-  const result = createSkillAdapter({
+  const result = createRuleAdapter({
     title,
     severity,
     globs,
@@ -120,11 +120,11 @@ function handleCreateRule(args: Record<string, unknown>): CallToolResult {
     examples,
   });
 
-  debug('mesa_create_rule created', { id: result.skill.id, path: result.skillDir });
+  debug('mesa_create_rule created', { id: result.rule.id, path: result.policyFilePath });
   return jsonResult({
-    id: result.skill.id,
-    title: result.skill.title,
-    path: result.skillDir,
+    id: result.rule.id,
+    title: result.rule.title,
+    path: result.policyFilePath,
   });
 }
 
@@ -135,7 +135,7 @@ function handleDeleteRule(args: Record<string, unknown>): CallToolResult {
     return errorResult('rule_id is required');
   }
 
-  const { deleted } = deleteSkillAdapter({ skillId: ruleId });
+  const { deleted } = deleteRuleAdapter({ ruleId });
   if (!deleted) {
     return errorResult(`Rule not found: ${ruleId}`);
   }
@@ -147,9 +147,9 @@ function handleSyncRules(): CallToolResult {
   debug('mesa_sync_rules called');
   const repoRoot = findRepoRoot();
   const result = syncSkillsFromRules(repoRoot);
-  debug(`mesa_sync_rules: ${result.generated.length} generated, ${result.removed.length} removed`);
+  debug(`mesa_sync_rules: synced=${result.synced}, removed=${result.removed.length}`);
   return jsonResult({
-    generated: result.generated.length,
+    synced: result.synced,
     removed: result.removed.length,
     errors: result.errors,
   });

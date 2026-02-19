@@ -40,15 +40,6 @@ export interface RulePolicy {
   priority?: number;
 }
 
-export interface SkillDefinition {
-  name: string;
-  description: string;
-  skillDir: string;
-  skillFilePath: string;
-  policyFilePath: string;
-  policy: RulePolicy;
-}
-
 export interface ReviewRunSplitProgressEvent {
   type: 'run_split';
   totalFiles: number;

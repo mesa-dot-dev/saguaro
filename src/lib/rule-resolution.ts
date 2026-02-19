@@ -2,12 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { minimatch } from 'minimatch';
 import type { RulePolicy } from '../types/types.js';
+import type { MesaRulesResult } from './mesa-rules.js';
 import { loadMesaRules, loadMesaRulesFromDir } from './mesa-rules.js';
 
-export interface SkillsResolutionResult {
+export interface RuleResolutionResult {
   filesWithRules: Map<string, RulePolicy[]>;
   rulesLoaded: number;
-  discoveredSkillDirs: string[];
 }
 
 export function findRepoRoot(startDir = process.cwd()): string {
@@ -28,14 +28,11 @@ export function findRepoRoot(startDir = process.cwd()): string {
   return path.resolve(startDir);
 }
 
-export function resolveRulesFromMesaDir(changedFiles: string[], repoRoot: string): SkillsResolutionResult {
+export function resolveRulesFromMesaDir(changedFiles: string[], repoRoot: string): RuleResolutionResult {
   return resolveRulesFromLoadResult(changedFiles, loadMesaRules(repoRoot));
 }
 
-function resolveRulesFromLoadResult(
-  changedFiles: string[],
-  loadResult: import('./mesa-rules.js').MesaRulesResult
-): SkillsResolutionResult {
+function resolveRulesFromLoadResult(changedFiles: string[], loadResult: MesaRulesResult): RuleResolutionResult {
   const { rules, errors } = loadResult;
 
   // Log parse errors but continue with valid rules — one bad file should not
@@ -52,35 +49,26 @@ function resolveRulesFromLoadResult(
     const matched: RulePolicy[] = [];
 
     for (const rule of rules) {
-      if (matchesSkillGlobs(file, rule.policy.globs)) {
+      if (matchesGlobs(file, rule.policy.globs)) {
         matched.push(rule.policy);
       }
     }
 
     if (matched.length > 0) {
-      matched.sort((a, b) => {
-        const priorityA = a.priority ?? 0;
-        const priorityB = b.priority ?? 0;
-        if (priorityA !== priorityB) {
-          return priorityB - priorityA;
-        }
-        return a.id.localeCompare(b.id);
-      });
-      filesWithRules.set(file, matched);
+      filesWithRules.set(file, sortRulesByPriority(matched));
     }
   }
 
   return {
     filesWithRules,
     rulesLoaded: rules.length,
-    discoveredSkillDirs: [],
   };
 }
 
-export function resolveSkillsForFiles(
+export function resolveRulesForFiles(
   changedFiles: string[],
   options?: { explicitRulesDir?: string; startDir?: string }
-): SkillsResolutionResult {
+): RuleResolutionResult {
   // When an explicit rules directory is provided (e.g. --rules flag, evals),
   // load .md rule files from that directory.
   if (options?.explicitRulesDir) {
@@ -96,7 +84,19 @@ export function resolveSkillsForFiles(
   return resolveRulesFromMesaDir(changedFiles, repoRoot);
 }
 
-function matchesSkillGlobs(filePath: string, globs: string[]): boolean {
+/**
+ * Sort rules by descending priority, then alphabetically by id.
+ */
+export function sortRulesByPriority<T extends Pick<RulePolicy, 'id' | 'priority'>>(rules: T[]): T[] {
+  return rules.slice().sort((a, b) => {
+    const priorityA = a.priority ?? 0;
+    const priorityB = b.priority ?? 0;
+    if (priorityA !== priorityB) return priorityB - priorityA;
+    return a.id.localeCompare(b.id);
+  });
+}
+
+export function matchesGlobs(filePath: string, globs: string[]): boolean {
   let matched = false;
   let excluded = false;
 

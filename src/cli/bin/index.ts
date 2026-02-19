@@ -8,7 +8,7 @@ import yargs, { type Argv } from 'yargs';
 import { MesaError } from '../../lib/errors.js';
 import { requireGitRepo } from '../../lib/git.js';
 import { logger } from '../../lib/logger.js';
-import { findRepoRoot } from '../../lib/skills.js';
+import { findRepoRoot } from '../../lib/rule-resolution.js';
 import checkHandler from '../lib/check.js';
 import { generateRulesCommand } from '../lib/generate.js';
 import { installHook, runHook, uninstallHook } from '../lib/hook.js';
@@ -20,15 +20,12 @@ import {
   explainRule,
   listRules,
   locateRulesDirectory,
+  rulesFor,
   syncRules,
   validateRules,
 } from '../lib/rules.js';
 import serveHandler from '../lib/serve.js';
 import { resolvePackageVersion, reviewCommand } from '../review.js';
-
-// ---------------------------------------------------------------------------
-// Global error handlers — catch truly unexpected errors cleanly
-// ---------------------------------------------------------------------------
 
 process.on('unhandledRejection', (reason) => {
   const message = reason instanceof Error ? reason.message : String(reason);
@@ -42,10 +39,6 @@ process.on('uncaughtException', (error) => {
   console.error(chalk.gray('This is a bug. Please report it at https://github.com/anthropics/mesa/issues'));
   process.exit(1);
 });
-
-// ---------------------------------------------------------------------------
-// Types & constants
-// ---------------------------------------------------------------------------
 
 interface ReviewArgv {
   base?: string;
@@ -70,10 +63,6 @@ const MESA_BANNER = `  __  __
 const showBanner = () => {
   console.log(secondary(MESA_BANNER));
 };
-
-// ---------------------------------------------------------------------------
-// Error display
-// ---------------------------------------------------------------------------
 
 function printError(error: unknown): void {
   if (error instanceof MesaError) {
@@ -121,10 +110,6 @@ const wrapHandler = <T>(
   };
 };
 
-// ---------------------------------------------------------------------------
-// SIGINT handling — abort in-flight work cleanly
-// ---------------------------------------------------------------------------
-
 const globalAbortController = new AbortController();
 
 function enableDebugCapture(filePath: string): string {
@@ -160,10 +145,6 @@ process.on('SIGINT', () => {
   console.error(chalk.yellow('\nReview cancelled.'));
   setTimeout(() => process.exit(130), 100);
 });
-
-// ---------------------------------------------------------------------------
-// CLI setup
-// ---------------------------------------------------------------------------
 
 const argv = process.argv.slice(2);
 const isHelp = argv.includes('--help') || argv.includes('-h') || argv.length === 0;
@@ -202,9 +183,6 @@ yargs(argv)
       `  rule defines what to check, which files it applies to, and its severity.\n` +
       `  Globs use repo-root-relative paths for monorepo support.`
   )
-  // ---------------------------------------------------------------------------
-  // mesa init
-  // ---------------------------------------------------------------------------
   .command(
     'init',
     'Set up Mesa in your repo (config, rules, hooks, Claude Code integration)',
@@ -225,9 +203,7 @@ yargs(argv)
     },
     wrapHandler('init', initHandler as (argv: unknown) => Promise<number>)
   )
-  // ---------------------------------------------------------------------------
-  // mesa review
-  // ---------------------------------------------------------------------------
+
   .command(
     'review',
     'Review code changes against your rules',
@@ -306,9 +282,7 @@ yargs(argv)
       });
     }) as (argv: unknown) => Promise<number>)
   )
-  // ---------------------------------------------------------------------------
-  // mesa rules
-  // ---------------------------------------------------------------------------
+
   .command('rules <command>', 'Create, list, and manage review rules', (y: Argv) => {
     y.usage(
       `${secondary('mesa rules')} <command>\n\n` +
@@ -318,6 +292,18 @@ yargs(argv)
         'controlled markdown files with repo-root-relative globs.'
     )
       .demandCommand(1, 'Please specify a rules subcommand. Run "mesa rules --help" for options.')
+      .command(
+        'for <paths..>',
+        'Show rules that apply to the given files or directories',
+        (y: Argv) => {
+          y.positional('paths', {
+            describe: 'File or directory paths to check rules against',
+            type: 'string',
+            array: true,
+          });
+        },
+        wrapHandler('rules-for', rulesFor as (argv: unknown) => number)
+      )
       .command(
         'list',
         'List all rules with their IDs, titles, and severity',
@@ -435,9 +421,6 @@ yargs(argv)
         }) as (argv: unknown) => Promise<number>)
       );
   })
-  // ---------------------------------------------------------------------------
-  // mesa check — hidden (not yet implemented)
-  // ---------------------------------------------------------------------------
   .command(
     'check <rule-id> [file]',
     false, // hidden — not yet implemented
@@ -452,18 +435,12 @@ yargs(argv)
     },
     wrapHandler('check', checkHandler as (argv: unknown) => Promise<number>)
   )
-  // ---------------------------------------------------------------------------
-  // mesa serve — hidden (auto-started by Claude Code via .mcp.json)
-  // ---------------------------------------------------------------------------
   .command(
     'serve',
     false, // hidden — started automatically by Claude Code
     () => {},
     wrapHandler('serve', serveHandler as (argv: unknown) => Promise<void>)
   )
-  // ---------------------------------------------------------------------------
-  // mesa index
-  // ---------------------------------------------------------------------------
   .command(
     'index',
     'Build the import graph for richer review context',
@@ -486,9 +463,6 @@ yargs(argv)
     },
     wrapHandler('index', indexCmdHandler as (argv: unknown) => Promise<void>)
   )
-  // ---------------------------------------------------------------------------
-  // mesa hook
-  // ---------------------------------------------------------------------------
   .command('hook <command>', 'Enable or disable automatic reviews in Claude Code', (y: Argv) => {
     y.usage(
       `${secondary('mesa hook')} <command>\n\n` +

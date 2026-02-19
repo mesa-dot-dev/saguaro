@@ -4,7 +4,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import { runHookReview } from '../../lib/hook-runner.js';
 import { logger } from '../../lib/logger.js';
-import { findRepoRoot } from '../../lib/skills.js';
+import { findRepoRoot } from '../../lib/rule-resolution.js';
 
 const CLAUDE_SETTINGS_DIR = '.claude';
 const CLAUDE_SETTINGS_FILE = 'settings.json';

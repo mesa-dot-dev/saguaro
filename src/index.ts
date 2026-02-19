@@ -1,5 +1,5 @@
 export * from './adapter/review.js';
-export * from './adapter/skills.js';
+export * from './adapter/rules.js';
 export type { MesaRuleFile, MesaRuleParseError, MesaRulesResult } from './lib/mesa-rules.js';
 export {
   buildMesaRuleMarkdown,

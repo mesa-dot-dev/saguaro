@@ -8,7 +8,7 @@ import { buildIndex } from '../indexer/build.js';
 import { JsonIndexStore } from '../indexer/store.js';
 import type { CodebaseIndex } from '../indexer/types.js';
 import { loadReviewAdapterConfig, resolveModelFromResolvedConfig } from '../lib/review-model-config.js';
-import { findRepoRoot } from '../lib/skills.js';
+import { findRepoRoot } from '../lib/rule-resolution.js';
 import { STARTER_RULE_SKILLS } from '../templates/starter-rule-skills.js';
 import type { RulePolicy } from '../types/types.js';
 import { computeArchitecturalContext } from './architecture.js';

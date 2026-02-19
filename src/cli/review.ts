@@ -122,8 +122,8 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
       if (options.rules && outcome.rulesLoaded === 0) {
         throw new MesaError(
           'RULES_NOT_LOADED',
-          `No rules loaded from ${options.rules}. Expected skill directory structure: <dir>/<rule>/SKILL.md + references/mesa-policy.yaml`,
-          { suggestion: 'Run "mesa init" to generate starter rules, or check the directory structure.' }
+          `No rules loaded from ${options.rules}. Expected .md rule files in the directory.`,
+          { suggestion: 'Run "mesa init" to generate starter rules, or check the rules directory.' }
         );
       }
       if (outcome.rulesLoaded === 0) {

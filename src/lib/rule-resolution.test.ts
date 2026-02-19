@@ -4,10 +4,10 @@ import { describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveSkillsForFiles } from './skills.js';
+import { resolveRulesForFiles } from './rule-resolution.js';
 
 function withTempRepo(run: (root: string) => void): void {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-skills-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-rules-'));
   try {
     fs.mkdirSync(path.join(root, '.git'));
     run(root);
@@ -45,7 +45,7 @@ function writeMesaRule(
   fs.writeFileSync(path.join(rulesDir, `${options.id}.md`), `${frontmatter}\n\n${options.instructions}\n`);
 }
 
-describe('skills loader', () => {
+describe('rule resolution', () => {
   test('resolves rules from .mesa/rules/ and matches files by glob', () => {
     withTempRepo((root) => {
       writeMesaRule(root, {
@@ -56,7 +56,7 @@ describe('skills loader', () => {
         instructions: 'Do not use console.log',
       });
 
-      const result = resolveSkillsForFiles(['src/app.ts'], { startDir: root });
+      const result = resolveRulesForFiles(['src/app.ts'], { startDir: root });
       const fileRules = result.filesWithRules.get('src/app.ts');
 
       expect(result.rulesLoaded).toBe(1);
@@ -77,10 +77,10 @@ describe('skills loader', () => {
         instructions: 'source only',
       });
 
-      const matched = resolveSkillsForFiles(['src/service.ts'], { startDir: root });
+      const matched = resolveRulesForFiles(['src/service.ts'], { startDir: root });
       expect(matched.filesWithRules.get('src/service.ts')?.length).toBe(1);
 
-      const excluded = resolveSkillsForFiles(['src/service.test.ts'], { startDir: root });
+      const excluded = resolveRulesForFiles(['src/service.test.ts'], { startDir: root });
       expect(excluded.filesWithRules.has('src/service.test.ts')).toBe(false);
     });
   });
@@ -105,7 +105,7 @@ describe('skills loader', () => {
         priority: 10,
       });
 
-      const result = resolveSkillsForFiles(['src/app.ts'], { startDir: root });
+      const result = resolveRulesForFiles(['src/app.ts'], { startDir: root });
       const fileRules = result.filesWithRules.get('src/app.ts');
 
       expect(fileRules?.length).toBe(2);
@@ -116,7 +116,7 @@ describe('skills loader', () => {
 
   test('returns empty when no .mesa/rules/ directory exists', () => {
     withTempRepo((root) => {
-      const result = resolveSkillsForFiles(['src/app.ts'], { startDir: root });
+      const result = resolveRulesForFiles(['src/app.ts'], { startDir: root });
       expect(result.rulesLoaded).toBe(0);
       expect(result.filesWithRules.size).toBe(0);
     });

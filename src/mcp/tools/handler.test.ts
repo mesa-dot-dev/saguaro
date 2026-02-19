@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createSkillAdapter } from '../../adapter/skills.js';
+import { createRuleAdapter } from '../../adapter/rules.js';
 import { createMesaMcpServer } from '../server.js';
 
 async function withTempRepo(run: (root: string) => Promise<void>): Promise<void> {
@@ -59,7 +59,7 @@ describe('mesa_list_rules', () => {
 
   test('returns rules after creating one', async () => {
     await withTempRepo(async (root) => {
-      createSkillAdapter({
+      createRuleAdapter({
         title: 'No Console Log',
         severity: 'warning',
         globs: ['**/*.ts'],
@@ -94,7 +94,7 @@ describe('mesa_explain_rule', () => {
 
   test('returns full rule details for existing rule', async () => {
     await withTempRepo(async (root) => {
-      createSkillAdapter({
+      createRuleAdapter({
         title: 'No Console Log',
         severity: 'warning',
         globs: ['**/*.ts'],
@@ -131,7 +131,7 @@ describe('mesa_validate_rules', () => {
 
   test('returns valid=true with a valid rule', async () => {
     await withTempRepo(async (root) => {
-      createSkillAdapter({
+      createRuleAdapter({
         title: 'Test Rule',
         severity: 'error',
         globs: ['**/*.ts'],
@@ -187,7 +187,7 @@ describe('mesa_create_rule', () => {
 describe('mesa_delete_rule', () => {
   test('deletes an existing rule', async () => {
     await withTempRepo(async (root) => {
-      createSkillAdapter({
+      createRuleAdapter({
         title: 'To Delete',
         severity: 'info',
         globs: ['**/*.ts'],

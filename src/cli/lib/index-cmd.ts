@@ -2,7 +2,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import { buildIndex } from '../../indexer/build.js';
 import { JsonIndexStore } from '../../indexer/store.js';
-import { findRepoRoot } from '../../lib/skills.js';
+import { findRepoRoot } from '../../lib/rule-resolution.js';
 
 interface IndexArgv {
   verbose?: boolean;

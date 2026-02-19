@@ -4,10 +4,10 @@ import { describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createSkillAdapter } from './skills.js';
+import { createRuleAdapter } from './rules.js';
 
 function withTempRepo(run: (root: string) => void): void {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-adapter-skills-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-adapter-rules-'));
   try {
     fs.mkdirSync(path.join(root, '.git'));
     run(root);
@@ -16,10 +16,10 @@ function withTempRepo(run: (root: string) => void): void {
   }
 }
 
-describe('createSkillAdapter centralized storage', () => {
-  test('writes rule to .mesa/rules/ and generates .claude/skills/', () => {
+describe('createRuleAdapter centralized storage', () => {
+  test('writes rule to .mesa/rules/', () => {
     withTempRepo((root) => {
-      const result = createSkillAdapter({
+      const result = createRuleAdapter({
         title: 'No Console Log',
         severity: 'warning',
         globs: ['**/*.ts'],
@@ -32,9 +32,9 @@ describe('createSkillAdapter centralized storage', () => {
     });
   });
 
-  test('generates .claude/skills/<id>/ directory via sync', () => {
+  test('generates single mesa-rules skill via sync', () => {
     withTempRepo((root) => {
-      const result = createSkillAdapter({
+      createRuleAdapter({
         title: 'No Console Log',
         severity: 'warning',
         globs: ['**/*.ts'],
@@ -42,15 +42,18 @@ describe('createSkillAdapter centralized storage', () => {
         repoRoot: root,
       });
 
-      const expectedSkillDir = path.join(root, '.claude', 'skills', 'no-console-log');
-      expect(result.skillDir).toBe(expectedSkillDir);
-      expect(fs.existsSync(result.skillFilePath)).toBe(true);
+      const skillPath = path.join(root, '.claude', 'skills', 'mesa-rules', 'SKILL.md');
+      expect(fs.existsSync(skillPath)).toBe(true);
+
+      const content = fs.readFileSync(skillPath, 'utf-8');
+      expect(content).toContain('name: mesa-rules');
+      expect(content).toContain('mesa rules for');
     });
   });
 
-  test('all rules go to .mesa/rules/ regardless of glob paths', () => {
+  test('does not create per-rule skill directories', () => {
     withTempRepo((root) => {
-      const result = createSkillAdapter({
+      createRuleAdapter({
         title: 'Package Scoped Rule',
         severity: 'error',
         globs: ['packages/web/**/*.tsx'],
@@ -58,32 +61,21 @@ describe('createSkillAdapter centralized storage', () => {
         repoRoot: root,
       });
 
-      // Generated skill should be at root .claude/skills/
-      expect(result.skillDir).toBe(path.join(root, '.claude', 'skills', 'package-scoped-rule'));
+      // Should NOT have a per-rule skill dir
+      const perRuleDir = path.join(root, '.claude', 'skills', 'package-scoped-rule');
+      expect(fs.existsSync(perRuleDir)).toBe(false);
+
+      // Should have the single mesa-rules dir
+      const mesaRulesDir = path.join(root, '.claude', 'skills', 'mesa-rules');
+      expect(fs.existsSync(mesaRulesDir)).toBe(true);
     });
   });
 });
 
-describe('createSkillAdapter SKILL.md and policy file', () => {
-  test('SKILL.md references mesa-policy.yaml', () => {
-    withTempRepo((root) => {
-      const result = createSkillAdapter({
-        title: 'Test Rule',
-        severity: 'error',
-        globs: ['**/*.ts'],
-        instructions: 'Test instructions',
-        repoRoot: root,
-      });
-
-      const skillContent = fs.readFileSync(result.skillFilePath, 'utf-8');
-      expect(skillContent).toContain('references/mesa-policy.yaml');
-      expect(skillContent).toContain('name: test-rule');
-    });
-  });
-
+describe('createRuleAdapter policy file', () => {
   test('policy file is markdown with YAML frontmatter in .mesa/rules/', () => {
     withTempRepo((root) => {
-      const result = createSkillAdapter({
+      const result = createRuleAdapter({
         title: 'No Console Log',
         severity: 'warning',
         globs: ['src/**/*.ts'],
@@ -98,14 +90,11 @@ describe('createSkillAdapter SKILL.md and policy file', () => {
 
       const policyContent = fs.readFileSync(result.policyFilePath, 'utf-8');
 
-      // Should have YAML frontmatter
       expect(policyContent).toContain('id: no-console-log');
       expect(policyContent).toContain('title: No Console Log');
       expect(policyContent).toContain('severity: warning');
-      // Should contain instructions in the body
       expect(policyContent).toContain('What to Look For');
       expect(policyContent).toContain('Why This Matters');
-      // Should contain examples
       expect(policyContent).toContain("console.log('debug')");
       expect(policyContent).toContain("logger.info('debug')");
     });
@@ -113,7 +102,7 @@ describe('createSkillAdapter SKILL.md and policy file', () => {
 
   test('policy file without examples omits example sections', () => {
     withTempRepo((root) => {
-      const result = createSkillAdapter({
+      const result = createRuleAdapter({
         title: 'Simple Rule',
         severity: 'info',
         globs: ['**/*.ts'],
@@ -130,7 +119,7 @@ describe('createSkillAdapter SKILL.md and policy file', () => {
 
   test('includes examples in policy file when provided', () => {
     withTempRepo((root) => {
-      const result = createSkillAdapter({
+      const result = createRuleAdapter({
         title: 'With Examples',
         severity: 'error',
         globs: ['**/*.ts'],
@@ -150,9 +139,9 @@ describe('createSkillAdapter SKILL.md and policy file', () => {
     });
   });
 
-  test('updates .gitignore with mesa-managed block', () => {
+  test('updates .gitignore with mesa-managed block for mesa-rules', () => {
     withTempRepo((root) => {
-      createSkillAdapter({
+      createRuleAdapter({
         title: 'Gitignored Rule',
         severity: 'warning',
         globs: ['**/*.ts'],
@@ -162,7 +151,7 @@ describe('createSkillAdapter SKILL.md and policy file', () => {
 
       const gitignoreContent = fs.readFileSync(path.join(root, '.gitignore'), 'utf-8');
       expect(gitignoreContent).toContain('# mesa-generated (do not edit this block)');
-      expect(gitignoreContent).toContain('.claude/skills/gitignored-rule/');
+      expect(gitignoreContent).toContain('.claude/skills/mesa-rules/');
       expect(gitignoreContent).toContain('# end mesa-generated');
     });
   });

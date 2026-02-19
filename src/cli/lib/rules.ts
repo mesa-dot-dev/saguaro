@@ -3,22 +3,23 @@ import path from 'node:path';
 import boxen from 'boxen';
 import chalk from 'chalk';
 import {
-  createSkillAdapter,
-  deleteSkillAdapter,
-  explainSkillAdapter,
-  listSkillsAdapter,
+  createRuleAdapter,
+  deleteRuleAdapter,
+  explainRuleAdapter,
+  listRulesAdapter,
   locateRulesDirectoryAdapter,
-  validateSkillsAdapter,
-} from '../../adapter/skills.js';
+  validateRulesAdapter,
+} from '../../adapter/rules.js';
+import { loadMesaRules } from '../../lib/mesa-rules.js';
 import { loadValidatedConfig, resolveApiKey, resolveModelFromResolvedConfig } from '../../lib/review-model-config.js';
 import { generateRule } from '../../lib/rule-generator.js';
 import { previewRule } from '../../lib/rule-preview.js';
+import { findRepoRoot, matchesGlobs, sortRulesByPriority } from '../../lib/rule-resolution.js';
 import { discoverScopeOptions } from '../../lib/scope-discovery.js';
 import { syncSkillsFromRules } from '../../lib/skill-sync.js';
-import { findRepoRoot } from '../../lib/skills.js';
 import { analyzeTarget } from '../../lib/target-analysis.js';
 import { resolveTargetInput } from '../../lib/target-resolver.js';
-import type { Severity } from '../../types/types.js';
+import type { RulePolicy, Severity } from '../../types/types.js';
 import { ask, askChoice, createReadline } from './prompt.js';
 import { CliSpinner } from './spinner.js';
 
@@ -40,8 +41,8 @@ interface CreateRuleArgv {
 }
 
 const listRules = () => {
-  const result = listSkillsAdapter();
-  const rules = result.skills;
+  const result = listRulesAdapter();
+  const rules = result.rules;
   if (!rules.length) {
     console.log(chalk.gray('No rules found. Use "mesa rules create" to add one.'));
     return;
@@ -57,8 +58,8 @@ const listRules = () => {
 };
 
 const explainRule = (argv: ExplainRuleArgv) => {
-  const result = explainSkillAdapter({ skillId: argv.ruleId });
-  const rule = result.skill;
+  const result = explainRuleAdapter({ ruleId: argv.ruleId });
+  const rule = result.rule;
   if (!rule) {
     console.log(chalk.red(`Rule not found: ${argv.ruleId}`));
     return;
@@ -90,7 +91,7 @@ const explainRule = (argv: ExplainRuleArgv) => {
 };
 
 const deleteRule = (argv: DeleteRuleArgv) => {
-  const result = deleteSkillAdapter({ skillId: argv.ruleId });
+  const result = deleteRuleAdapter({ ruleId: argv.ruleId });
   if (!result.deleted) {
     console.log(chalk.red(`Rule not found: ${argv.ruleId}`));
     return;
@@ -99,7 +100,7 @@ const deleteRule = (argv: DeleteRuleArgv) => {
 };
 
 const validateRules = (): number => {
-  const result = validateSkillsAdapter();
+  const result = validateRulesAdapter();
   result.validated.forEach((file) => console.log(chalk.green(`[OK] ${file}`)));
 
   if (result.errors.length > 0) {
@@ -314,7 +315,7 @@ const createRule = async (argv: CreateRuleArgv): Promise<number> => {
       }
 
       // 7. Write to disk
-      const created = createSkillAdapter({
+      const created = createRuleAdapter({
         title: policy.title,
         severity: policy.severity,
         globs: policy.globs,
@@ -324,7 +325,7 @@ const createRule = async (argv: CreateRuleArgv): Promise<number> => {
         examples: policy.examples,
       });
 
-      debugLog?.('Written to', `policy: ${created.policyFilePath}\nskill: ${created.skillFilePath}`);
+      debugLog?.('Written to', `policy: ${created.policyFilePath}`);
       console.log(chalk.green(`\nCreated: ${created.policyFilePath}`));
       if (debugLogPath) {
         console.log(chalk.gray(`Debug log: ${debugLogPath}`));
@@ -358,11 +359,139 @@ const syncRules = (): number => {
     }
   }
 
-  console.log(chalk.green(`Synced ${result.generated.length} rule(s) to .claude/skills/`));
+  console.log(chalk.green(`Synced mesa-rules skill to .claude/skills/`));
   if (result.removed.length > 0) {
-    console.log(chalk.gray(`  Removed ${result.removed.length} orphaned skill(s)`));
+    console.log(chalk.gray(`  Removed ${result.removed.length} legacy skill dir(s)`));
   }
   return result.errors.length > 0 ? 1 : 0;
 };
 
-export { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, syncRules, validateRules };
+interface RulesForArgv {
+  paths: string[];
+}
+
+/**
+ * Collect files from a path — if it's a directory, walk it recursively.
+ * Returns repo-root-relative paths for glob matching.
+ *
+ * @throws if targetPath does not exist (caller must validate first)
+ */
+function collectFiles(targetPath: string, repoRoot: string): string[] {
+  const resolved = path.resolve(targetPath);
+  const stat = fs.statSync(resolved);
+  if (stat.isFile()) {
+    return [path.relative(repoRoot, resolved)];
+  }
+
+  if (!stat.isDirectory()) {
+    return [];
+  }
+
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      // Skip hidden dirs and node_modules
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile()) {
+        files.push(path.relative(repoRoot, full));
+      }
+    }
+  };
+
+  walk(resolved);
+  return files;
+}
+
+function formatRuleAsMarkdown(rule: RulePolicy): string {
+  const parts: string[] = [];
+
+  parts.push(`## ${rule.id} (${rule.severity})`);
+  parts.push('');
+  parts.push(rule.instructions);
+
+  if (rule.examples?.violations?.length) {
+    parts.push('');
+    parts.push('### Violations');
+    parts.push('');
+    for (const v of rule.examples.violations) {
+      parts.push('```');
+      parts.push(v);
+      parts.push('```');
+      parts.push('');
+    }
+  }
+
+  if (rule.examples?.compliant?.length) {
+    parts.push('### Compliant');
+    parts.push('');
+    for (const c of rule.examples.compliant) {
+      parts.push('```');
+      parts.push(c);
+      parts.push('```');
+      parts.push('');
+    }
+  }
+
+  return parts.join('\n');
+}
+
+const rulesFor = (argv: RulesForArgv): number => {
+  const repoRoot = findRepoRoot();
+  const { rules, errors } = loadMesaRules(repoRoot);
+
+  if (errors.length > 0) {
+    for (const e of errors) {
+      console.error(chalk.yellow(`Warning: ${e.filePath}: ${e.message}`));
+    }
+  }
+
+  if (rules.length === 0) {
+    console.log('No rules defined. Use "mesa rules create" to add one.');
+    return 0;
+  }
+
+  // Collect all files from the given paths
+  const allFiles: string[] = [];
+  for (const p of argv.paths) {
+    const resolved = path.resolve(p);
+    if (!fs.existsSync(resolved)) {
+      console.error(chalk.yellow(`Warning: path not found: ${p}`));
+      continue;
+    }
+    allFiles.push(...collectFiles(p, repoRoot));
+  }
+
+  if (allFiles.length === 0) {
+    console.log('No files found at the given paths.');
+    return 0;
+  }
+
+  // Find rules that match at least one file
+  const matched = new Set<string>();
+  for (const rule of rules) {
+    for (const file of allFiles) {
+      if (matchesGlobs(file, rule.policy.globs)) {
+        matched.add(rule.policy.id);
+        break;
+      }
+    }
+  }
+
+  if (matched.size === 0) {
+    console.log('No rules match the given paths.');
+    return 0;
+  }
+
+  const matchedRules = sortRulesByPriority(rules.filter((r) => matched.has(r.policy.id)).map((r) => r.policy));
+
+  const output = matchedRules.map(formatRuleAsMarkdown).join('\n---\n\n');
+  console.log(output);
+
+  return 0;
+};
+
+export { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, rulesFor, syncRules, validateRules };

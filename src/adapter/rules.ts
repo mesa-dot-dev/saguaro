@@ -6,42 +6,35 @@ import { loadValidatedConfig, resolveApiKey, resolveModelFromResolvedConfig } fr
 import { generateRule } from '../lib/rule-generator.js';
 import type { PreviewRuleResult } from '../lib/rule-preview.js';
 import { previewRule } from '../lib/rule-preview.js';
+import { findRepoRoot } from '../lib/rule-resolution.js';
 import { syncSkillsFromRules } from '../lib/skill-sync.js';
-import { findRepoRoot } from '../lib/skills.js';
 import { analyzeTarget } from '../lib/target-analysis.js';
 import type { RulePolicy, Severity } from '../types/types.js';
 
-export interface AdapterSkill extends RulePolicy {
-  name: string;
-  description: string;
-  skillDir: string;
+export interface ListRulesAdapterResult {
+  rules: RulePolicy[];
 }
 
-export interface ListSkillsAdapterResult {
-  skills: AdapterSkill[];
+export interface ExplainRuleAdapterResult {
+  rule?: RulePolicy;
 }
 
-export interface ExplainSkillAdapterResult {
-  skill?: AdapterSkill;
-}
-
-export interface DeleteSkillAdapterResult {
+export interface DeleteRuleAdapterResult {
   deleted: boolean;
 }
 
-export interface ValidateSkillError {
+export interface ValidateRuleError {
   file: string;
   errors: string[];
 }
 
-export interface ValidateSkillsAdapterResult {
+export interface ValidateRulesAdapterResult {
   validated: string[];
-  errors: ValidateSkillError[];
+  errors: ValidateRuleError[];
 }
 
-export interface CreateSkillAdapterRequest {
+export interface CreateRuleAdapterRequest {
   title: string;
-  description?: string;
   severity: Severity;
   globs: string[];
   instructions: string;
@@ -53,11 +46,9 @@ export interface CreateSkillAdapterRequest {
   };
 }
 
-export interface CreateSkillAdapterResult {
-  skillDir: string;
-  skillFilePath: string;
+export interface CreateRuleAdapterResult {
   policyFilePath: string;
-  skill: AdapterSkill;
+  rule: RulePolicy;
 }
 
 export interface GenerateRuleAdapterRequest {
@@ -92,41 +83,35 @@ export interface WriteGeneratedRulesResult {
   written: WrittenRule[];
 }
 
-export function listSkillsAdapter(): ListSkillsAdapterResult {
+export function listRulesAdapter(): ListRulesAdapterResult {
   const repoRoot = findRepoRoot();
   const { rules } = loadMesaRules(repoRoot);
-  const skills: AdapterSkill[] = rules.map((rule) => ({
-    ...rule.policy,
-    name: rule.policy.id,
-    description: rule.policy.title,
-    skillDir: path.join(repoRoot, '.claude', 'skills', rule.policy.id),
-  }));
-  return { skills };
+  return { rules: rules.map((rule) => rule.policy) };
 }
 
-export function explainSkillAdapter(request: { skillId: string }): ExplainSkillAdapterResult {
-  const { skills } = listSkillsAdapter();
+export function explainRuleAdapter(request: { ruleId: string }): ExplainRuleAdapterResult {
+  const { rules } = listRulesAdapter();
   return {
-    skill: skills.find((skill) => skill.id === request.skillId),
+    rule: rules.find((rule) => rule.id === request.ruleId),
   };
 }
 
-export function deleteSkillAdapter(request: { skillId: string }): DeleteSkillAdapterResult {
+export function deleteRuleAdapter(request: { ruleId: string }): DeleteRuleAdapterResult {
   const repoRoot = findRepoRoot();
-  const ruleFile = path.join(getMesaRulesDir(repoRoot), `${request.skillId}.md`);
+  const ruleFile = path.join(getMesaRulesDir(repoRoot), `${request.ruleId}.md`);
   if (!fs.existsSync(ruleFile)) {
     return { deleted: false };
   }
-  deleteMesaRuleFile(repoRoot, request.skillId);
+  deleteMesaRuleFile(repoRoot, request.ruleId);
   syncSkillsFromRules(repoRoot);
   return { deleted: true };
 }
 
-export function validateSkillsAdapter(): ValidateSkillsAdapterResult {
+export function validateRulesAdapter(): ValidateRulesAdapterResult {
   const repoRoot = findRepoRoot();
   const { rules, errors: parseErrors } = loadMesaRules(repoRoot);
 
-  const errors: ValidateSkillError[] = parseErrors.map((e) => ({
+  const errors: ValidateRuleError[] = parseErrors.map((e) => ({
     file: e.filePath,
     errors: [e.message],
   }));
@@ -137,14 +122,14 @@ export function validateSkillsAdapter(): ValidateSkillsAdapterResult {
   return { validated, errors };
 }
 
-export function createSkillAdapter(request: CreateSkillAdapterRequest): CreateSkillAdapterResult {
+export function createRuleAdapter(request: CreateRuleAdapterRequest): CreateRuleAdapterResult {
   const repoRoot = request.repoRoot ?? findRepoRoot();
 
   // Determine a unique ID
   const { rules } = loadMesaRules(repoRoot);
   const existingIds = new Set(rules.map((r) => r.policy.id));
   const id = request.id ? request.id : toKebabCase(request.title);
-  const uniqueId = existingIds.has(id) ? findUniqueSkillId(existingIds, id) : id;
+  const uniqueId = existingIds.has(id) ? findUniqueRuleId(existingIds, id) : id;
 
   const policy: RulePolicy = {
     id: uniqueId,
@@ -156,29 +141,14 @@ export function createSkillAdapter(request: CreateSkillAdapterRequest): CreateSk
   };
 
   // Write to .mesa/rules/
-  const mesaRuleFilePath = writeMesaRuleFile(repoRoot, policy);
+  const policyFilePath = writeMesaRuleFile(repoRoot, policy);
 
-  // Sync to .claude/skills/ and update gitignore
+  // Sync the mesa-rules skill to .claude/skills/
   syncSkillsFromRules(repoRoot);
 
-  const skillsDir = path.join(repoRoot, '.claude', 'skills');
-  const skillDir = path.join(skillsDir, uniqueId);
-  const skillFilePath = path.join(skillDir, 'SKILL.md');
-
-  const description =
-    request.description ??
-    `${request.title}. Enforces this rule in ${request.globs.join(', ')}. Use when changed code matches this scope and touches behavior covered by the rule. Do not use for unrelated refactors outside scope.`;
-
   return {
-    skillDir,
-    skillFilePath,
-    policyFilePath: mesaRuleFilePath,
-    skill: {
-      ...policy,
-      name: uniqueId,
-      description,
-      skillDir,
-    },
+    policyFilePath,
+    rule: policy,
   };
 }
 
@@ -261,7 +231,7 @@ export function locateRulesDirectoryAdapter(): { rulesDir: string } {
   return { rulesDir: getMesaRulesDir(repoRoot) };
 }
 
-function findUniqueSkillId(existingIds: Set<string>, baseId: string): string {
+function findUniqueRuleId(existingIds: Set<string>, baseId: string): string {
   let candidate = `${baseId}-2`;
   let i = 3;
   while (existingIds.has(candidate)) {

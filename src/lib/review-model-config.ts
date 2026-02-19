@@ -9,7 +9,7 @@ import yaml from 'js-yaml';
 import { z } from 'zod';
 import { ApiKeyMissingError, ConfigInvalidError, ConfigMissingError } from './errors.js';
 import { logger } from './logger.js';
-import { findRepoRoot } from './skills.js';
+import { findRepoRoot } from './rule-resolution.js';
 
 // ---------------------------------------------------------------------------
 // Zod config schema

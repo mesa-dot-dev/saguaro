@@ -8,7 +8,7 @@ import {
   resolveModelFromResolvedConfig,
 } from './review-model-config.js';
 import { runReviewAgent } from './review-runner.js';
-import { resolveSkillsForFiles } from './skills.js';
+import { resolveRulesForFiles } from './rule-resolution.js';
 
 export interface ReviewRuntime {
   listChangedFiles(baseRef: string, headRef: string): Promise<string[]> | string[];
@@ -40,7 +40,7 @@ export function createNodeReviewRuntime(options?: { rulesDir?: string }): Review
       return listChangedFilesFromGit(baseRef, headRef);
     },
     loadRules(changedFiles) {
-      return resolveSkillsForFiles(changedFiles, { explicitRulesDir: options?.rulesDir });
+      return resolveRulesForFiles(changedFiles, { explicitRulesDir: options?.rulesDir });
     },
     createReviewer(configPath) {
       const resolvedConfig = loadReviewAdapterConfig(configPath);

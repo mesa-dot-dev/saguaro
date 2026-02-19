@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import chalk from 'chalk';
 import yaml from 'js-yaml';
-import { writeGeneratedRules } from '../../adapter/skills.js';
+import { writeGeneratedRules } from '../../adapter/rules.js';
 import type { GeneratorProgressEvent } from '../../generator/index.js';
 import { generateRules } from '../../generator/index.js';
 import { logger } from '../../lib/logger.js';
