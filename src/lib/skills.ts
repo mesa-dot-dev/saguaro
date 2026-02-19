@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { minimatch } from 'minimatch';
 import type { RulePolicy } from '../types/types.js';
-import { loadMesaRules, loadMesaRulesFromDir, loadRulesFromSkillDir } from './mesa-rules.js';
+import { loadMesaRules, loadMesaRulesFromDir } from './mesa-rules.js';
 
 export interface SkillsResolutionResult {
   filesWithRules: Map<string, RulePolicy[]>;
@@ -82,15 +82,13 @@ export function resolveSkillsForFiles(
   options?: { explicitRulesDir?: string; startDir?: string }
 ): SkillsResolutionResult {
   // When an explicit rules directory is provided (e.g. --rules flag, evals),
-  // auto-detect the format: .md files → mesa-rules, subdirs → legacy skill-dir.
+  // load .md rule files from that directory.
   if (options?.explicitRulesDir) {
     const resolved = path.resolve(options.explicitRulesDir);
     if (!fs.existsSync(resolved)) {
       throw new Error(`Rules directory not found: ${options.explicitRulesDir}`);
     }
-    const hasMdFiles = fs.readdirSync(resolved).some((f) => f.endsWith('.md'));
-    const loader = hasMdFiles ? loadMesaRulesFromDir : loadRulesFromSkillDir;
-    return resolveRulesFromLoadResult(changedFiles, loader(resolved));
+    return resolveRulesFromLoadResult(changedFiles, loadMesaRulesFromDir(resolved));
   }
 
   const startDir = options?.startDir ?? process.cwd();

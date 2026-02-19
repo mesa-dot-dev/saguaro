@@ -270,52 +270,6 @@ export function buildMesaRuleMarkdown(policy: RulePolicy): string {
   return parts.join('\n');
 }
 
-// ---------------------------------------------------------------------------
-// Load rules from a legacy skill directory (<dir>/<id>/references/mesa-policy.yaml)
-// ---------------------------------------------------------------------------
-
-/**
- * Read rules from an explicit skill directory (used by `--rules` CLI flag and evals).
- * Each subdirectory should contain `references/mesa-policy.yaml` with a valid RulePolicy.
- */
-export function loadRulesFromSkillDir(skillsDir: string): MesaRulesResult {
-  const rules: MesaRuleFile[] = [];
-  const errors: MesaRuleParseError[] = [];
-
-  if (!fs.existsSync(skillsDir)) {
-    return { rules, errors };
-  }
-
-  const entries = fs
-    .readdirSync(skillsDir, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
-    .map((e) => e.name)
-    .sort();
-
-  for (const entry of entries) {
-    const policyPath = path.join(skillsDir, entry, 'references', 'mesa-policy.yaml');
-    if (!fs.existsSync(policyPath)) continue;
-
-    try {
-      const raw = yaml.load(fs.readFileSync(policyPath, 'utf8'), { schema: yaml.DEFAULT_SCHEMA });
-      const validation = RulePolicySchema.safeParse(raw);
-      if (!validation.success) {
-        const details = validation.error.issues
-          .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
-          .join('; ');
-        errors.push({ filePath: policyPath, message: `Invalid policy: ${details}` });
-        continue;
-      }
-      rules.push({ filePath: policyPath, policy: validation.data });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      errors.push({ filePath: policyPath, message });
-    }
-  }
-
-  return { rules, errors };
-}
-
 /** Write a rule policy to `.mesa/rules/<id>.md`, creating the directory if needed. */
 export function writeMesaRuleFile(repoRoot: string, policy: RulePolicy): string {
   const rulesDir = getMesaRulesDir(repoRoot);

@@ -1,0 +1,21 @@
+<!-- This file is managed by Mesa. Edit only if you know what you're doing. -->
+---
+id: no-env-override-for-infra-config
+title: No environment variable overrides for infrastructure config
+severity: error
+globs:
+  - "**/*.ts"
+---
+
+Flag code where process.env values override infrastructure-managed
+configuration. Infrastructure config (SST, Pulumi) must be the single
+source of truth.
+
+
+### Violations
+
+```
+// Environment variable silently overrides the value from infrastructure config
+const region = process.env.AWS_REGION || infraConfig.region;
+
+```
