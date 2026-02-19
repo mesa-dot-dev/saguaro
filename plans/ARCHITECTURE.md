@@ -1,8 +1,8 @@
-# Mesa Code Review CLI
+# Mesa Code Review
 
 ## Architecture Design Document
 
-**Version:** 3.0
+**Version:** 4.0
 **Date:** February 2026
 **Status:** Current
 
@@ -16,14 +16,15 @@
 4. [Package Structure](#package-structure)
 5. [Adapter Layer](#adapter-layer)
 6. [Skills System](#skills-system)
-7. [Rule Creation Pipeline](#rule-creation-pipeline)
-8. [Data Flow](#data-flow)
-9. [Agent Design](#agent-design)
-10. [Codebase Indexing](#codebase-indexing)
-11. [Output Model](#output-model)
-12. [Key Interfaces](#key-interfaces)
-13. [Configuration](#configuration)
-14. [Dependencies](#dependencies)
+7. [Rule Generation](#rule-generation)
+8. [MCP Server](#mcp-server)
+9. [Data Flow](#data-flow)
+10. [Agent Design](#agent-design)
+11. [Codebase Indexing](#codebase-indexing)
+12. [Output Model](#output-model)
+13. [Key Interfaces](#key-interfaces)
+14. [Configuration](#configuration)
+15. [Dependencies](#dependencies)
 
 ---
 
@@ -68,49 +69,59 @@
 
 ## System Architecture
 
+The system has two parallel entry points — **CLI** and **MCP server** — that share the same adapter layer, generator pipeline, and core engine. This ensures identical behavior regardless of how the tool is invoked.
+
 ```
 +-----------------------------------------------------------------------------------+
-|                           MESA CODE REVIEW CLI                                    |
+|                           MESA CODE REVIEW                                        |
 +-----------------------------------------------------------------------------------+
 |                                                                                   |
-|  +---------------------------------------------------------------------------+    |
-|  |                         CLI (yargs)                                       |    |
-|  |   $ mesa review --base main                                              |    |
-|  |   $ mesa init | rules list | rules create | rules delete | index         |    |
-|  +-----+---------------------------------------------------------------------+    |
-|        |                                                                          |
-|        v                                                                          |
+|  +-------------------------------+   +-------------------------------+            |
+|  |         CLI (yargs)           |   |      MCP SERVER (stdio)      |            |
+|  |  $ mesa review --base main   |   |  Claude Code / AI agents     |            |
+|  |  $ mesa generate-rules       |   |  mesa_review                 |            |
+|  |  $ mesa rules create         |   |  mesa_generate_rules         |            |
+|  |  $ mesa init | index         |   |  mesa_generate_rule          |            |
+|  +-------------------------------+   |  mesa_create_rule            |            |
+|        |                             |  mesa_write_accepted_rules   |            |
+|        |                             |  mesa_get_generated_rule     |            |
+|        |                             +-------------------------------+            |
+|        |                                      |                                   |
+|        +------------------+-------------------+                                   |
+|                           |                                                       |
+|                           v                                                       |
 |  +---------------------------------------------------------------------------+    |
 |  |                      ADAPTER LAYER                                        |    |
 |  |                                                                           |    |
-|  |   +--------------------+   +--------------------+                         |    |
-|  |   | review adapter     |   | skills adapter     |                         |    |
-|  |   | - runReview()      |   | - createSkill()    |                         |    |
-|  |   | - wires runtime    |   | - listSkills()     |                         |    |
-|  |   |   to core          |   | - deleteSkill()    |                         |    |
-|  |   |                    |   | - validateSkills() |                         |    |
-|  |   +--------+-----------+   +--------+-----------+                         |    |
+|  |   +--------------------+   +---------------------+                        |    |
+|  |   | review adapter     |   | skills adapter      |                        |    |
+|  |   | - runReview()      |   | - createSkill()     |                        |    |
+|  |   | - wires runtime    |   | - listSkills()      |                        |    |
+|  |   |   to core          |   | - writeGenerated()  |                        |    |
+|  |   |                    |   | - generateRule()    |                        |    |
+|  |   +--------+-----------+   +--------+------------+                        |    |
 |  +------------|-------------------------|---------+--------------------------+    |
 |               |                         |                                         |
 |               v                         v                                         |
 |  +---------------------------------------------------------------------------+    |
-|  |                      CORE + LIB                                           |    |
+|  |                      CORE + LIB + GENERATOR                               |    |
 |  |                                                                           |    |
-|  |   +---------------+   +---------------+   +-----------------------+       |    |
-|  |   | review core   |   | skills (lib)  |   | Codebase Index        |       |    |
-|  |   | - pure engine |   | - CRUD on     |   | - SWC parser          |       |    |
-|  |   | - injected    |   |   .claude/    |   | - oxc-resolver        |       |    |
-|  |   |   deps only   |   |   skills/     |   | - tree-sitter (multi) |       |    |
-|  |   +-------+-------+   +-------+-------+   | - Import graph        |       |    |
-|  |           |                    |            | - Blast radius (BFS)  |       |    |
-|  |           +----+               |            +-----------+-----------+       |    |
-|  |                |               |                        |                  |    |
-|  |   +------------+---+-----------+------------------------+                  |    |
-|  |   | Rule Creation Pipeline                                                |    |
-|  |   |  target-resolver → target-analysis → rule-generator                   |    |
-|  |   |  → rule-preview → scope-discovery → skills adapter                    |    |
-|  |   +-----------------------------------------------------------------------+    |
-|  |                                                                           |    |
+|  |   +---------------+   +------------------+   +---------------------+      |    |
+|  |   | review core   |   | generator        |   | Codebase Index      |      |    |
+|  |   | - pure engine |   | - orchestrator   |   | - SWC parser        |      |    |
+|  |   | - injected    |   | - zone analysis  |   | - oxc-resolver      |      |    |
+|  |   |   deps only   |   | - synthesis      |   | - tree-sitter       |      |    |
+|  |   +-------+-------+   +--------+---------+   | - Import graph      |      |    |
+|  |           |                     |              | - Blast radius      |      |    |
+|  |           |   +-----------------+              +-----------+---------+      |    |
+|  |           |   |                                            |               |    |
+|  |   +-------+---+---+  +------------------+  +--------------+-------+       |    |
+|  |   | skills (lib)  |  | rule-generator   |  | starter-rule-skills  |       |    |
+|  |   | - CRUD on     |  | - single rule    |  | - few-shot examples  |       |    |
+|  |   |   .claude/    |  | - LLM + YAML     |  | - 25 curated rules   |       |    |
+|  |   |   skills/     |  | - few-shot       |  | - used by both       |       |    |
+|  |   +---------------+  +------------------+  |   pipelines           |       |    |
+|  |                                            +----------------------+       |    |
 |  +---------------------------------------------------------------------------+    |
 |                                    |                                              |
 |                                    v                                              |
@@ -127,17 +138,6 @@
 |  |            |                      |                      |                |    |
 |  |            +---------- Promise.all() --------------------+                |    |
 |  +---------------------------------------------------------------------------+    |
-|                                    |                                              |
-|                                    v                                              |
-|  +---------------------------------------------------------------------------+    |
-|  |                      OUTPUT                                               |    |
-|  |   +-- Regex parse violations from agent text output --+                   |    |
-|  |   |   Format: [rule-id] file:line - description       |                   |    |
-|  |   +-----------+    +-----------+    +----------------+ |                   |    |
-|  |   |  Console  |    |   JSON    |    | Cursor Deeplink| |                   |    |
-|  |   |  (boxen)  |    | (stdout)  |    | (clickable)    | |                   |    |
-|  |   +-----------+    +-----------+    +----------------+ |                   |    |
-|  +---------------------------------------------------------------------------+    |
 |                                                                                   |
 +-----------------------------------------------------------------------------------+
 ```
@@ -151,10 +151,10 @@ Single package: `@mesa/code-review`
 ```
 packages/code-review/
 ├── src/
-│   ├── adapter/                    # Boundary between CLI and core/lib
+│   ├── adapter/                    # Boundary between CLI/MCP and core/lib
 │   │   ├── review.ts              # Review adapter: wires runtime to core engine
 │   │   ├── review.test.ts
-│   │   ├── skills.ts              # Skills adapter: createSkill, listSkills, deleteSkill, validate
+│   │   ├── skills.ts              # Skills adapter: createSkill, listSkills, writeGeneratedRules, etc.
 │   │   └── skills.test.ts
 │   │
 │   ├── cli/                        # CLI layer (yargs commands + prompts)
@@ -162,16 +162,31 @@ packages/code-review/
 │   │   │   └── index.ts           # Yargs command router
 │   │   ├── lib/
 │   │   │   ├── check.ts           # mesa check (stub)
+│   │   │   ├── generate.ts        # mesa generate-rules — bulk rule generation + interactive review
+│   │   │   ├── hook.ts            # Git hook installation
 │   │   │   ├── index-cmd.ts       # mesa index
 │   │   │   ├── init.ts            # mesa init
 │   │   │   ├── prompt.ts          # Readline helpers: ask(), askChoice(), createReadline()
 │   │   │   ├── rules.ts           # mesa rules (list, create, delete, explain, validate)
-│   │   │   ├── serve.ts           # mesa serve (stub)
+│   │   │   ├── serve.ts           # mesa serve — starts MCP server in stdio mode
 │   │   │   └── spinner.ts         # TTY-aware progress spinner
 │   │   └── review.ts              # mesa review command orchestrator
 │   │
 │   ├── core/                       # Pure business logic, injected deps only
 │   │   └── review.ts              # createReviewCore() — pure review engine
+│   │
+│   ├── generator/                  # Bulk rule generation pipeline
+│   │   ├── index.ts               # Public entry: generateRules()
+│   │   ├── orchestrator.ts        # Multi-stage pipeline: scan → zone analysis → synthesis
+│   │   ├── scanner.ts             # Codebase scanning: zone discovery, file selection
+│   │   ├── architecture.ts        # Compute architectural context from import graph
+│   │   ├── synthesis.ts           # LLM-powered dedup/merge of candidate rules
+│   │   └── types.ts               # RuleProposalSchema, ZoneConfig, GeneratorResult, etc.
+│   │
+│   ├── mcp/                        # MCP server for AI agent integration
+│   │   ├── server.ts              # Tool registration (McpServer + zod schemas)
+│   │   └── tools/
+│   │       └── handler.ts         # Tool handlers, session state, structural guards
 │   │
 │   ├── indexer/                    # Codebase indexing + import graph
 │   │   ├── build.ts               # File discovery + incremental index building
@@ -201,16 +216,17 @@ packages/code-review/
 │   │   ├── review-model-config.ts # .mesa/config.yaml loading, model resolution
 │   │   ├── review-runner.ts       # Vercel AI SDK generateText + workers
 │   │   ├── review-runtime.ts      # Node.js runtime: file I/O, git, rule loading
-│   │   ├── rule-generator.ts      # LLM-powered rule generation from target analysis
+│   │   ├── rule-generator.ts      # LLM-powered single rule generation from target analysis
 │   │   ├── rule-preview.ts        # Dry-run rules against target files
 │   │   ├── scope-discovery.ts     # Discover package boundaries + existing skills dirs
 │   │   ├── skills.ts              # Skills CRUD: load, parse, glob-match, create, delete
 │   │   ├── target-analysis.ts     # Analyze target: file sampling, globs, placements
 │   │   └── target-resolver.ts     # Smart text input: path/keyword → resolved target
 │   │
-│   ├── templates/                  # Built-in starter content
+│   ├── templates/                  # Built-in starter content + MCP skill definitions
 │   │   ├── starter-skills.ts      # Generates SKILL.md + policy YAML for starter rules
-│   │   └── starter-rule-skills.ts # Starter rule policy definitions
+│   │   ├── starter-rule-skills.ts # 25 curated starter rule policies (few-shot examples)
+│   │   └── mcp-skills.ts          # MCP workflow skill definitions (review, create, generate)
 │   │
 │   ├── types/
 │   │   └── types.ts               # Rule, Violation, ReviewResult, Severity, RulePolicy
@@ -227,35 +243,40 @@ packages/code-review/
 
 ## Adapter Layer
 
-The adapter layer (`src/adapter/`) provides a clean boundary between the CLI and the core/lib modules. CLI code should **never** import directly from `core/` or `lib/` — it goes through adapters.
+The adapter layer (`src/adapter/`) provides a clean boundary between the entry points (CLI and MCP) and the core/lib modules. Neither CLI nor MCP handler code should import directly from `core/` or `lib/` — they go through adapters.
+
+```
+CLI (generate.ts, rules.ts, review.ts)       MCP (handler.ts)
+    │                                              │
+    └──────────────────┬───────────────────────────┘
+                       │
+                       v
+              ADAPTER LAYER
+              ├── adapter/review.ts    — runReview()
+              └── adapter/skills.ts    — createSkillAdapter(), writeGeneratedRules(), etc.
+                       │
+                       v
+              CORE + LIB + GENERATOR
+```
 
 ### Review Adapter (`adapter/review.ts`)
 
-Wires the Node.js runtime (file I/O, git, rule loading) to the pure review core engine:
-
-```
-CLI (rules.ts, review.ts)
-    │
-    └──► adapter/review.ts  — runReview(request)
-              │
-              ├──► lib/review-runtime.ts  — createNodeReviewRuntime()
-              └──► core/review.ts         — createReviewCore(deps)
-```
-
-The core engine accepts injected deps (`ReviewInputChannel`, `Reviewer`) and contains zero I/O. The adapter wires concrete implementations.
+Wires the Node.js runtime (file I/O, git, rule loading) to the pure review core engine. Used identically by both `mesa review` CLI command and `mesa_review` MCP tool.
 
 ### Skills Adapter (`adapter/skills.ts`)
 
 Provides a unified interface for all skill operations:
 
 - `createSkillAdapter(opts)` — Creates `SKILL.md` + `references/mesa-policy.yaml` in the target `.claude/skills/` directory
+- `writeGeneratedRules(rules)` — Batch write for bulk-generated rules. Computes scope from globs via `computePlacementFromGlobs()`, then calls `createSkillAdapter()` for each rule. Passes through examples and tags.
+- `generateRuleAdapter(request)` — Orchestrates single-rule generation (analyze target → LLM → preview)
 - `listSkillsAdapter(dir)` — Lists all skills from a `.claude/skills/` directory
 - `deleteSkillAdapter(id, dir)` — Removes a skill directory
 - `validateSkillsAdapter(dir)` — Validates skill structure and policy YAML
 
 The adapter builds rich `SKILL.md` files with:
 - YAML frontmatter (`name`, `description` with scope)
-- Human-readable instructions and examples
+- Human-readable instructions and examples (violations + compliant snippets)
 - Reference to the machine-readable `mesa-policy.yaml`
 
 ---
@@ -349,101 +370,181 @@ examples:
 
 ---
 
-## Rule Creation Pipeline
+## Rule Generation
 
-`mesa rules create` uses an LLM-powered pipeline to generate rules from a natural language description and target analysis.
+There are two rule generation pipelines, both available through CLI and MCP. They share the same adapter layer and write path but differ in how rules are discovered.
 
-### Flow
+### Few-Shot Examples (Shared)
+
+Both pipelines use **starter rules** (`src/templates/starter-rule-skills.ts`) as few-shot examples to teach the LLM the expected output format. These are 25 curated `RulePolicy` objects with full `instructions`, `examples` (violations + compliant snippets), and `tags`. The LLM sees them as YAML reference examples in the prompt and learns the structure, example quality bar, and instruction format.
+
+### Pipeline 1: Single Rule Creation (`mesa rules create` / `mesa_generate_rule`)
+
+Generates one rule from a user's intent and a target directory.
 
 ```
-User types: "mesa rules create"
+User provides: target directory + intent
          |
          v
 +--------------------------------------------------+
-|  1. TARGET INPUT                                  |
-|     resolveTargetInput(repoRoot)                  |
-|                                                   |
-|     "What code should this rule check?"           |
-|     Scope picker: packages, directories, custom   |
-|     → resolved target path                        |
-+--------------------------------------------------+
-         |
-         v
-+--------------------------------------------------+
-|  2. INTENT INPUT                                  |
-|     "What should be different about this code?"   |
-|     Free-text natural language description        |
-+--------------------------------------------------+
-         |
-         v
-+--------------------------------------------------+
-|  3. TARGET ANALYSIS                               |
+|  1. TARGET ANALYSIS                               |
 |     analyzeTarget({ targetPath, repoRoot })       |
-|                                                   |
-|     - Sample up to 5 files from target dir        |
-|     - Sample up to 3 boundary files (siblings)    |
-|     - Build ASCII directory tree                  |
-|     - Detect languages from extensions            |
-|     - Generate suggested glob patterns            |
+|     - Sample files, build tree, detect languages  |
+|     - Generate suggested globs                    |
 |     - Compute placement options                   |
 +--------------------------------------------------+
          |
          v
 +--------------------------------------------------+
-|  4. RULE GENERATION (LLM)                         |
-|     generateRule({ description, analysis })       |
-|                                                   |
-|     - Select few-shot examples from starter rules |
-|     - Build prompt with target files + intent     |
-|     - generateText() → structured YAML policy     |
-|     - Parse and validate generated policy         |
+|  2. FEW-SHOT SELECTION                            |
+|     selectFewShotExamples(intent)                 |
+|     - Keyword match intent against starter rules  |
+|     - Pick 2-3 most relevant as YAML references   |
 +--------------------------------------------------+
          |
          v
 +--------------------------------------------------+
-|  5. RULE PREVIEW                                  |
-|     previewRule(policy, targetDir)                 |
-|                                                   |
-|     - Walk target files matching globs            |
-|     - Substring-match violation patterns           |
-|     - Report: would-pass / would-flag files       |
-|     - User: [A]ccept / [C]ancel                   |
+|  3. RULE GENERATION (LLM)                         |
+|     generateText() → structured YAML policy       |
+|     - Includes target files, boundary context     |
+|     - Includes few-shot reference examples        |
+|     - Parse + validate against SkillPolicySchema  |
 +--------------------------------------------------+
          |
          v
 +--------------------------------------------------+
-|  6. PLACEMENT SELECTION                           |
-|     "Where should this rule be saved?"            |
-|     Options from target analysis placements:      |
-|     - Collocated (near target code)               |
-|     - Package boundary                            |
-|     - Repo root (global)                          |
-+--------------------------------------------------+
-         |
-         v
-+--------------------------------------------------+
-|  7. SKILL CREATION                                |
-|     createSkillAdapter(opts)                      |
-|                                                   |
-|     Writes:                                       |
-|     - <skillsDir>/<id>/SKILL.md                   |
-|     - <skillsDir>/<id>/references/mesa-policy.yaml|
+|  4. PREVIEW + APPROVAL + WRITE                    |
+|     previewRule() → createSkillAdapter()           |
 +--------------------------------------------------+
 ```
 
-### Key Modules
+| Module | Responsibility |
+|--------|---------------|
+| `lib/rule-generator.ts` | LLM generation with few-shot examples, prompt building, YAML parsing |
+| `lib/target-analysis.ts` | Analyze target directory: file sampling, globs, placements |
+| `lib/rule-preview.ts` | Substring-match violation patterns against target files |
+| `lib/scope-discovery.ts` | Discover package boundaries and existing skills dirs |
+
+### Pipeline 2: Bulk Rule Generation (`mesa generate-rules` / `mesa_generate_rules`)
+
+Discovers rules across the entire codebase automatically.
+
+```
++--------------------------------------------------+
+|  1. INDEXING                                      |
+|     buildIndex() — import graph for file ranking  |
++--------------------------------------------------+
+         |
+         v
++--------------------------------------------------+
+|  2. SCANNING                                      |
+|     scanAndSelectFiles()                          |
+|     - Divide codebase into zones (packages/dirs)  |
+|     - Select representative files per zone        |
+|     - Rank by import count (hub files first)      |
++--------------------------------------------------+
+         |
+         v
++--------------------------------------------------+
+|  3. ZONE ANALYSIS (parallel)                      |
+|     For each zone, generateObject():              |
+|     - System: ZONE_ANALYSIS_SYSTEM prompt         |
+|     - User: zone files + configs + architecture   |
+|           + few-shot starter rules as YAML refs   |
+|     - Schema: RuleProposalSchema (with examples)  |
++--------------------------------------------------+
+         |
+         v
++--------------------------------------------------+
+|  4. DETERMINISTIC MERGE                           |
+|     deterministicMerge()                          |
+|     - Remove unscoped globs (**/*.ts)             |
+|     - Remove vague instructions (< 80 chars)      |
+|     - Remove test-only rules                      |
++--------------------------------------------------+
+         |
+         v
++--------------------------------------------------+
+|  5. SYNTHESIS (LLM)                               |
+|     synthesizeRules()                             |
+|     - Merge overlapping candidates                |
+|     - Remove kitchen-sink / generic rules         |
+|     - Preserve examples across merges             |
++--------------------------------------------------+
+         |
+         v
++--------------------------------------------------+
+|  6. REVIEW + WRITE                                |
+|     CLI: interactive Y/N/E per rule               |
+|     MCP: session state → mesa_write_accepted_rules|
+|     Both: writeGeneratedRules() → adapter         |
++--------------------------------------------------+
+```
 
 | Module | Responsibility |
 |--------|---------------|
-| `target-resolver.ts` | Smart text input: accepts paths, keywords, or "global". Searches repo directories with ranked matching. Falls back to scope picker browse mode. |
-| `target-analysis.ts` | Analyzes a target directory: samples files (up to 5, truncated to 3000 chars), samples boundary files from siblings, builds ASCII tree, detects languages, generates globs, computes placement options. |
-| `rule-generator.ts` | LLM-powered generation. Builds prompt from target analysis + user intent + few-shot examples. Uses Vercel AI SDK `generateText()`. Parses structured YAML from LLM output. |
-| `rule-preview.ts` | Dry-run preview. Walks target directory, applies glob patterns, substring-matches violation example patterns against file contents. Reports pass/flag counts. |
-| `scope-discovery.ts` | Discovers package boundaries by walking repo tree and looking for `PACKAGE_MARKERS` (package.json, Cargo.toml, go.mod, pyproject.toml). Also finds existing `.claude/skills/` directories. |
+| `generator/orchestrator.ts` | Full pipeline orchestration, zone analysis with few-shot injection |
+| `generator/scanner.ts` | Codebase scanning, zone discovery, file selection + ranking |
+| `generator/synthesis.ts` | LLM-powered dedup/merge of candidate rules |
+| `generator/architecture.ts` | Compute architectural context from import graph |
+| `generator/types.ts` | `RuleProposalSchema` (Zod), zone/result types |
 
-### Preview Limitations
+### Shared Write Path
 
-The preview uses **substring matching** of violation example patterns against file contents. This is a fast heuristic, not a semantic analysis. The actual LLM-powered review is more thorough and will catch violations that the preview misses. The preview exists to give the user confidence that the rule targets the right files, not to guarantee detection.
+Both pipelines converge at the same write path:
+
+```
+RulePolicy[]
+    │
+    └──► writeGeneratedRules() / createSkillAdapter()
+              │
+              ├── computePlacementFromGlobs()  — deterministic scope from globs
+              ├── Write SKILL.md               — frontmatter + instructions + examples
+              └── Write mesa-policy.yaml       — structured YAML source of truth
+```
+
+---
+
+## MCP Server
+
+The MCP server (`src/mcp/`) exposes Mesa's capabilities to AI agents (Claude Code, etc.) over the Model Context Protocol via stdio transport. It provides the same operations as the CLI through MCP tools, sharing the adapter layer.
+
+### Tools
+
+| Tool | Purpose | Maps to |
+|------|---------|---------|
+| `mesa_review` | Run code review | `adapter/review.runReview()` |
+| `mesa_generate_rules` | Bulk rule generation | `generator/generateRules()` |
+| `mesa_generate_rule` | Single rule generation | `adapter/skills.generateRuleAdapter()` |
+| `mesa_create_rule` | Manual rule creation | `adapter/skills.createSkillAdapter()` |
+| `mesa_write_accepted_rules` | Persist generated rules | `adapter/skills.writeGeneratedRules()` |
+| `mesa_get_generated_rule` | Preview a generated rule | Reads from session state |
+| `mesa_list_rules` | List rules | `adapter/skills.listSkillsAdapter()` |
+| `mesa_explain_rule` | Show rule details | `adapter/skills.explainSkillAdapter()` |
+| `mesa_delete_rule` | Delete a rule | `adapter/skills.deleteSkillAdapter()` |
+| `mesa_validate_rules` | Validate rule structure | `adapter/skills.validateSkillsAdapter()` |
+
+### Session State & Structural Guards
+
+The MCP handler maintains a module-level `lastGeneratedRules: RulePolicy[]` that survives across tool calls within a session. This enables a two-phase generate → write flow:
+
+1. `mesa_generate_rules` runs the pipeline, stores full `RulePolicy[]` in session state, and returns **summaries only** (id, title, severity, globs, short summary — no instructions) to the client.
+
+2. The client reviews rules using the summaries. For individual review, it calls `mesa_get_generated_rule(rule_id)` to fetch full details from session state.
+
+3. The client calls `mesa_write_accepted_rules(rule_ids)` to persist accepted rules. This reads from session state, writes via `writeGeneratedRules()`, then **clears** session state.
+
+**Structural guard on `mesa_create_rule`:** While `lastGeneratedRules` is non-empty, `mesa_create_rule` rejects with an error directing to `mesa_write_accepted_rules`. This prevents the client from bypassing the deterministic write pipeline (which handles scope computation and data fidelity). Once `mesa_write_accepted_rules` clears session state, `mesa_create_rule` is available for manual use again.
+
+**Why structural over behavioral:** Prompt-based instructions ("use tool X, not tool Y") are non-deterministic — LLMs will use whichever tool they have data for. By redacting full rule data from the response and server-side rejecting the wrong tool, the constraint is absolute regardless of the client's behavior.
+
+### MCP Skill Definitions
+
+The MCP server installs workflow skill files (`src/templates/mcp-skills.ts`) into `.claude/skills/` during `mesa init`. These guide AI agents through the correct tool-call sequences:
+
+- `mesa-review/SKILL.md` — Review workflow
+- `mesa-createrule/SKILL.md` — Single rule generation workflow
+- `mesa-generaterules/SKILL.md` — Bulk generation workflow (accept all / bulk review / individual review / skip all → `mesa_write_accepted_rules`)
 
 ---
 
@@ -881,9 +982,10 @@ Auto-generated, gitignored. Contains `index.json` (persisted codebase index).
 | | `chalk` | Terminal colors |
 | | `boxen` | Violation output boxes |
 | | `figlet` | ASCII banner |
+| **MCP** | `@modelcontextprotocol/sdk` | MCP server + stdio transport |
 | **Core** | `minimatch` | Glob pattern matching for rule selection |
 | | `js-yaml` | YAML rule/config parsing |
-| | `zod` | Tool input schema validation |
+| | `zod` | Schema validation (tool inputs, rule proposals) |
 
 ### Why These Dependencies
 
@@ -901,13 +1003,13 @@ The TypeScript orchestration layer runs in microseconds. The bottleneck is the L
 
 | Command | Description |
 |---------|-------------|
-| `mesa init` | Initialize Mesa: create `.mesa/config.yaml`, `.claude/skills/`, optionally install starter rules |
+| `mesa init` | Initialize Mesa: create `.mesa/config.yaml`, `.claude/skills/`, optionally install starter rules and generate initial rules |
 | `mesa review` | Run review against changed files. `--base`, `--head`, `--output`, `--verbose`, `--skip-preview` |
+| `mesa generate-rules` | Bulk rule generation: scan codebase → zone analysis → synthesis → interactive review → write |
 | `mesa rules list` | List all loaded rules with globs and severity |
-| `mesa rules create` | LLM-powered interactive rule creation (see Rule Creation Pipeline) |
+| `mesa rules create` | LLM-powered interactive single rule creation |
 | `mesa rules delete` | Delete a rule by ID |
 | `mesa rules explain <id>` | Show full rule details |
 | `mesa rules validate` | Validate all rules for correct structure |
 | `mesa index` | Build/rebuild the codebase index |
-| `mesa check` | Single rule check (stub) |
-| `mesa serve` | MCP server mode (stub) |
+| `mesa serve` | Start MCP server in stdio mode for AI agent integration |
