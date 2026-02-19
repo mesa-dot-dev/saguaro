@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import yaml from 'js-yaml';
-import { generateRules } from '../generator/index.js';
 import { toKebabCase } from '../lib/constants.js';
 import { loadValidatedConfig, resolveApiKey, resolveModelFromResolvedConfig } from '../lib/review-model-config.js';
 import { generateRule } from '../lib/rule-generator.js';
 import type { PreviewRuleResult } from '../lib/rule-preview.js';
 import { previewRule } from '../lib/rule-preview.js';
 import {
+  computePlacementFromGlobs,
   findRepoRoot,
   loadParsedSkillsFromDirectory,
   parseSkillFiles,
@@ -92,15 +92,6 @@ export interface CreateSkillAdapterResult {
   skill: AdapterSkill;
 }
 
-export interface GenerateRulesAdapterResult {
-  rules: RulePolicy[];
-  summary: {
-    filesScanned: number;
-    rulesGenerated: number;
-    durationMs: number;
-  };
-}
-
 export interface GenerateRuleAdapterRequest {
   target: string;
   intent: string;
@@ -121,6 +112,16 @@ export interface GenerateRuleAdapterResult {
     scope: string;
     recommended: boolean;
   }[];
+}
+
+export interface WrittenRule {
+  id: string;
+  title: string;
+  path: string;
+}
+
+export interface WriteGeneratedRulesResult {
+  written: WrittenRule[];
 }
 
 export interface LocateSkillsDirectoryAdapterResult {
@@ -320,17 +321,29 @@ export function createSkillAdapter(request: CreateSkillAdapterRequest): CreateSk
   };
 }
 
-export async function generateRulesAdapter(): Promise<GenerateRulesAdapterResult> {
-  const result = await generateRules({ cwd: process.cwd() });
+export function writeGeneratedRules(rules: RulePolicy[]): WriteGeneratedRulesResult {
+  const written: WrittenRule[] = [];
 
-  return {
-    rules: result.rules,
-    summary: {
-      filesScanned: result.summary.filesScanned,
-      rulesGenerated: result.summary.rulesGenerated,
-      durationMs: result.summary.durationMs,
-    },
-  };
+  for (const rule of rules) {
+    const scope = computePlacementFromGlobs(rule.globs);
+    const created = createSkillAdapter({
+      id: rule.id,
+      title: rule.title,
+      severity: rule.severity,
+      globs: rule.globs,
+      instructions: rule.instructions,
+      scope,
+      examples: rule.examples,
+    });
+
+    written.push({
+      id: created.skill.id,
+      title: created.skill.title,
+      path: created.skillDir,
+    });
+  }
+
+  return { written };
 }
 
 export async function generateRuleAdapter(request: GenerateRuleAdapterRequest): Promise<GenerateRuleAdapterResult> {

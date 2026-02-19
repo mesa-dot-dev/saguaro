@@ -87,9 +87,23 @@ export function createMesaMcpServer(): McpServer {
     'mesa_generate_rules',
     {
       description:
-        'Run the full rule generation pipeline (zone scanning, import graph indexing, LLM analysis, synthesis). Returns proposed rules without writing them. Use mesa_create_rule to persist accepted rules.',
+        'Run the full rule generation pipeline (zone scanning, import graph indexing, LLM analysis, synthesis). Returns proposed rules without writing them. Use mesa_write_accepted_rules to persist accepted rules.',
     },
     () => handleToolCall('mesa_generate_rules', {})
+  );
+
+  server.registerTool(
+    'mesa_write_accepted_rules',
+    {
+      description:
+        'Write previously generated rules to disk. Takes an array of rule IDs from the most recent mesa_generate_rules result. Each rule is written using the same deterministic pipeline as the CLI (scope computed from globs, skill files created). Must be called after mesa_generate_rules.',
+      inputSchema: {
+        rule_ids: z
+          .array(z.string())
+          .describe('Array of rule IDs to accept and write (from mesa_generate_rules output)'),
+      },
+    },
+    (args) => handleToolCall('mesa_write_accepted_rules', args)
   );
 
   server.registerTool(

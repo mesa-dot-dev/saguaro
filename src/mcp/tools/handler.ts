@@ -8,11 +8,17 @@ import {
   deleteSkillAdapter,
   explainSkillAdapter,
   generateRuleAdapter,
-  generateRulesAdapter,
   listSkillsAdapter,
   validateSkillsAdapter,
+  writeGeneratedRules,
 } from '../../adapter/skills.js';
-import type { Severity } from '../../types/types.js';
+import { generateRules } from '../../generator/index.js';
+import type { RulePolicy, Severity } from '../../types/types.js';
+
+// ---------------------------------------------------------------------------
+// State: last generated rules (survives across tool calls within a session)
+// ---------------------------------------------------------------------------
+let lastGeneratedRules: RulePolicy[] = [];
 
 const LOG_FILE = path.join(os.tmpdir(), 'mesa-mcp-debug.log');
 
@@ -139,9 +145,17 @@ function handleDeleteRule(args: Record<string, unknown>): CallToolResult {
 
 async function handleGenerateRules(): Promise<CallToolResult> {
   debug('mesa_generate_rules called');
-  const result = await generateRulesAdapter();
-  debug(`mesa_generate_rules returning ${result.rules.length} rules`);
-  return jsonResult(result);
+  const result = await generateRules({ cwd: process.cwd() });
+  lastGeneratedRules = result.rules;
+  debug(`mesa_generate_rules returning ${result.rules.length} rules (stored in session state)`);
+  return jsonResult({
+    rules: result.rules,
+    summary: {
+      filesScanned: result.summary.filesScanned,
+      rulesGenerated: result.summary.rulesGenerated,
+      durationMs: result.summary.durationMs,
+    },
+  });
 }
 
 async function handleGenerateRule(args: Record<string, unknown>): Promise<CallToolResult> {
@@ -159,6 +173,32 @@ async function handleGenerateRule(args: Record<string, unknown>): Promise<CallTo
   const result = await generateRuleAdapter({ target, intent, title, severity });
   debug('mesa_generate_rule returning', { ruleId: result.rule.id });
   return jsonResult(result);
+}
+
+function handleWriteAcceptedRules(args: Record<string, unknown>): CallToolResult {
+  debug('mesa_write_accepted_rules called', args);
+  const ruleIds = args.rule_ids as string[];
+
+  if (!ruleIds || !Array.isArray(ruleIds) || ruleIds.length === 0) {
+    return errorResult('rule_ids is required and must be a non-empty array of rule ID strings');
+  }
+
+  if (lastGeneratedRules.length === 0) {
+    return errorResult('No generated rules in session. Run mesa_generate_rules first.');
+  }
+
+  const acceptedSet = new Set(ruleIds);
+  const accepted = lastGeneratedRules.filter((r) => acceptedSet.has(r.id));
+  const skippedIds = ruleIds.filter((id) => !lastGeneratedRules.some((r) => r.id === id));
+
+  const result = writeGeneratedRules(accepted);
+
+  debug('mesa_write_accepted_rules done', {
+    written: result.written.length,
+    skipped: skippedIds.length,
+  });
+
+  return jsonResult({ ...result, skippedIds });
 }
 
 async function handleReview(args: Record<string, unknown>): Promise<CallToolResult> {
@@ -240,6 +280,8 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
         debug('mesa_generate_rule EXCEPTION', { error: message, stack: err instanceof Error ? err.stack : undefined });
         return errorResult(`Rule generation failed: ${message}`);
       }
+    case 'mesa_write_accepted_rules':
+      return handleWriteAcceptedRules(args);
     case 'mesa_review':
       try {
         return await handleReview(args);

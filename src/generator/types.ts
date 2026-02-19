@@ -1,17 +1,23 @@
 import { z } from 'zod';
 import type { RulePolicy } from '../types/types.js';
 
-/**
- * Intentionally excludes `examples` and `tags` — the rule adapter does not
- * serialize them to YAML yet, so generating them wastes output tokens.
- * Add them back here once the adapter supports writing them.
- */
 export const RuleProposalSchema = z.object({
   id: z.string().describe('Kebab-case rule ID (e.g., "no-raw-sql-interpolation")'),
   title: z.string().describe('Short human-readable title'),
   severity: z.enum(['error', 'warning', 'info']),
   globs: z.array(z.string()).describe('File glob patterns this rule applies to'),
   instructions: z.string().describe('What to flag and why — be specific'),
+  examples: z
+    .object({
+      violations: z.array(z.string()).optional().describe('Short code snippets (10-60 chars) showing violations'),
+      compliant: z.array(z.string()).optional().describe('Short code snippets (10-60 chars) showing correct code'),
+    })
+    .optional()
+    .describe('Concrete code examples of violations and compliant patterns'),
+  tags: z
+    .array(z.string())
+    .optional()
+    .describe('Lowercase hyphenated tags for categorization (e.g., "architecture", "security")'),
 });
 
 export interface SelectedFile {

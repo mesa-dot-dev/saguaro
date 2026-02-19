@@ -60,7 +60,7 @@ description: Auto-generate Mesa review rules using the full AI pipeline with app
 ## Flow
 
 1. **Start the pipeline** — Call the \`mesa_generate_rules\` MCP tool.
-   Tell the user this runs a multi-stage pipeline (zone scanning, import graph indexing, LLM analysis, synthesis/dedup) and may take 30-60 seconds.
+   Tell the user this runs a multi-stage pipeline (zone scanning, import graph indexing, LLM analysis, synthesis/dedup) and takes a few minutes depending on the size of the codebase.
 
 2. **Present summary** — When the tool returns, show:
    - Files scanned
@@ -93,9 +93,9 @@ description: Auto-generate Mesa review rules using the full AI pipeline with app
 
    **If "Skip all":** discard everything and confirm.
 
-5. **Write accepted rules** — For each accepted rule, call \`mesa_create_rule\` with the rule fields.
+5. **Write accepted rules** — Collect the IDs of all accepted rules, then call \`mesa_write_accepted_rules\` once with the full list of accepted rule IDs. The server holds the generated rules in memory and writes them using the same deterministic codepath as the CLI (scope placement, skill file structure). Do NOT call \`mesa_create_rule\` individually — use \`mesa_write_accepted_rules\` for batch generation results.
 
-6. **Final summary** — Report how many rules were accepted, skipped, and created, with their IDs and file paths.
+6. **Final summary** — Report how many rules were written vs. skipped, with their IDs and file paths (from the tool response).
 `,
     },
   ];

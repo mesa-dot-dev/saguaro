@@ -1,6 +1,7 @@
 import path from 'node:path';
 import type { LanguageModel } from 'ai';
 import { generateObject } from 'ai';
+import yaml from 'js-yaml';
 import { minimatch } from 'minimatch';
 import { z } from 'zod';
 import { buildIndex } from '../indexer/build.js';
@@ -8,6 +9,7 @@ import { JsonIndexStore } from '../indexer/store.js';
 import type { CodebaseIndex } from '../indexer/types.js';
 import { loadReviewAdapterConfig, resolveModelFromResolvedConfig } from '../lib/review-model-config.js';
 import { findRepoRoot } from '../lib/skills.js';
+import { STARTER_RULE_SKILLS } from '../templates/starter-rule-skills.js';
 import type { RulePolicy } from '../types/types.js';
 import { computeArchitecturalContext } from './architecture.js';
 import { scanAndSelectFiles } from './scanner.js';
@@ -20,6 +22,10 @@ import {
   type ZoneAnalysisResult,
   type ZoneConfig,
 } from './types.js';
+
+/** Pick a diverse fixed set of starter rules as few-shot references for zone analysis. */
+const FEW_SHOT_IDS = ['no-console-log', 'require-sanitized-auth-redirect', 'guard-percentage-division'] as const;
+const FEW_SHOT_EXAMPLES = STARTER_RULE_SKILLS.filter((r) => (FEW_SHOT_IDS as readonly string[]).includes(r.id));
 
 const ZONE_ANALYSIS_SYSTEM = `You are a senior developer extracting code review rules from a zone of a codebase.
 
@@ -291,6 +297,23 @@ function buildZonePrompt(
     lines.push(file.content);
     lines.push('```');
     lines.push('');
+  }
+
+  // Few-shot reference examples — teach the LLM the expected output structure
+  if (FEW_SHOT_EXAMPLES.length > 0) {
+    lines.push('## Reference Examples');
+    lines.push('');
+    lines.push(
+      'Below are existing high-quality rule policies. Study their structure and produce output in the same format.'
+    );
+    lines.push('');
+    for (const example of FEW_SHOT_EXAMPLES) {
+      lines.push(`### Example: ${example.title}`);
+      lines.push('```yaml');
+      lines.push(yaml.dump(example, { noRefs: true, lineWidth: -1 }).trim());
+      lines.push('```');
+      lines.push('');
+    }
   }
 
   lines.push('Extract review rules from both the code patterns and architectural structure you observe.');

@@ -37,7 +37,7 @@ For each rule you keep, verify:
 
 ## Output
 
-Return the consolidated rules. Each rule must have: id, title, severity, globs, instructions.`;
+Return the consolidated rules. Each rule must have: id, title, severity, globs, instructions. Preserve examples from input candidates when merging — pick the most concrete examples from either candidate.`;
 
 interface SynthesisResult {
   rules: RulePolicy[];
@@ -64,6 +64,12 @@ export async function synthesizeRules(options: {
         `   Globs: ${r.globs.join(', ')}`,
         `   Instructions: ${r.instructions}`,
       ];
+      if (r.examples?.violations?.length) {
+        parts.push(`   Violations: ${r.examples.violations.join(' | ')}`);
+      }
+      if (r.examples?.compliant?.length) {
+        parts.push(`   Compliant: ${r.examples.compliant.join(' | ')}`);
+      }
       return parts.join('\n');
     })
     .join('\n\n');

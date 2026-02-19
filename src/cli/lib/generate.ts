@@ -4,11 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import chalk from 'chalk';
 import yaml from 'js-yaml';
-import { createSkillAdapter } from '../../adapter/skills.js';
+import { writeGeneratedRules } from '../../adapter/skills.js';
 import type { GeneratorProgressEvent } from '../../generator/index.js';
 import { generateRules } from '../../generator/index.js';
 import { logger } from '../../lib/logger.js';
-import { computePlacementFromGlobs } from '../../lib/skills.js';
 import type { RulePolicy } from '../../types/types.js';
 import { createReadline } from './prompt.js';
 import { CliSpinner } from './spinner.js';
@@ -111,19 +110,8 @@ export async function generateRulesCommand(argv: GenerateRulesArgv): Promise<num
     return 0;
   }
 
-  const writtenDirs = new Set<string>();
-  for (const rule of accepted) {
-    const scope = computePlacementFromGlobs(rule.globs);
-    const created = createSkillAdapter({
-      id: rule.id,
-      title: rule.title,
-      severity: rule.severity,
-      globs: rule.globs,
-      instructions: rule.instructions,
-      scope,
-    });
-    writtenDirs.add(created.skillsDir);
-  }
+  const { written } = writeGeneratedRules(accepted);
+  const writtenDirs = new Set(written.map((w) => path.dirname(w.path)));
 
   const durationSec = (result.summary.durationMs / 1000).toFixed(1);
   const { inputTokens, outputTokens } = result.summary;
