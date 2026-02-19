@@ -6,9 +6,7 @@ import { runReview } from '../../adapter/review.js';
 import {
   createRuleAdapter,
   deleteRuleAdapter,
-  explainRuleAdapter,
   generateRuleAdapter,
-  listRulesAdapter,
   validateRulesAdapter,
   writeGeneratedRules,
 } from '../../adapter/rules.js';
@@ -44,47 +42,6 @@ function errorResult(message: string): CallToolResult {
     isError: true,
     content: [{ type: 'text', text: message }],
   };
-}
-
-function handleListRules(args: Record<string, unknown>): CallToolResult {
-  debug('mesa_list_rules called', args);
-  const { rules } = listRulesAdapter();
-  const tags = args.tags as string[] | undefined;
-
-  const mapped = rules.map((rule) => ({
-    id: rule.id,
-    title: rule.title,
-    severity: rule.severity,
-    tags: rule.tags ?? [],
-  }));
-
-  const filtered = tags?.length ? mapped.filter((r) => r.tags.some((t) => tags.includes(t))) : mapped;
-
-  debug(`mesa_list_rules returning ${filtered.length} rules`);
-  return jsonResult(filtered);
-}
-
-function handleExplainRule(args: Record<string, unknown>): CallToolResult {
-  debug('mesa_explain_rule called', args);
-  const ruleId = args.rule_id as string;
-  if (!ruleId) {
-    return errorResult('rule_id is required');
-  }
-
-  const { rule } = explainRuleAdapter({ ruleId });
-  if (!rule) {
-    return errorResult(`Rule not found: ${ruleId}`);
-  }
-
-  return jsonResult({
-    id: rule.id,
-    title: rule.title,
-    severity: rule.severity,
-    globs: rule.globs,
-    instructions: rule.instructions,
-    tags: rule.tags ?? [],
-    examples: rule.examples,
-  });
 }
 
 function handleValidateRules(): CallToolResult {
@@ -267,10 +224,6 @@ async function handleReview(args: Record<string, unknown>): Promise<CallToolResu
 export async function handleToolCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
   debug(`handleToolCall: ${name}`);
   switch (name) {
-    case 'mesa_list_rules':
-      return handleListRules(args);
-    case 'mesa_explain_rule':
-      return handleExplainRule(args);
     case 'mesa_validate_rules':
       return handleValidateRules();
     case 'mesa_create_rule':

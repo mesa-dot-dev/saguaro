@@ -45,78 +45,6 @@ function textContent(result: Awaited<ReturnType<typeof callTool>>): string {
   return content[0].text;
 }
 
-describe('mesa_list_rules', () => {
-  test('returns empty array when no rules exist', async () => {
-    await withTempRepo(async () => {
-      const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_list_rules');
-      const data = parseContent(result);
-
-      expect(result.isError).toBeFalsy();
-      expect(data).toEqual([]);
-    });
-  });
-
-  test('returns rules after creating one', async () => {
-    await withTempRepo(async (root) => {
-      createRuleAdapter({
-        title: 'No Console Log',
-        severity: 'warning',
-        globs: ['**/*.ts'],
-        instructions: 'Do not use console.log',
-        repoRoot: root,
-      });
-
-      const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_list_rules');
-      const data = parseContent(result) as { id: string; title: string; severity: string; tags: string[] }[];
-
-      expect(result.isError).toBeFalsy();
-      expect(data).toHaveLength(1);
-      expect(data[0].id).toBe('no-console-log');
-      expect(data[0].title).toBe('No Console Log');
-      expect(data[0].severity).toBe('warning');
-      expect(data[0].tags).toEqual([]);
-    });
-  });
-});
-
-describe('mesa_explain_rule', () => {
-  test('returns error for nonexistent rule', async () => {
-    await withTempRepo(async () => {
-      const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_explain_rule', { rule_id: 'does-not-exist' });
-
-      expect(result.isError).toBe(true);
-      expect(textContent(result)).toContain('Rule not found');
-    });
-  });
-
-  test('returns full rule details for existing rule', async () => {
-    await withTempRepo(async (root) => {
-      createRuleAdapter({
-        title: 'No Console Log',
-        severity: 'warning',
-        globs: ['**/*.ts'],
-        instructions: 'Do not use console.log',
-        repoRoot: root,
-        id: 'no-console-log',
-      });
-
-      const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_explain_rule', { rule_id: 'no-console-log' });
-      const data = parseContent(result) as Record<string, unknown>;
-
-      expect(result.isError).toBeFalsy();
-      expect(data.id).toBe('no-console-log');
-      expect(data.title).toBe('No Console Log');
-      expect(data.severity).toBe('warning');
-      expect(data.globs).toEqual(['**/*.ts']);
-      expect(data.instructions).toBe('Do not use console.log');
-    });
-  });
-});
-
 describe('mesa_validate_rules', () => {
   test('returns empty validated list when no rules directory exists', async () => {
     await withTempRepo(async () => {
@@ -204,10 +132,9 @@ describe('mesa_delete_rule', () => {
       expect(data.deleted).toBe(true);
       expect(data.id).toBe('to-delete');
 
-      // Verify the rule is gone
-      const listResult = await callTool(client, 'mesa_list_rules');
-      const rules = parseContent(listResult) as unknown[];
-      expect(rules).toEqual([]);
+      // Verify the rule file is gone
+      const ruleFile = path.join(root, '.mesa', 'rules', 'to-delete.md');
+      expect(fs.existsSync(ruleFile)).toBe(false);
     });
   });
 

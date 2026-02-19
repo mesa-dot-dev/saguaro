@@ -20,28 +20,6 @@ export function createMesaMcpServer(): McpServer {
   );
 
   server.registerTool(
-    'mesa_list_rules',
-    {
-      description: 'List all available review rules with their IDs, titles, and severity levels.',
-      inputSchema: {
-        tags: z.array(z.string()).optional().describe('Optional tag filter'),
-      },
-    },
-    (args) => handleToolCall('mesa_list_rules', args)
-  );
-
-  server.registerTool(
-    'mesa_explain_rule',
-    {
-      description: 'Get detailed information about a specific review rule including instructions, globs, and examples.',
-      inputSchema: {
-        rule_id: z.string().describe('The rule ID to look up'),
-      },
-    },
-    (args) => handleToolCall('mesa_explain_rule', args)
-  );
-
-  server.registerTool(
     'mesa_create_rule',
     {
       description: 'Create a new review rule. Provide a title, severity, file glob patterns, and instructions.',

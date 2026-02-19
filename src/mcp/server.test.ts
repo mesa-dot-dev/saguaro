@@ -23,10 +23,8 @@ describe('MCP server', () => {
     expect(toolNames).toEqual([
       'mesa_create_rule',
       'mesa_delete_rule',
-      'mesa_explain_rule',
       'mesa_generate_rule',
       'mesa_generate_rules',
-      'mesa_list_rules',
       'mesa_review',
       'mesa_sync_rules',
       'mesa_validate_rules',
