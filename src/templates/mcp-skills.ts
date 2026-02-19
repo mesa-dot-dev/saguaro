@@ -60,7 +60,7 @@ description: Auto-generate Mesa review rules using the full AI pipeline with app
 ## Flow
 
 1. **Start the pipeline** — Call the \`mesa_generate_rules\` MCP tool.
-   Tell the user this runs a multi-stage pipeline (zone scanning, import graph indexing, LLM analysis, synthesis/dedup) and takes a few minutes depending on the size of the codebase.
+   Tell the user this runs a multi-stage pipeline (codebase scanning, import graph indexing, LLM analysis, consolidation/dedup) and takes a few minutes depending on the size of the codebase.
 
 2. **Present summary** — When the tool returns, show:
    - Files scanned

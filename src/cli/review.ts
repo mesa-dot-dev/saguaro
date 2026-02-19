@@ -155,14 +155,14 @@ class ReviewCliProgressReporter {
     if (event.type === 'run_split') {
       this.totalWorkers = event.totalWorkers;
       this.completedWorkers = 0;
-      logger.verbose(`Split ${event.totalFiles} files into ${event.totalWorkers} worker group(s)`);
+      logger.verbose(`Split ${event.totalFiles} files into ${event.totalWorkers} review batches`);
       this.spinner.start(this.getSpinnerText());
       return;
     }
 
     if (event.type === 'worker_started') {
       this.totalWorkers = Math.max(this.totalWorkers, event.totalWorkers);
-      logger.verbose(`Worker ${event.workerIndex}/${event.totalWorkers} sent (${event.promptChars} chars)`);
+      logger.verbose(`Batch ${event.workerIndex}/${event.totalWorkers} sent (${event.promptChars} chars)`);
       return;
     }
 
@@ -170,7 +170,7 @@ class ReviewCliProgressReporter {
       this.totalWorkers = Math.max(this.totalWorkers, event.totalWorkers);
       this.completedWorkers += 1;
       this.spinner.update(this.getSpinnerText());
-      logger.verbose(chalk.green(`✓ Worker ${event.workerIndex}/${event.totalWorkers} complete`));
+      logger.verbose(chalk.green(`✓ Batch ${event.workerIndex}/${event.totalWorkers} complete`));
       return;
     }
 
@@ -205,12 +205,12 @@ class ReviewCliProgressReporter {
 
       logger.verbose(
         chalk.gray(
-          `Parse worker ${workerIndex}/${this.totalWorkers}: matched=${parseSummary.matchedLines}, ignored=${parseSummary.ignoredLines}, violations=${parseSummary.violations}`
+          `Parse batch ${workerIndex}/${this.totalWorkers}: matched=${parseSummary.matchedLines}, ignored=${parseSummary.ignoredLines}, violations=${parseSummary.violations}`
         )
       );
 
       if (parseSummary.shortCircuitedNoViolations) {
-        logger.verbose(chalk.yellow(`  Worker ${workerIndex} parser short-circuited on "no violations found" text`));
+        logger.verbose(chalk.yellow(`  Batch ${workerIndex} short-circuited (no violations)`));
       }
     }
   }
@@ -221,7 +221,7 @@ class ReviewCliProgressReporter {
 
   private getSpinnerText(): string {
     const workers = Math.max(this.totalWorkers, 0);
-    return `Processing review... ${this.completedWorkers}/${workers} worker(s) complete`;
+    return `Reviewing files... ${this.completedWorkers} of ${workers} batches complete`;
   }
 }
 

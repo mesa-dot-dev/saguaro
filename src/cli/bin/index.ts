@@ -161,7 +161,7 @@ yargs(argv)
       `${secondary('Use with Claude Code:')}\n` +
       '  mesa init sets up MCP integration and a review hook automatically.\n' +
       '  Available slash commands inside Claude Code:\n\n' +
-      `    ${secondary('/mesa-review')}          Run a code review. optiionally specifiy a branch / head ref.\n` +
+      `    ${secondary('/mesa-review')}          Run a code review. Optionally specify a branch / head ref.\n` +
       `    ${secondary('/mesa-createrule')}      Create a new review rule\n` +
       `    ${secondary('/mesa-generaterules')}   Auto-generate rules from your codebase\n\n` +
       '  Mesa also adds a configurable hook that automatically reviews code\n' +
@@ -396,7 +396,7 @@ yargs(argv)
           )
             .option('v', {
               alias: 'verbose',
-              describe: 'Show progress as zones are analyzed',
+              describe: 'Show detailed analysis progress',
               type: 'boolean',
               default: false,
             })

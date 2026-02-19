@@ -95,7 +95,7 @@ export function createMesaMcpServer(): McpServer {
     'mesa_generate_rules',
     {
       description:
-        'Run the full rule generation pipeline (zone scanning, import graph indexing, LLM analysis, synthesis). Returns proposed rules without writing them. Use mesa_write_accepted_rules to persist accepted rules.',
+        'Run the full rule generation pipeline (codebase scanning, import graph indexing, LLM analysis, synthesis). Returns proposed rules without writing them. Use mesa_write_accepted_rules to persist accepted rules.',
     },
     () => handleToolCall('mesa_generate_rules', {})
   );

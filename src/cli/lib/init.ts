@@ -48,11 +48,11 @@ output:
 # =============================================================================
 
 review:
-  # Maximum tool-calling steps per worker
-  max_steps_size: 50
+  # Maximum tool-calling steps per review batch
+  max_steps: 50
 
-  # Number of files to include in each worker batch
-  files_per_worker: 2
+  # Number of files per review batch
+  files_per_batch: 2
 
 # =============================================================================
 # Hook Settings

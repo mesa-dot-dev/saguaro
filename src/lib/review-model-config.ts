@@ -28,8 +28,8 @@ const IndexSchema = z.object({
 });
 
 const ReviewSchema = z.object({
-  max_steps_size: z.number().int().positive().default(10),
-  files_per_worker: z.number().int().positive().default(3),
+  max_steps: z.number().int().positive().default(10),
+  files_per_batch: z.number().int().positive().default(3),
 });
 
 const HookSchema = z.object({
@@ -45,7 +45,7 @@ export const MesaConfigSchema = z
     api_keys: z.record(z.string(), z.string()).optional(),
     output: OutputSchema.default({ cursor_deeplink: true }),
     index: IndexSchema.default({ enabled: true, blast_radius_depth: 2, context_token_budget: 4000 }),
-    review: ReviewSchema.default({ max_steps_size: 10, files_per_worker: 3 }),
+    review: ReviewSchema.default({ max_steps: 10, files_per_batch: 3 }),
     hook: HookSchema.default({ enabled: true }),
   })
   .strict();
@@ -90,7 +90,7 @@ export function loadValidatedConfig(configPath?: string): MesaConfig {
   logger.debug(`[config] Loaded config from ${resolvedPath}`);
   logger.debug(`[config] model: ${result.data.model.provider}/${result.data.model.name}`);
   logger.debug(
-    `[config] review: maxSteps=${result.data.review.max_steps_size}, filesPerWorker=${result.data.review.files_per_worker}`
+    `[config] review: maxSteps=${result.data.review.max_steps}, filesPerBatch=${result.data.review.files_per_batch}`
   );
   logger.debug(
     `[config] index: enabled=${result.data.index.enabled}, blastRadius=${result.data.index.blast_radius_depth}, tokenBudget=${result.data.index.context_token_budget}`
@@ -151,8 +151,8 @@ export function loadReviewAdapterConfig(configPath?: string): LoadedReviewAdapte
       model: config.model.name,
       apiKey: resolveApiKey(config),
     },
-    maxSteps: config.review.max_steps_size,
-    filesPerWorker: config.review.files_per_worker,
+    maxSteps: config.review.max_steps,
+    filesPerWorker: config.review.files_per_batch,
   };
 }
 

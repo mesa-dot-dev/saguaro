@@ -98,7 +98,7 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
       logger.debug(chalk.gray(`[debug] Progress callback error: ${err instanceof Error ? err.message : String(err)}`));
     }
   };
-  const filesPerWorker = ensurePositiveInteger(options.filesPerWorker, DEFAULT_FILES_PER_WORKER, 'files_per_worker');
+  const filesPerWorker = ensurePositiveInteger(options.filesPerWorker, DEFAULT_FILES_PER_WORKER, 'files_per_batch');
   const maxSteps = options.maxSteps ?? 10;
   const fileGroups = splitFilesForWorkers(options.filesWithRules, filesPerWorker);
 

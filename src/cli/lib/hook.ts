@@ -11,7 +11,7 @@ const CLAUDE_SETTINGS_DIR = '.claude';
 const CLAUDE_SETTINGS_FILE = 'settings.json';
 const HOOK_COMMAND = 'mesa hook run';
 const HOOK_TIMEOUT = 120;
-const HOOK_STATUS_MESSAGE = 'Running mesa code review...';
+const HOOK_STATUS_MESSAGE = 'Mesa: reviewing changes...';
 
 const secondary = chalk.hex('#be3c00');
 

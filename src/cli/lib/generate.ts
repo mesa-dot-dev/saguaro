@@ -40,7 +40,7 @@ export async function generateRulesCommand(argv: GenerateRulesArgv): Promise<num
       case 'scan_complete':
         totalAreas = event.zoneCount;
         spinner.update(
-          `Scanned ${event.totalFiles} source files (${event.zoneCount} ${event.zoneCount > 1 ? 'areas' : 'area'})`
+          `Scanned ${event.totalFiles} source files (${event.zoneCount} functional ${event.zoneCount > 1 ? 'areas' : 'area'})`
         );
         logger.verbose(chalk.gray(`  Extensions: ${formatExtensions(event.extensions)}`));
         break;
@@ -51,7 +51,7 @@ export async function generateRulesCommand(argv: GenerateRulesArgv): Promise<num
         if (areasCompleted === 0) {
           spinner.start(
             totalAreas > 1
-              ? `Analyzing ${totalAreas} areas...`
+              ? `Analyzing ${totalAreas} functional areas...`
               : `Analyzing ${event.zoneName} (${event.selectedFileCount}/${event.fileCount} files)...`
           );
         }
@@ -64,7 +64,7 @@ export async function generateRulesCommand(argv: GenerateRulesArgv): Promise<num
           )
         );
         if (areasCompleted < totalAreas) {
-          spinner.update(`Analyzing codebase (${areasCompleted}/${totalAreas} areas complete)...`);
+          spinner.update(`Analyzing codebase (${areasCompleted}/${totalAreas} functional areas complete)...`);
         }
         break;
       case 'synthesis_started':
@@ -74,7 +74,7 @@ export async function generateRulesCommand(argv: GenerateRulesArgv): Promise<num
         spinner.stop();
         console.log(
           chalk.gray(
-            `  Synthesis: ${event.candidateCount} candidates → ${event.finalCount} rules (${(event.durationMs / 1000).toFixed(1)}s)`
+            `  Consolidated: ${event.candidateCount} candidates → ${event.finalCount} rules (${(event.durationMs / 1000).toFixed(1)}s)`
           )
         );
         break;
