@@ -3,7 +3,7 @@
 ## Architecture Design Document
 
 **Version:** 4.0
-**Date:** February 2026
+**Date:** February 19,2026
 **Status:** Current
 
 ---
@@ -15,16 +15,17 @@
 3. [System Architecture](#system-architecture)
 4. [Package Structure](#package-structure)
 5. [Adapter Layer](#adapter-layer)
-6. [Skills System](#skills-system)
+6. [Rules System](#rules-system)
 7. [Rule Generation](#rule-generation)
 8. [MCP Server](#mcp-server)
-9. [Data Flow](#data-flow)
-10. [Agent Design](#agent-design)
-11. [Codebase Indexing](#codebase-indexing)
-12. [Output Model](#output-model)
-13. [Key Interfaces](#key-interfaces)
-14. [Configuration](#configuration)
-15. [Dependencies](#dependencies)
+9. [Claude Code Stop Hook](#claude-code-stop-hook)
+10. [Data Flow](#data-flow)
+11. [Agent Design](#agent-design)
+12. [Codebase Indexing](#codebase-indexing)
+13. [Output Model](#output-model)
+14. [Key Interfaces](#key-interfaces)
+15. [Configuration](#configuration)
+16. [Dependencies](#dependencies)
 
 ---
 
@@ -45,7 +46,7 @@
 
 - **Silence is success** - No output unless a rule is violated
 - **No defaults** - Zero built-in rules; you define everything
-- **Rules in code** - `.claude/skills/` directories, version-controlled with git
+- **Rules in code** - `.mesa/rules/` directory, version-controlled with git
 - **Codebase-aware** - Import graph, blast radius, and symbol-level context
 - **Local-first** - CLI tool with user-provided API keys
 - **Multi-provider** - Anthropic, OpenAI, Google via Vercel AI SDK
@@ -58,7 +59,7 @@
 |-----------|----------------|
 | **Silence by default** | No output unless rule violation found |
 | **No default checks** | Zero built-in rules; user defines everything |
-| **Rules in code** | `.claude/skills/` directories in repo, versioned via git |
+| **Rules in code** | `.mesa/rules/` directory in repo, versioned via git |
 | **Local-first** | CLI tool; user provides own API keys |
 | **Codebase-aware** | Import graph analysis + blast radius for surgical context |
 | **Parallel execution** | Workers split files for concurrent LLM calls |
@@ -79,12 +80,12 @@ The system has two parallel entry points — **CLI** and **MCP server** — that
 |  +-------------------------------+   +-------------------------------+            |
 |  |         CLI (yargs)           |   |      MCP SERVER (stdio)      |            |
 |  |  $ mesa review --base main   |   |  Claude Code / AI agents     |            |
-|  |  $ mesa generate-rules       |   |  mesa_review                 |            |
+|  |  $ mesa rules generate       |   |  mesa_review                 |            |
 |  |  $ mesa rules create         |   |  mesa_generate_rules         |            |
 |  |  $ mesa init | index         |   |  mesa_generate_rule          |            |
 |  +-------------------------------+   |  mesa_create_rule            |            |
 |        |                             |  mesa_write_accepted_rules   |            |
-|        |                             |  mesa_get_generated_rule     |            |
+|        |                             |  mesa_sync_rules             |            |
 |        |                             +-------------------------------+            |
 |        |                                      |                                   |
 |        +------------------+-------------------+                                   |
@@ -94,9 +95,9 @@ The system has two parallel entry points — **CLI** and **MCP server** — that
 |  |                      ADAPTER LAYER                                        |    |
 |  |                                                                           |    |
 |  |   +--------------------+   +---------------------+                        |    |
-|  |   | review adapter     |   | skills adapter      |                        |    |
-|  |   | - runReview()      |   | - createSkill()     |                        |    |
-|  |   | - wires runtime    |   | - listSkills()      |                        |    |
+|  |   | review adapter     |   | rules adapter       |                        |    |
+|  |   | - runReview()      |   | - createRule()      |                        |    |
+|  |   | - wires runtime    |   | - listRules()       |                        |    |
 |  |   |   to core          |   | - writeGenerated()  |                        |    |
 |  |   |                    |   | - generateRule()    |                        |    |
 |  |   +--------+-----------+   +--------+------------+                        |    |
@@ -116,10 +117,10 @@ The system has two parallel entry points — **CLI** and **MCP server** — that
 |  |           |   +-----------------+              +-----------+---------+      |    |
 |  |           |   |                                            |               |    |
 |  |   +-------+---+---+  +------------------+  +--------------+-------+       |    |
-|  |   | skills (lib)  |  | rule-generator   |  | starter-rule-skills  |       |    |
-|  |   | - CRUD on     |  | - single rule    |  | - few-shot examples  |       |    |
-|  |   |   .claude/    |  | - LLM + YAML     |  | - 25 curated rules   |       |    |
-|  |   |   skills/     |  | - few-shot       |  | - used by both       |       |    |
+|  |   | rule-         |  | rule-generator   |  | starter-rule-skills  |       |    |
+|  |   | resolution    |  | - single rule    |  | - few-shot examples  |       |    |
+|  |   | - load from   |  | - LLM + YAML     |  | - 25 curated rules   |       |    |
+|  |   |   .mesa/rules |  | - few-shot       |  | - used by both       |       |    |
 |  |   +---------------+  +------------------+  |   pipelines           |       |    |
 |  |                                            +----------------------+       |    |
 |  +---------------------------------------------------------------------------+    |
@@ -154,20 +155,20 @@ packages/code-review/
 │   ├── adapter/                    # Boundary between CLI/MCP and core/lib
 │   │   ├── review.ts              # Review adapter: wires runtime to core engine
 │   │   ├── review.test.ts
-│   │   ├── skills.ts              # Skills adapter: createSkill, listSkills, writeGeneratedRules, etc.
-│   │   └── skills.test.ts
+│   │   ├── rules.ts               # Rules adapter: createRule, listRules, writeGeneratedRules, etc.
+│   │   └── rules.test.ts
 │   │
 │   ├── cli/                        # CLI layer (yargs commands + prompts)
 │   │   ├── bin/
 │   │   │   └── index.ts           # Yargs command router
 │   │   ├── lib/
 │   │   │   ├── check.ts           # mesa check (stub)
-│   │   │   ├── generate.ts        # mesa generate-rules — bulk rule generation + interactive review
-│   │   │   ├── hook.ts            # Git hook installation
+│   │   │   ├── generate.ts        # mesa rules generate — bulk rule generation + interactive review
+│   │   │   ├── hook.ts            # Claude Code Stop hook: install, uninstall, run
 │   │   │   ├── index-cmd.ts       # mesa index
 │   │   │   ├── init.ts            # mesa init
 │   │   │   ├── prompt.ts          # Readline helpers: ask(), askChoice(), createReadline()
-│   │   │   ├── rules.ts           # mesa rules (list, create, delete, explain, validate)
+│   │   │   ├── rules.ts           # mesa rules (list, create, delete, explain, validate, for, sync, locate)
 │   │   │   ├── serve.ts           # mesa serve — starts MCP server in stdio mode
 │   │   │   └── spinner.ts         # TTY-aware progress spinner
 │   │   └── review.ts              # mesa review command orchestrator
@@ -186,7 +187,7 @@ packages/code-review/
 │   ├── mcp/                        # MCP server for AI agent integration
 │   │   ├── server.ts              # Tool registration (McpServer + zod schemas)
 │   │   └── tools/
-│   │       └── handler.ts         # Tool handlers, session state, structural guards
+│   │       └── handler.ts         # Tool handlers, session state for generate → write flow
 │   │
 │   ├── indexer/                    # Codebase indexing + import graph
 │   │   ├── build.ts               # File discovery + incremental index building
@@ -212,19 +213,21 @@ packages/code-review/
 │   │   ├── constants.ts           # IGNORED_DIRS, PACKAGE_MARKERS, CodebaseSnippet, toKebabCase
 │   │   ├── errors.ts              # Custom error types
 │   │   ├── git.ts                 # git diff, changed files, repo root
+│   │   ├── hook-runner.ts         # Stop hook review logic: uncommitted changes, block/allow decision
 │   │   ├── logger.ts              # Debug logging
+│   │   ├── mesa-rules.ts          # Load + parse .mesa/rules/*.md (frontmatter + body)
 │   │   ├── review-model-config.ts # .mesa/config.yaml loading, model resolution
 │   │   ├── review-runner.ts       # Vercel AI SDK generateText + workers
 │   │   ├── review-runtime.ts      # Node.js runtime: file I/O, git, rule loading
 │   │   ├── rule-generator.ts      # LLM-powered single rule generation from target analysis
 │   │   ├── rule-preview.ts        # Dry-run rules against target files
-│   │   ├── scope-discovery.ts     # Discover package boundaries + existing skills dirs
-│   │   ├── skills.ts              # Skills CRUD: load, parse, glob-match, create, delete
+│   │   ├── rule-resolution.ts     # Rule loading, glob matching, priority sorting
+│   │   ├── scope-discovery.ts     # Discover package boundaries for rule generation
+│   │   ├── skill-sync.ts          # Syncs .claude/skills/mesa-rules/SKILL.md from .mesa/rules/
 │   │   ├── target-analysis.ts     # Analyze target: file sampling, globs, placements
 │   │   └── target-resolver.ts     # Smart text input: path/keyword → resolved target
 │   │
 │   ├── templates/                  # Built-in starter content + MCP skill definitions
-│   │   ├── starter-skills.ts      # Generates SKILL.md + policy YAML for starter rules
 │   │   ├── starter-rule-skills.ts # 25 curated starter rule policies (few-shot examples)
 │   │   └── mcp-skills.ts          # MCP workflow skill definitions (review, create, generate)
 │   │
@@ -253,7 +256,7 @@ CLI (generate.ts, rules.ts, review.ts)       MCP (handler.ts)
                        v
               ADAPTER LAYER
               ├── adapter/review.ts    — runReview()
-              └── adapter/skills.ts    — createSkillAdapter(), writeGeneratedRules(), etc.
+              └── adapter/rules.ts     — createRuleAdapter(), listRulesAdapter(), writeGeneratedRules(), etc.
                        │
                        v
               CORE + LIB + GENERATOR
@@ -263,110 +266,131 @@ CLI (generate.ts, rules.ts, review.ts)       MCP (handler.ts)
 
 Wires the Node.js runtime (file I/O, git, rule loading) to the pure review core engine. Used identically by both `mesa review` CLI command and `mesa_review` MCP tool.
 
-### Skills Adapter (`adapter/skills.ts`)
+### Rules Adapter (`adapter/rules.ts`)
 
-Provides a unified interface for all skill operations:
+Provides a unified interface for all rule operations. Returns `RulePolicy` directly (no wrapper types):
 
-- `createSkillAdapter(opts)` — Creates `SKILL.md` + `references/mesa-policy.yaml` in the target `.claude/skills/` directory
-- `writeGeneratedRules(rules)` — Batch write for bulk-generated rules. Computes scope from globs via `computePlacementFromGlobs()`, then calls `createSkillAdapter()` for each rule. Passes through examples and tags.
+- `createRuleAdapter(opts)` — Creates a `.md` rule file in `.mesa/rules/` with YAML frontmatter
+- `writeGeneratedRules(rules)` — Batch write for bulk-generated rules. Calls `createRuleAdapter()` for each rule. Passes through examples and tags.
 - `generateRuleAdapter(request)` — Orchestrates single-rule generation (analyze target → LLM → preview)
-- `listSkillsAdapter(dir)` — Lists all skills from a `.claude/skills/` directory
-- `deleteSkillAdapter(id, dir)` — Removes a skill directory
-- `validateSkillsAdapter(dir)` — Validates skill structure and policy YAML
-
-The adapter builds rich `SKILL.md` files with:
-- YAML frontmatter (`name`, `description` with scope)
-- Human-readable instructions and examples (violations + compliant snippets)
-- Reference to the machine-readable `mesa-policy.yaml`
+- `listRulesAdapter()` — Lists all rules from `.mesa/rules/` via `loadMesaRules()`
+- `explainRuleAdapter(id)` — Returns full details for a single rule
+- `deleteRuleAdapter(id)` — Removes a rule file
+- `validateRulesAdapter()` — Validates rule structure and frontmatter
 
 ---
 
-## Skills System
+## Rules System
 
-Rules are stored as **skills** in `.claude/skills/` directories, co-located with the code they review.
+Rules are stored as **markdown files** in `.mesa/rules/` at the repo root, with YAML frontmatter containing all metadata.
 
 ### Directory Structure
 
 ```
-.claude/skills/
-└── <rule-id>/
-    ├── SKILL.md                    # Human-readable: frontmatter + instructions + examples
-    └── references/
-        └── mesa-policy.yaml        # Machine-readable: globs, severity, violation patterns
+.mesa/rules/
+├── no-wall-clock.md
+├── no-console-log.md
+└── guard-percentage-division.md
 ```
 
-### Skill Placement
+### Rule File Format
 
-Skills can be placed at any level in the repo hierarchy:
-
-| Placement | Path | Scope |
-|-----------|------|-------|
-| **Collocated** | `src/cli/.claude/skills/` | Rules specific to that directory tree |
-| **Package** | `packages/web/.claude/skills/` | Rules scoped to one package |
-| **Root** | `.claude/skills/` | Global rules across the entire repo |
-
-During review, all `.claude/skills/` directories are discovered by walking up from each changed file to the repo root. Rules are matched to files via glob patterns in `mesa-policy.yaml`.
-
-### SKILL.md Format
+Rules use markdown with YAML frontmatter:
 
 ```markdown
+<!-- This file is managed by Mesa. Edit only if you know what you're doing. -->
 ---
-name: no-wall-clock
-description: "Ban direct wall clock access. Enforces this rule in **/*.rs, !**/tests/**."
----
-
-This skill enforces the Ban direct wall clock access policy.
-
-## What this rule checks
-
-Use a Clock trait instead of calling Utc::now() directly.
-
-## Examples
-
-### Violations
-- `Utc::now()` — Direct wall-clock access
-
-### Compliant
-- `clock.now()` — Injected clock dependency
-
-Machine-readable policy is defined in references/mesa-policy.yaml.
-```
-
-### mesa-policy.yaml Format
-
-```yaml
 id: no-wall-clock
-title: "Ban direct wall clock access"
+title: Ban direct wall clock access
 severity: error
-
 globs:
   - "**/*.rs"
   - "!**/tests/**"
+tags:
+  - correctness
+  - time
+---
 
-instructions: |
-  Utc::now() should be banned. Use a Clock trait instead.
+Use a Clock trait instead of calling Utc::now() directly.
 
-examples:
-  violations:
-    - pattern: "Utc::now()"
-      description: "Direct wall-clock access"
-    - pattern: "SystemTime::now()"
-      description: "Direct system time access"
-  compliant:
-    - pattern: "clock.now()"
-      description: "Injected clock dependency"
+## What to Look For
+
+- `Utc::now()` — Direct wall-clock access
+- `SystemTime::now()` — Direct system time access
+
+## Why This Matters
+
+- Direct time access makes tests non-deterministic
+- Clock injection enables time travel in tests
+
+## Correct Patterns
+
+```rust
+// Good: Injected clock dependency
+clock.now()
 ```
+
+### Violations
+
+```
+Utc::now()
+```
+
+```
+SystemTime::now()
+```
+
+### Compliant
+
+```
+clock.now()
+```
+```
+
+### Agent Discovery via SKILL.md
+
+A single `.claude/skills/mesa-rules/SKILL.md` at the repo root instructs AI agents to run the CLI for rule discovery. This file is automatically synced by `mesa rules sync` (and during `mesa init`):
+
+```markdown
+---
+name: mesa-rules
+description: >
+  REQUIRED before ANY file edit or creation. Run mesa rules for <paths>
+  to load applicable code review rules.
+---
+
+Before editing or creating any files, determine which files and
+directories you plan to touch, then run:
+
+    mesa rules for <path1> <path2> ...
+```
+
+#### Why a single dispatch skill
+
+Claude Code's native skill discovery traverses the directory tree and loads skills from `.claude/` directories at each level. The natural approach would be to place per-rule skills in each relevant directory so Claude automatically discovers only the rules that apply to its working area. However, this litters the codebase with `.claude/` directories and skill artifacts throughout the repo, which developers don't want checked in alongside their code.
+
+Instead, we use one skill at the root that calls `mesa rules for <paths>`. When Claude knows what directory it's about to work in, it runs this command, which loads all rules from `.mesa/rules/`, matches their globs against the given paths, and returns only the applicable rules. This emulates native per-directory skill discovery without the file system pollution.
+
+This also eliminates duplication — previously each rule required both a `.mesa/rules/` markdown file and a corresponding `.claude/skills/` directory. Now rules live in one place and the single skill handles discovery dynamically.
+
+#### Why CLI over MCP for rule discovery
+
+- **Zero overhead** — CLI has no server startup cost (MCP takes ~3s)
+- **Text output is ideal** — Rules are returned as text that agents consume directly
+- **Reliable** — Shell commands from SKILL.md are deterministically followed
+- **No flags** — `mesa rules for <paths>` is a proper subcommand, not a flag. Claude Code invokes skills by name and passes arguments, but cannot invoke CLI flags from skill calls.
 
 ### Starter Rules
 
-`mesa init` can optionally install a set of starter rules into `.claude/skills/`. These are defined in `src/templates/starter-rule-skills.ts` and generated via `src/templates/starter-skills.ts`. The starter rules serve as few-shot examples for the LLM during rule generation.
+`mesa init` can optionally install starter rules into `.mesa/rules/`. These are defined in `src/templates/starter-rule-skills.ts`. The starter rules also serve as few-shot examples for the LLM during rule generation.
 
 ### Rule Loading at Review Time
 
-1. Walk up from each changed file to repo root, collecting all `.claude/skills/` directories
-2. Parse each `mesa-policy.yaml` for globs and instructions
+1. Load all `.md` files from `.mesa/rules/` at repo root
+2. Parse YAML frontmatter for globs, severity, instructions
 3. Deterministic `minimatch` glob matching — no AI for rule selection
 4. Negation patterns (`!**/tests/**`) supported for excluding files
+5. Rules sorted by descending `priority` (default 0), then alphabetically by `id`
 
 ---
 
@@ -408,13 +432,13 @@ User provides: target directory + intent
 |     generateText() → structured YAML policy       |
 |     - Includes target files, boundary context     |
 |     - Includes few-shot reference examples        |
-|     - Parse + validate against SkillPolicySchema  |
+|     - Parse + validate against RulePolicySchema    |
 +--------------------------------------------------+
          |
          v
 +--------------------------------------------------+
 |  4. PREVIEW + APPROVAL + WRITE                    |
-|     previewRule() → createSkillAdapter()           |
+|     previewRule() → createRuleAdapter()             |
 +--------------------------------------------------+
 ```
 
@@ -423,9 +447,9 @@ User provides: target directory + intent
 | `lib/rule-generator.ts` | LLM generation with few-shot examples, prompt building, YAML parsing |
 | `lib/target-analysis.ts` | Analyze target directory: file sampling, globs, placements |
 | `lib/rule-preview.ts` | Substring-match violation patterns against target files |
-| `lib/scope-discovery.ts` | Discover package boundaries and existing skills dirs |
+| `lib/scope-discovery.ts` | Discover package boundaries for rule scoping |
 
-### Pipeline 2: Bulk Rule Generation (`mesa generate-rules` / `mesa_generate_rules`)
+### Pipeline 2: Bulk Rule Generation (`mesa rules generate` / `mesa_generate_rules`)
 
 Discovers rules across the entire codebase automatically.
 
@@ -496,11 +520,9 @@ Both pipelines converge at the same write path:
 ```
 RulePolicy[]
     │
-    └──► writeGeneratedRules() / createSkillAdapter()
+    └──► writeGeneratedRules() / createRuleAdapter()
               │
-              ├── computePlacementFromGlobs()  — deterministic scope from globs
-              ├── Write SKILL.md               — frontmatter + instructions + examples
-              └── Write mesa-policy.yaml       — structured YAML source of truth
+              └── Write .mesa/rules/<id>.md    — YAML frontmatter + instructions + examples
 ```
 
 ---
@@ -515,28 +537,24 @@ The MCP server (`src/mcp/`) exposes Mesa's capabilities to AI agents (Claude Cod
 |------|---------|---------|
 | `mesa_review` | Run code review | `adapter/review.runReview()` |
 | `mesa_generate_rules` | Bulk rule generation | `generator/generateRules()` |
-| `mesa_generate_rule` | Single rule generation | `adapter/skills.generateRuleAdapter()` |
-| `mesa_create_rule` | Manual rule creation | `adapter/skills.createSkillAdapter()` |
-| `mesa_write_accepted_rules` | Persist generated rules | `adapter/skills.writeGeneratedRules()` |
-| `mesa_get_generated_rule` | Preview a generated rule | Reads from session state |
-| `mesa_list_rules` | List rules | `adapter/skills.listSkillsAdapter()` |
-| `mesa_explain_rule` | Show rule details | `adapter/skills.explainSkillAdapter()` |
-| `mesa_delete_rule` | Delete a rule | `adapter/skills.deleteSkillAdapter()` |
-| `mesa_validate_rules` | Validate rule structure | `adapter/skills.validateSkillsAdapter()` |
+| `mesa_generate_rule` | Single rule generation | `adapter/rules.generateRuleAdapter()` |
+| `mesa_create_rule` | Manual rule creation | `adapter/rules.createRuleAdapter()` |
+| `mesa_write_accepted_rules` | Persist generated rules | `adapter/rules.writeGeneratedRules()` |
+| `mesa_list_rules` | List rules | `adapter/rules.listRulesAdapter()` |
+| `mesa_explain_rule` | Show rule details | `adapter/rules.explainRuleAdapter()` |
+| `mesa_delete_rule` | Delete a rule | `adapter/rules.deleteRuleAdapter()` |
+| `mesa_validate_rules` | Validate rule structure | `adapter/rules.validateRulesAdapter()` |
+| `mesa_sync_rules` | Regenerate `.claude/skills/` from rules | `lib/skill-sync.syncSkillsFromRules()` |
 
-### Session State & Structural Guards
+### Session State
 
 The MCP handler maintains a module-level `lastGeneratedRules: RulePolicy[]` that survives across tool calls within a session. This enables a two-phase generate → write flow:
 
-1. `mesa_generate_rules` runs the pipeline, stores full `RulePolicy[]` in session state, and returns **summaries only** (id, title, severity, globs, short summary — no instructions) to the client.
+1. `mesa_generate_rules` runs the pipeline, stores full `RulePolicy[]` in session state, and returns the generated rules to the client.
 
-2. The client reviews rules using the summaries. For individual review, it calls `mesa_get_generated_rule(rule_id)` to fetch full details from session state.
+2. The client reviews the rules and decides which to accept.
 
-3. The client calls `mesa_write_accepted_rules(rule_ids)` to persist accepted rules. This reads from session state, writes via `writeGeneratedRules()`, then **clears** session state.
-
-**Structural guard on `mesa_create_rule`:** While `lastGeneratedRules` is non-empty, `mesa_create_rule` rejects with an error directing to `mesa_write_accepted_rules`. This prevents the client from bypassing the deterministic write pipeline (which handles scope computation and data fidelity). Once `mesa_write_accepted_rules` clears session state, `mesa_create_rule` is available for manual use again.
-
-**Why structural over behavioral:** Prompt-based instructions ("use tool X, not tool Y") are non-deterministic — LLMs will use whichever tool they have data for. By redacting full rule data from the response and server-side rejecting the wrong tool, the constraint is absolute regardless of the client's behavior.
+3. The client calls `mesa_write_accepted_rules(rule_ids)` to persist accepted rules. This filters from session state and writes via `writeGeneratedRules()`.
 
 ### MCP Skill Definitions
 
@@ -545,6 +563,107 @@ The MCP server installs workflow skill files (`src/templates/mcp-skills.ts`) int
 - `mesa-review/SKILL.md` — Review workflow
 - `mesa-createrule/SKILL.md` — Single rule generation workflow
 - `mesa-generaterules/SKILL.md` — Bulk generation workflow (accept all / bulk review / individual review / skip all → `mesa_write_accepted_rules`)
+
+Additionally, `mesa rules sync` installs the rule-discovery skill:
+
+- `mesa-rules/SKILL.md` — Instructs agents to run `mesa rules for <paths>` before editing files
+
+---
+
+## Claude Code Stop Hook
+
+Mesa installs a **Claude Code Stop hook** that automatically reviews code after every file edit or creation Claude makes. This gives developers continuous feedback during a coding session rather than a single review gate at the end.
+
+### Why a Stop Hook
+
+The Stop hook is the only Claude Code hook type that fires after every file write. Other hook types are conditional and would miss edits or file creations. The goal is fast, continuous review as Claude works — not a slow review after a batch of changes. The review pipeline skips files that don't match any rule globs, so editing a markdown file in a repo with only `**/*.ts` rules burns zero tokens.
+
+### Why Not MCP
+
+An MCP-based approach (having Claude call `mesa_review` after each turn) was considered but rejected:
+
+- **Requires user approval** — MCP tool calls prompt the user with "do you want to run this?", adding friction to every turn
+- **Extra server process** — MCP adds another long-running server on the developer's machine
+- **Harder to debug** — Hook failures surface directly in the terminal; MCP failures are buried in server logs
+
+The Stop hook runs as a fast CLI command, requires no user interaction, and produces output inline.
+
+### How It Works
+
+```
+Claude Code finishes a turn (file edit / creation)
+        |
+        v
++---------------------------------------------------------------+
+|  1. LOOP PREVENTION                                           |
+|                                                               |
+|     Check stdin for stop_hook_active flag.                    |
+|     If Claude is already fixing violations from a previous    |
+|     hook run, exit 0 immediately to avoid infinite loops.     |
++---------------------------------------------------------------+
+        |
+        v
++---------------------------------------------------------------+
+|  2. COLLECT UNCOMMITTED CHANGES                               |
+|                                                               |
+|     listLocalChangedFilesFromGit()  — staged + unstaged       |
+|     listUntrackedFiles()            — new files               |
+|     Merge into a single set of changed files.                 |
+|     If no changes, exit 0 (allow).                            |
++---------------------------------------------------------------+
+        |
+        v
++---------------------------------------------------------------+
+|  3. REVIEW                                                    |
+|                                                               |
+|     Run the standard review pipeline against uncommitted      |
+|     changes only (not committed history). Uses the same       |
+|     runReview() adapter as the CLI and MCP.                   |
++---------------------------------------------------------------+
+        |
+        v
++---------------------------------------------------------------+
+|  4. DECISION                                                  |
+|                                                               |
+|     No violations  → exit 0 (allow, Claude continues)         |
+|     Violations     → exit 2 (block, violations sent to        |
+|                      stderr as structured feedback for         |
+|                      Claude to fix before completing)          |
++---------------------------------------------------------------+
+```
+
+### Installation
+
+The hook is installed automatically during `mesa init`. It writes a Stop hook entry to `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "Stop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "mesa hook run",
+        "timeout": 120,
+        "statusMessage": "Running mesa code review..."
+      }]
+    }]
+  }
+}
+```
+
+| Command | Purpose |
+|---------|---------|
+| `mesa hook install` | Add the Stop hook to `.claude/settings.json` |
+| `mesa hook uninstall` | Remove the Stop hook entry |
+| `mesa hook run` | Internal — invoked by the hook itself, not by users |
+
+### Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| **Uncommitted changes only** | Reviews changes as they're written. Reviewing committed history would burn tokens redundantly on already-reviewed code. |
+| **Loop prevention via `stop_hook_active`** | Proactive guard. When Claude is fixing violations from a previous hook run, the hook exits immediately to prevent an infinite review → fix → review cycle. |
+| **Exit code 2 for violations** | Claude Code convention: exit 2 blocks the agent and feeds stderr back as feedback. Claude sees the formatted violations and fixes them before continuing. |
 
 ---
 
@@ -560,8 +679,8 @@ $ mesa review --base main
 |  1. CONTEXT GATHERING (parallel)                              |
 |                                                               |
 |     getChangedFiles()          loadRules()                    |
-|     git diff --name-only      Walk .claude/skills/ dirs       |
-|     --diff-filter=ACMR        Parse mesa-policy.yaml          |
+|     git diff --name-only      Load .mesa/rules/*.md           |
+|     --diff-filter=ACMR        Parse YAML frontmatter          |
 +---------------------------------------------------------------+
                         |
                         v
@@ -824,7 +943,7 @@ When `output.cursor_deeplink: true` in `.mesa/config.yaml`, the output includes 
 // Severity levels
 type Severity = 'error' | 'warning' | 'info';
 
-// Rule policy (from mesa-policy.yaml)
+// Rule policy (from .mesa/rules/*.md frontmatter + body)
 interface RulePolicy {
   id: string;
   title: string;
@@ -832,9 +951,11 @@ interface RulePolicy {
   globs: string[];
   instructions: string;
   examples?: {
-    violations?: Array<{ pattern: string; description: string }>;
-    compliant?: Array<{ pattern: string; description: string }>;
+    violations?: string[];
+    compliant?: string[];
   };
+  tags?: string[];
+  priority?: number;
 }
 
 // Violation (parsed from agent text output)
@@ -859,13 +980,16 @@ interface ReviewResult {
     warnings: number;
     infos: number;
     durationMs?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    cost?: number;
   };
 }
 
 // Review engine outcome (discriminated union)
 type ReviewEngineOutcome =
   | { kind: 'no-changed-files'; ... }
-  | { kind: 'no-matching-skills'; ... }
+  | { kind: 'no-matching-rules'; ... }
   | { kind: 'reviewed'; result: ReviewResult; ... };
 ```
 
@@ -957,9 +1081,13 @@ review:
 
 API keys are loaded from environment variables (`.env.local`, `.env`, or shell export). The config file does **not** contain API keys.
 
-### `.claude/skills/`
+### `.mesa/rules/`
 
-Skills directories at any level in the repo. Each skill has a `SKILL.md` and `references/mesa-policy.yaml`.
+Centralized directory at the repo root. Each rule is a self-contained `.md` file with YAML frontmatter. Loaded by `loadMesaRules()` in `lib/mesa-rules.ts`.
+
+### `.claude/skills/mesa-rules/`
+
+Single agent-facing skill synced by `mesa rules sync`. Contains `SKILL.md` that instructs agents to run `mesa rules for <paths>` CLI command for rule discovery.
 
 ### `.mesa/cache/`
 
@@ -1003,13 +1131,18 @@ The TypeScript orchestration layer runs in microseconds. The bottleneck is the L
 
 | Command | Description |
 |---------|-------------|
-| `mesa init` | Initialize Mesa: create `.mesa/config.yaml`, `.claude/skills/`, optionally install starter rules and generate initial rules |
+| `mesa init` | Initialize Mesa: create `.mesa/config.yaml`, `.mesa/rules/`, `.claude/skills/mesa-rules/`, optionally install starter rules and generate initial rules |
 | `mesa review` | Run review against changed files. `--base`, `--head`, `--output`, `--verbose`, `--skip-preview` |
-| `mesa generate-rules` | Bulk rule generation: scan codebase → zone analysis → synthesis → interactive review → write |
+| `mesa rules generate` | Bulk rule generation: scan codebase → zone analysis → synthesis → interactive review → write |
 | `mesa rules list` | List all loaded rules with globs and severity |
 | `mesa rules create` | LLM-powered interactive single rule creation |
 | `mesa rules delete` | Delete a rule by ID |
 | `mesa rules explain <id>` | Show full rule details |
 | `mesa rules validate` | Validate all rules for correct structure |
+| `mesa rules for <paths..>` | Show rules matching the given file/directory paths (used by agents via SKILL.md) |
+| `mesa rules sync` | Sync `.claude/skills/mesa-rules/SKILL.md` from current `.mesa/rules/` state |
+| `mesa rules locate` | Print the path to the `.mesa/rules/` directory |
+| `mesa hook install` | Add the Claude Code Stop hook to `.claude/settings.json` |
+| `mesa hook uninstall` | Remove the Stop hook entry |
 | `mesa index` | Build/rebuild the codebase index |
 | `mesa serve` | Start MCP server in stdio mode for AI agent integration |
