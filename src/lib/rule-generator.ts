@@ -4,7 +4,7 @@ import yaml from 'js-yaml';
 import { STARTER_RULE_SKILLS } from '../templates/starter-rule-skills.js';
 import type { RulePolicy, Severity } from '../types/types.js';
 import { type CodebaseSnippet, toKebabCase } from './constants.js';
-import { SkillPolicySchema } from './skills.js';
+import { RulePolicySchema } from './mesa-rules.js';
 import type { TargetAnalysis } from './target-analysis.js';
 
 // ---------------------------------------------------------------------------
@@ -229,7 +229,7 @@ export function buildRuleGenerationPrompt(input: BuildPromptInput): string {
 
 /**
  * Parses LLM output as YAML, strips markdown code fences, validates against
- * SkillPolicySchema.
+ * RulePolicySchema.
  */
 export function parseGeneratedPolicy(text: string): ParseResult {
   const cleaned = stripCodeFences(text).trim();
@@ -246,7 +246,7 @@ export function parseGeneratedPolicy(text: string): ParseResult {
     return { success: false, error: 'Expected a YAML object, got a non-object value' };
   }
 
-  const validation = SkillPolicySchema.safeParse(parsed);
+  const validation = RulePolicySchema.safeParse(parsed);
   if (!validation.success) {
     const details = validation.error.issues
       .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)

@@ -7,13 +7,14 @@ import {
   deleteSkillAdapter,
   explainSkillAdapter,
   listSkillsAdapter,
-  locateSkillsDirectoryAdapter,
+  locateRulesDirectoryAdapter,
   validateSkillsAdapter,
 } from '../../adapter/skills.js';
 import { loadValidatedConfig, resolveApiKey, resolveModelFromResolvedConfig } from '../../lib/review-model-config.js';
 import { generateRule } from '../../lib/rule-generator.js';
 import { previewRule } from '../../lib/rule-preview.js';
 import { discoverScopeOptions } from '../../lib/scope-discovery.js';
+import { syncSkillsFromRules } from '../../lib/skill-sync.js';
 import { findRepoRoot } from '../../lib/skills.js';
 import { analyzeTarget } from '../../lib/target-analysis.js';
 import { resolveTargetInput } from '../../lib/target-resolver.js';
@@ -21,37 +22,25 @@ import type { Severity } from '../../types/types.js';
 import { ask, askChoice, createReadline } from './prompt.js';
 import { CliSpinner } from './spinner.js';
 
-interface ListRulesArgv {
-  rules?: string;
-}
-
 interface ExplainRuleArgv {
-  rules?: string;
   ruleId: string;
 }
 
 interface DeleteRuleArgv {
   ruleId: string;
-  rules?: string;
-}
-
-interface ValidateRulesArgv {
-  rules?: string;
 }
 
 interface CreateRuleArgv {
   target?: string;
   intent?: string;
-  scope?: string;
   debug?: boolean;
   skipPreview?: boolean;
   title?: string;
   severity?: string;
-  rules?: string;
 }
 
-const listRules = (argv: ListRulesArgv) => {
-  const result = listSkillsAdapter({ skillsDir: argv.rules });
+const listRules = () => {
+  const result = listSkillsAdapter();
   const rules = result.skills;
   if (!rules.length) {
     console.log(chalk.gray('No rules found. Use "mesa rules create" to add one.'));
@@ -68,7 +57,7 @@ const listRules = (argv: ListRulesArgv) => {
 };
 
 const explainRule = (argv: ExplainRuleArgv) => {
-  const result = explainSkillAdapter({ skillsDir: argv.rules, skillId: argv.ruleId });
+  const result = explainSkillAdapter({ skillId: argv.ruleId });
   const rule = result.skill;
   if (!rule) {
     console.log(chalk.red(`Rule not found: ${argv.ruleId}`));
@@ -101,7 +90,7 @@ const explainRule = (argv: ExplainRuleArgv) => {
 };
 
 const deleteRule = (argv: DeleteRuleArgv) => {
-  const result = deleteSkillAdapter({ skillsDir: argv.rules, skillId: argv.ruleId });
+  const result = deleteSkillAdapter({ skillId: argv.ruleId });
   if (!result.deleted) {
     console.log(chalk.red(`Rule not found: ${argv.ruleId}`));
     return;
@@ -109,8 +98,8 @@ const deleteRule = (argv: DeleteRuleArgv) => {
   console.log(chalk.green(`Deleted: ${argv.ruleId}`));
 };
 
-const validateRules = (argv: ValidateRulesArgv): number => {
-  const result = validateSkillsAdapter({ skillsDir: argv.rules });
+const validateRules = (): number => {
+  const result = validateSkillsAdapter();
   result.validated.forEach((file) => console.log(chalk.green(`[OK] ${file}`)));
 
   if (result.errors.length > 0) {
@@ -324,43 +313,8 @@ const createRule = async (argv: CreateRuleArgv): Promise<number> => {
         }
       }
 
-      // 7. Placement selection
-      let selectedPlacement = target.placements.find((p) => p.recommended) ??
-        target.placements[0] ?? {
-          skillsDir: path.join(repoRoot, '.claude', 'skills'),
-          label: 'Repo root (global)',
-          reason: 'Fallback — no placements computed',
-          recommended: true,
-          type: 'root' as const,
-        };
-
-      if (argv.scope) {
-        // User explicitly specified scope — override placement
-        selectedPlacement = {
-          skillsDir: path.join(repoRoot, argv.scope, '.claude', 'skills'),
-          label: `${argv.scope} (user-specified)`,
-          reason: 'Explicitly provided via --scope',
-          recommended: true,
-          type: 'collocated',
-        };
-      } else if (process.stdin.isTTY && target.placements.length > 1) {
-        const placementRl = createReadline();
-        try {
-          const choices = target.placements.map((p) => ({
-            id: p.skillsDir,
-            label: `${p.label}${p.recommended ? ' (recommended)' : ''}${p.type === 'existing' ? ' [has rules]' : ''}`,
-          }));
-
-          const selected = await askChoice(placementRl, 'Where should this rule be saved?', choices);
-          selectedPlacement = target.placements.find((p) => p.skillsDir === selected.id) ?? selectedPlacement;
-        } finally {
-          placementRl.close();
-        }
-      }
-
-      // 8. Write to disk
+      // 7. Write to disk
       const created = createSkillAdapter({
-        skillsDir: selectedPlacement.skillsDir,
         title: policy.title,
         severity: policy.severity,
         globs: policy.globs,
@@ -389,15 +343,26 @@ const createRule = async (argv: CreateRuleArgv): Promise<number> => {
 };
 
 const locateRulesDirectory = (): number => {
-  const result = locateSkillsDirectoryAdapter();
-  const rulesDir = result.skillsDir;
-  if (!rulesDir) {
-    console.log(chalk.red('No rules directory found. Run "mesa init" first.'));
-    return 1;
-  }
-
-  console.log(chalk.gray(rulesDir));
+  const result = locateRulesDirectoryAdapter();
+  console.log(chalk.gray(result.rulesDir));
   return 0;
 };
 
-export { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, validateRules };
+const syncRules = (): number => {
+  const repoRoot = findRepoRoot();
+  const result = syncSkillsFromRules(repoRoot);
+
+  if (result.errors.length > 0) {
+    for (const error of result.errors) {
+      console.log(chalk.red(`  Error: ${error}`));
+    }
+  }
+
+  console.log(chalk.green(`Synced ${result.generated.length} rule(s) to .claude/skills/`));
+  if (result.removed.length > 0) {
+    console.log(chalk.gray(`  Removed ${result.removed.length} orphaned skill(s)`));
+  }
+  return result.errors.length > 0 ? 1 : 0;
+};
+
+export { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, syncRules, validateRules };

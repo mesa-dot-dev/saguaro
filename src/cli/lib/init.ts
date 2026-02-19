@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
+import { writeMesaRuleFile } from '../../lib/mesa-rules.js';
+import { syncSkillsFromRules } from '../../lib/skill-sync.js';
 import { findRepoRoot } from '../../lib/skills.js';
 import { getMcpJsonConfig } from '../../mcp/config.js';
 import { getMcpSkillFiles } from '../../templates/mcp-skills.js';
-import { getStarterSkillFiles } from '../../templates/starter-skills.js';
+import { STARTER_RULE_SKILLS } from '../../templates/starter-rule-skills.js';
 import { generateRulesCommand } from './generate.js';
 import { installHook } from './hook.js';
 import { ask, askChoice, createReadline } from './prompt.js';
@@ -71,17 +73,6 @@ function upsertEnvValue(filePath: string, key: string, value: string): void {
 
   const normalized = `${lines.filter((line) => line.length > 0).join('\n')}\n`;
   fs.writeFileSync(filePath, normalized);
-}
-
-function writeStarterSkills(dir: string) {
-  for (const starter of getStarterSkillFiles()) {
-    const skillFilePath = path.join(dir, starter.skillFilePath);
-    const policyFilePath = path.join(dir, starter.policyFilePath);
-    fs.mkdirSync(path.dirname(skillFilePath), { recursive: true });
-    fs.mkdirSync(path.dirname(policyFilePath), { recursive: true });
-    fs.writeFileSync(skillFilePath, starter.skillMarkdown);
-    fs.writeFileSync(policyFilePath, starter.policyYaml);
-  }
 }
 
 const mcpJsonPath = '.mcp.json';
@@ -155,8 +146,11 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   }
 
   if (skillSetupChoice === 'default') {
-    writeStarterSkills(rootSkillsDir);
-    console.log(chalk.gray(`  Added starter rules. Add more with ${tertiary('mesa rules create')}.`));
+    for (const starter of STARTER_RULE_SKILLS) {
+      writeMesaRuleFile(repoRoot, starter);
+    }
+    syncSkillsFromRules(repoRoot);
+    console.log(chalk.gray(`  Added starter rules to .mesa/rules/. Add more with ${tertiary('mesa rules create')}.`));
   } else if (skillSetupChoice === 'generate') {
     await generateRulesCommand({ config: path.join(repoRoot, configPath) });
   } else {
@@ -168,9 +162,11 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   const relSkillsDir = path.relative(process.cwd(), rootSkillsDir) || skillsDir;
   const relEnvPath = path.relative(process.cwd(), path.join(repoRoot, envLocalPath)) || envLocalPath;
 
+  const relRulesDir = path.relative(process.cwd(), path.join(repoRoot, '.mesa', 'rules')) || '.mesa/rules';
+
   console.log(secondary('\nMesa initialized successfully!'));
   console.log(chalk.gray(`  Created: ${relMesaDir}/config.yaml`));
-  console.log(chalk.gray(`  Created: ${relSkillsDir}/`));
+  console.log(chalk.gray(`  Created: ${relRulesDir}/`));
   console.log(chalk.gray(`  Created: ${mcpJsonPath}`));
   console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-review/`));
   console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-createrule/`));

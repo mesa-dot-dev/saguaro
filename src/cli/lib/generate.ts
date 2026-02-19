@@ -29,8 +29,8 @@ export async function generateRulesCommand(argv: GenerateRulesArgv): Promise<num
   const spinner = new CliSpinner();
   spinner.start('Scanning codebase...');
 
-  let totalZones = 0;
-  let zonesCompleted = 0;
+  let totalAreas = 0;
+  let areasCompleted = 0;
 
   const onProgress = (event: GeneratorProgressEvent): void => {
     switch (event.type) {
@@ -38,33 +38,33 @@ export async function generateRulesCommand(argv: GenerateRulesArgv): Promise<num
         spinner.update('Building codebase index...');
         break;
       case 'scan_complete':
-        totalZones = event.zoneCount;
+        totalAreas = event.zoneCount;
         spinner.update(
-          `Scanned ${event.totalFiles} source files (${event.zoneCount} zone${event.zoneCount > 1 ? 's' : ''})`
+          `Scanned ${event.totalFiles} source files (${event.zoneCount} ${event.zoneCount > 1 ? 'areas' : 'area'})`
         );
         logger.verbose(chalk.gray(`  Extensions: ${formatExtensions(event.extensions)}`));
         break;
       case 'zone_started':
-        // Don't restart the spinner per-zone — zones run in parallel so
+        // Don't restart the spinner per-area — areas run in parallel so
         // only one spinner message would be visible anyway. Instead, show
-        // an aggregate "Analyzing N zones" message set once below.
-        if (zonesCompleted === 0) {
+        // an aggregate message set once below.
+        if (areasCompleted === 0) {
           spinner.start(
-            totalZones > 1
-              ? `Analyzing ${totalZones} zones...`
-              : `Analyzing zone "${event.zoneName}" (${event.selectedFileCount}/${event.fileCount} files)...`
+            totalAreas > 1
+              ? `Analyzing ${totalAreas} areas...`
+              : `Analyzing ${event.zoneName} (${event.selectedFileCount}/${event.fileCount} files)...`
           );
         }
         break;
       case 'zone_completed':
-        zonesCompleted++;
+        areasCompleted++;
         spinner.log(
           chalk.gray(
-            `  Zone "${event.zoneName}" — ${event.rulesProposed} candidates (${(event.durationMs / 1000).toFixed(1)}s)`
+            `  ${event.zoneName} — ${event.rulesProposed} candidates (${(event.durationMs / 1000).toFixed(1)}s)`
           )
         );
-        if (zonesCompleted < totalZones) {
-          spinner.update(`Analyzing zones (${zonesCompleted}/${totalZones} complete)...`);
+        if (areasCompleted < totalAreas) {
+          spinner.update(`Analyzing codebase (${areasCompleted}/${totalAreas} areas complete)...`);
         }
         break;
       case 'synthesis_started':
@@ -110,8 +110,7 @@ export async function generateRulesCommand(argv: GenerateRulesArgv): Promise<num
     return 0;
   }
 
-  const { written } = writeGeneratedRules(accepted);
-  const writtenDirs = new Set(written.map((w) => path.dirname(w.path)));
+  writeGeneratedRules(accepted);
 
   const durationSec = (result.summary.durationMs / 1000).toFixed(1);
   const { inputTokens, outputTokens } = result.summary;
@@ -119,15 +118,7 @@ export async function generateRulesCommand(argv: GenerateRulesArgv): Promise<num
   const cost = (inputTokens / 1000000) * 5 + (outputTokens / 1000000) * 25;
   const tokenStr = `${(inputTokens / 1000).toFixed(1)}K input + ${(outputTokens / 1000).toFixed(1)}K output`;
 
-  const dirs = Array.from(writtenDirs).sort();
-  if (dirs.length === 1) {
-    console.log(chalk.green(`\n${accepted.length} rule(s) written to ${dirs[0]}`));
-  } else {
-    console.log(chalk.green(`\n${accepted.length} rule(s) written across ${dirs.length} directories:`));
-    for (const dir of dirs) {
-      console.log(chalk.green(`  ${dir}`));
-    }
-  }
+  console.log(chalk.green(`\n${accepted.length} rule(s) written to .mesa/rules/`));
   if (accepted.length < result.rules.length) {
     console.log(chalk.gray(`  (${result.rules.length - accepted.length} rule(s) skipped)`));
   }

@@ -4,7 +4,7 @@ import { describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { parseSkillFiles, resolveSkillsForFiles, validateParsedSkills } from './skills.js';
+import { resolveSkillsForFiles } from './skills.js';
 
 function withTempRepo(run: (root: string) => void): void {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-skills-'));
@@ -16,85 +16,65 @@ function withTempRepo(run: (root: string) => void): void {
   }
 }
 
-function writeSkill(
+function writeMesaRule(
   root: string,
-  relativeDir: string,
   options: {
-    name: string;
-    description: string;
-    policyYaml: string;
+    id: string;
+    title: string;
+    severity: string;
+    globs: string[];
+    instructions: string;
+    priority?: number;
   }
 ): void {
-  const skillDir = path.join(root, relativeDir, '.claude', 'skills', options.name);
-  const referencesDir = path.join(skillDir, 'references');
-  fs.mkdirSync(referencesDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(skillDir, 'SKILL.md'),
-    `---\nname: ${options.name}\ndescription: ${options.description}\n---\n\nPolicy source: references/mesa-policy.yaml\n`
-  );
-  fs.writeFileSync(path.join(referencesDir, 'mesa-policy.yaml'), options.policyYaml);
+  const rulesDir = path.join(root, '.mesa', 'rules');
+  fs.mkdirSync(rulesDir, { recursive: true });
+
+  const globLines = options.globs.map((g) => `  - ${JSON.stringify(g)}`).join('\n');
+  const frontmatter = [
+    '---',
+    `id: ${options.id}`,
+    `title: ${JSON.stringify(options.title)}`,
+    `severity: ${options.severity}`,
+    'globs:',
+    globLines,
+    ...(options.priority !== undefined ? [`priority: ${options.priority}`] : []),
+    '---',
+  ].join('\n');
+
+  fs.writeFileSync(path.join(rulesDir, `${options.id}.md`), `${frontmatter}\n\n${options.instructions}\n`);
 }
 
 describe('skills loader', () => {
-  test('applies ancestor hierarchy with nearest override by policy id', () => {
+  test('resolves rules from .mesa/rules/ and matches files by glob', () => {
     withTempRepo((root) => {
-      writeSkill(root, '.', {
-        name: 'no-console-log',
-        description: 'Root skill',
-        policyYaml: [
-          'id: no-console-log',
-          'title: No console.log',
-          'severity: warning',
-          'globs:',
-          '  - "**/*.ts"',
-          'instructions: |',
-          '  root policy',
-        ].join('\n'),
+      writeMesaRule(root, {
+        id: 'no-console-log',
+        title: 'No console.log',
+        severity: 'warning',
+        globs: ['**/*.ts'],
+        instructions: 'Do not use console.log',
       });
 
-      writeSkill(root, 'packages/web', {
-        name: 'no-console-log',
-        description: 'Package override skill',
-        policyYaml: [
-          'id: no-console-log',
-          'title: No console.log (web strict)',
-          'severity: error',
-          'globs:',
-          '  - "packages/web/**/*.ts"',
-          'instructions: |',
-          '  web override policy',
-          'priority: 10',
-        ].join('\n'),
-      });
+      const result = resolveSkillsForFiles(['src/app.ts'], { startDir: root });
+      const fileRules = result.filesWithRules.get('src/app.ts');
 
-      const changedFile = 'packages/web/src/app.ts';
-      const result = resolveSkillsForFiles([changedFile], { startDir: root });
-      const fileSkills = result.filesWithRules.get(changedFile);
-
-      expect(result.rulesLoaded).toBe(2);
-      expect(fileSkills).toBeDefined();
-      expect(fileSkills?.length).toBe(1);
-      expect(fileSkills?.[0]?.id).toBe('no-console-log');
-      expect(fileSkills?.[0]?.severity).toBe('error');
-      expect(fileSkills?.[0]?.instructions.trim()).toBe('web override policy');
+      expect(result.rulesLoaded).toBe(1);
+      expect(fileRules).toBeDefined();
+      expect(fileRules?.length).toBe(1);
+      expect(fileRules?.[0]?.id).toBe('no-console-log');
+      expect(fileRules?.[0]?.severity).toBe('warning');
     });
   });
 
   test('handles include and exclude globs for matching', () => {
     withTempRepo((root) => {
-      writeSkill(root, '.', {
-        name: 'no-tests',
-        description: 'Matches source files only',
-        policyYaml: [
-          'id: no-tests',
-          'title: No tests policy',
-          'severity: warning',
-          'globs:',
-          '  - "**/*.ts"',
-          '  - "!**/*.test.ts"',
-          'instructions: |',
-          '  source only',
-        ].join('\n'),
+      writeMesaRule(root, {
+        id: 'no-tests',
+        title: 'No tests policy',
+        severity: 'warning',
+        globs: ['**/*.ts', '!**/*.test.ts'],
+        instructions: 'source only',
       });
 
       const matched = resolveSkillsForFiles(['src/service.ts'], { startDir: root });
@@ -105,42 +85,40 @@ describe('skills loader', () => {
     });
   });
 
-  test('ignores skills without policy sidecar', () => {
+  test('sorts matched rules by priority (higher first)', () => {
     withTempRepo((root) => {
-      const skillDir = path.join(root, '.claude', 'skills', 'missing-policy');
-      fs.mkdirSync(skillDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(skillDir, 'SKILL.md'),
-        '---\nname: missing-policy\ndescription: Missing sidecar\n---\n\nNo sidecar policy.\n'
-      );
+      writeMesaRule(root, {
+        id: 'low-priority',
+        title: 'Low priority rule',
+        severity: 'info',
+        globs: ['**/*.ts'],
+        instructions: 'low priority',
+        priority: 1,
+      });
 
-      const { parsed, issues } = parseSkillFiles(path.join(root, '.claude', 'skills'));
-      expect(parsed.length).toBe(0);
-      expect(issues.length).toBe(0);
+      writeMesaRule(root, {
+        id: 'high-priority',
+        title: 'High priority rule',
+        severity: 'error',
+        globs: ['**/*.ts'],
+        instructions: 'high priority',
+        priority: 10,
+      });
+
+      const result = resolveSkillsForFiles(['src/app.ts'], { startDir: root });
+      const fileRules = result.filesWithRules.get('src/app.ts');
+
+      expect(fileRules?.length).toBe(2);
+      expect(fileRules?.[0]?.id).toBe('high-priority');
+      expect(fileRules?.[1]?.id).toBe('low-priority');
     });
   });
 
-  test('validates duplicate policy ids as semantic errors', () => {
+  test('returns empty when no .mesa/rules/ directory exists', () => {
     withTempRepo((root) => {
-      const policy = [
-        'id: duplicate-id',
-        'title: Duplicate',
-        'severity: warning',
-        'globs:',
-        '  - "**/*.ts"',
-        'instructions: |',
-        '  same id',
-      ].join('\n');
-
-      writeSkill(root, '.', { name: 'skill-one', description: 'One', policyYaml: policy });
-      writeSkill(root, '.', { name: 'skill-two', description: 'Two', policyYaml: policy });
-
-      const { parsed, issues } = parseSkillFiles(path.join(root, '.claude', 'skills'));
-      expect(issues.length).toBe(0);
-
-      const validation = validateParsedSkills(parsed);
-      expect(validation.length).toBe(1);
-      expect(validation[0]?.message).toContain('duplicate id');
+      const result = resolveSkillsForFiles(['src/app.ts'], { startDir: root });
+      expect(result.rulesLoaded).toBe(0);
+      expect(result.filesWithRules.size).toBe(0);
     });
   });
 });

@@ -51,7 +51,6 @@ export function createMesaMcpServer(): McpServer {
         globs: z.array(z.string()).describe('File glob patterns this rule applies to'),
         instructions: z.string().describe('Detailed instructions for what the rule checks (markdown)'),
         id: z.string().optional().describe('Optional custom rule ID (auto-generated from title if omitted)'),
-        scope: z.string().optional().describe('Optional scope path (e.g., "packages/web") for collocated placement'),
         examples: z
           .object({
             violations: z.array(z.string()).optional().describe('Example code that violates this rule'),
@@ -81,6 +80,15 @@ export function createMesaMcpServer(): McpServer {
       description: 'Validate all review rule files for correct structure and report any errors.',
     },
     () => handleToolCall('mesa_validate_rules', {})
+  );
+
+  server.registerTool(
+    'mesa_sync_rules',
+    {
+      description:
+        'Regenerate .claude/skills/ from .mesa/rules/. Run after cloning a repo or when skills are out of sync.',
+    },
+    () => handleToolCall('mesa_sync_rules', {})
   );
 
   server.registerTool(

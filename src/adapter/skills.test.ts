@@ -16,11 +16,10 @@ function withTempRepo(run: (root: string) => void): void {
   }
 }
 
-describe('createSkillAdapter scope resolution', () => {
-  test('creates skill in scoped directory when scope is provided', () => {
+describe('createSkillAdapter centralized storage', () => {
+  test('writes rule to .mesa/rules/ and generates .claude/skills/', () => {
     withTempRepo((root) => {
       const result = createSkillAdapter({
-        scope: 'packages/web',
         title: 'No Console Log',
         severity: 'warning',
         globs: ['**/*.ts'],
@@ -28,56 +27,63 @@ describe('createSkillAdapter scope resolution', () => {
         repoRoot: root,
       });
 
-      const expectedSkillsDir = path.join(root, 'packages/web', '.claude', 'skills');
-      expect(result.skillsDir).toBe(expectedSkillsDir);
-      expect(result.skillDir.startsWith(expectedSkillsDir)).toBe(true);
-      expect(fs.existsSync(result.skillFilePath)).toBe(true);
       expect(fs.existsSync(result.policyFilePath)).toBe(true);
+      expect(result.policyFilePath).toContain('.mesa/rules/');
     });
   });
 
-  test('auto-creates .claude/skills directory under scope', () => {
+  test('generates .claude/skills/<id>/ directory via sync', () => {
     withTempRepo((root) => {
-      const scopedSkillsDir = path.join(root, 'packages/web', '.claude', 'skills');
-      expect(fs.existsSync(scopedSkillsDir)).toBe(false);
+      const result = createSkillAdapter({
+        title: 'No Console Log',
+        severity: 'warning',
+        globs: ['**/*.ts'],
+        instructions: 'Do not use console.log',
+        repoRoot: root,
+      });
 
-      createSkillAdapter({
-        scope: 'packages/web',
-        title: 'Test Rule',
+      const expectedSkillDir = path.join(root, '.claude', 'skills', 'no-console-log');
+      expect(result.skillDir).toBe(expectedSkillDir);
+      expect(fs.existsSync(result.skillFilePath)).toBe(true);
+    });
+  });
+
+  test('all rules go to .mesa/rules/ regardless of glob paths', () => {
+    withTempRepo((root) => {
+      const result = createSkillAdapter({
+        title: 'Package Scoped Rule',
         severity: 'error',
-        globs: ['**/*.tsx'],
+        globs: ['packages/web/**/*.tsx'],
         instructions: 'Test instructions',
         repoRoot: root,
       });
 
-      expect(fs.existsSync(scopedSkillsDir)).toBe(true);
-    });
-  });
-
-  test('defaults to repo root .claude/skills when no scope provided', () => {
-    withTempRepo((root) => {
-      const result = createSkillAdapter({
-        title: 'Root Rule',
-        severity: 'info',
-        globs: ['**/*.ts'],
-        instructions: 'Root instructions',
-        repoRoot: root,
-      });
-
-      const expectedSkillsDir = path.join(root, '.claude', 'skills');
-      expect(result.skillsDir).toBe(expectedSkillsDir);
-      expect(result.skillDir.startsWith(expectedSkillsDir)).toBe(true);
-      expect(fs.existsSync(result.skillFilePath)).toBe(true);
-      expect(fs.existsSync(result.policyFilePath)).toBe(true);
+      // Generated skill should be at root .claude/skills/
+      expect(result.skillDir).toBe(path.join(root, '.claude', 'skills', 'package-scoped-rule'));
     });
   });
 });
 
-describe('createSkillAdapter rich SKILL.md', () => {
-  test('writes SKILL.md with instruction sections when policy has examples', () => {
+describe('createSkillAdapter SKILL.md and policy file', () => {
+  test('SKILL.md references mesa-policy.yaml', () => {
     withTempRepo((root) => {
       const result = createSkillAdapter({
-        scope: 'packages/web',
+        title: 'Test Rule',
+        severity: 'error',
+        globs: ['**/*.ts'],
+        instructions: 'Test instructions',
+        repoRoot: root,
+      });
+
+      const skillContent = fs.readFileSync(result.skillFilePath, 'utf-8');
+      expect(skillContent).toContain('references/mesa-policy.yaml');
+      expect(skillContent).toContain('name: test-rule');
+    });
+  });
+
+  test('policy file is markdown with YAML frontmatter in .mesa/rules/', () => {
+    withTempRepo((root) => {
+      const result = createSkillAdapter({
         title: 'No Console Log',
         severity: 'warning',
         globs: ['src/**/*.ts'],
@@ -90,43 +96,24 @@ describe('createSkillAdapter rich SKILL.md', () => {
         },
       });
 
-      const skillContent = fs.readFileSync(result.skillFilePath, 'utf-8');
+      const policyContent = fs.readFileSync(result.policyFilePath, 'utf-8');
 
-      // Should contain actual instructions
-      expect(skillContent).toContain('What to Look For');
-      expect(skillContent).toContain('Why This Matters');
-      // Should contain violation examples
-      expect(skillContent).toContain("console.log('debug')");
-      // Should contain compliant examples
-      expect(skillContent).toContain("logger.info('debug')");
-      // Should have frontmatter
-      expect(skillContent).toContain('name: no-console-log');
-      // Should have rule header
-      expect(skillContent).toContain('## Rule: No Console Log');
-      expect(skillContent).toContain('**Severity:** warning');
+      // Should have YAML frontmatter
+      expect(policyContent).toContain('id: no-console-log');
+      expect(policyContent).toContain('title: No Console Log');
+      expect(policyContent).toContain('severity: warning');
+      // Should contain instructions in the body
+      expect(policyContent).toContain('What to Look For');
+      expect(policyContent).toContain('Why This Matters');
+      // Should contain examples
+      expect(policyContent).toContain("console.log('debug')");
+      expect(policyContent).toContain("logger.info('debug')");
     });
   });
 
-  test('writes SKILL.md with policy file reference', () => {
+  test('policy file without examples omits example sections', () => {
     withTempRepo((root) => {
       const result = createSkillAdapter({
-        scope: 'packages/web',
-        title: 'Test Rule',
-        severity: 'error',
-        globs: ['**/*.ts'],
-        instructions: 'Test instructions',
-        repoRoot: root,
-      });
-
-      const skillContent = fs.readFileSync(result.skillFilePath, 'utf-8');
-      expect(skillContent).toContain('references/mesa-policy.yaml');
-    });
-  });
-
-  test('writes SKILL.md without examples section when none provided', () => {
-    withTempRepo((root) => {
-      const result = createSkillAdapter({
-        scope: 'packages/web',
         title: 'Simple Rule',
         severity: 'info',
         globs: ['**/*.ts'],
@@ -134,18 +121,16 @@ describe('createSkillAdapter rich SKILL.md', () => {
         repoRoot: root,
       });
 
-      const skillContent = fs.readFileSync(result.skillFilePath, 'utf-8');
-      expect(skillContent).toContain('Simple instructions here');
-      expect(skillContent).toContain('## Rule: Simple Rule');
-      expect(skillContent).not.toContain('### Violations');
-      expect(skillContent).not.toContain('### Compliant');
+      const policyContent = fs.readFileSync(result.policyFilePath, 'utf-8');
+      expect(policyContent).toContain('Simple instructions here');
+      expect(policyContent).not.toContain('### Violations');
+      expect(policyContent).not.toContain('### Compliant');
     });
   });
 
-  test('includes examples in policy YAML when provided', () => {
+  test('includes examples in policy file when provided', () => {
     withTempRepo((root) => {
       const result = createSkillAdapter({
-        scope: 'packages/web',
         title: 'With Examples',
         severity: 'error',
         globs: ['**/*.ts'],
@@ -157,9 +142,28 @@ describe('createSkillAdapter rich SKILL.md', () => {
         },
       });
 
-      const yamlContent = fs.readFileSync(result.policyFilePath, 'utf-8');
-      expect(yamlContent).toContain('bad()');
-      expect(yamlContent).toContain('good()');
+      const policyContent = fs.readFileSync(result.policyFilePath, 'utf-8');
+      expect(policyContent).toContain('bad()');
+      expect(policyContent).toContain('good()');
+      expect(policyContent).toContain('### Violations');
+      expect(policyContent).toContain('### Compliant');
+    });
+  });
+
+  test('updates .gitignore with mesa-managed block', () => {
+    withTempRepo((root) => {
+      createSkillAdapter({
+        title: 'Gitignored Rule',
+        severity: 'warning',
+        globs: ['**/*.ts'],
+        instructions: 'Test',
+        repoRoot: root,
+      });
+
+      const gitignoreContent = fs.readFileSync(path.join(root, '.gitignore'), 'utf-8');
+      expect(gitignoreContent).toContain('# mesa-generated (do not edit this block)');
+      expect(gitignoreContent).toContain('.claude/skills/gitignored-rule/');
+      expect(gitignoreContent).toContain('# end mesa-generated');
     });
   });
 });

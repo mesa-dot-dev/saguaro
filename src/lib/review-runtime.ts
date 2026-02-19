@@ -12,10 +12,7 @@ import { resolveSkillsForFiles } from './skills.js';
 
 export interface ReviewRuntime {
   listChangedFiles(baseRef: string, headRef: string): Promise<string[]> | string[];
-  loadRules(
-    changedFiles: string[],
-    skillsDir?: string
-  ):
+  loadRules(changedFiles: string[]):
     | Promise<{
         filesWithRules: Map<string, RulePolicy[]>;
         rulesLoaded: number;
@@ -37,13 +34,13 @@ function createGitFileResolver(ref: string): (filePath: string) => string | null
   };
 }
 
-export function createNodeReviewRuntime(): ReviewRuntime {
+export function createNodeReviewRuntime(options?: { rulesDir?: string }): ReviewRuntime {
   return {
     listChangedFiles(baseRef, headRef) {
       return listChangedFilesFromGit(baseRef, headRef);
     },
-    loadRules(changedFiles, skillsDir) {
-      return resolveSkillsForFiles(changedFiles, { explicitSkillsDir: skillsDir });
+    loadRules(changedFiles) {
+      return resolveSkillsForFiles(changedFiles, { explicitRulesDir: options?.rulesDir });
     },
     createReviewer(configPath) {
       const resolvedConfig = loadReviewAdapterConfig(configPath);

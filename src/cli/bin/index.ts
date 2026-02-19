@@ -14,7 +14,15 @@ import { generateRulesCommand } from '../lib/generate.js';
 import { installHook, runHook, uninstallHook } from '../lib/hook.js';
 import indexCmdHandler from '../lib/index-cmd.js';
 import initHandler from '../lib/init.js';
-import { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, validateRules } from '../lib/rules.js';
+import {
+  createRule,
+  deleteRule,
+  explainRule,
+  listRules,
+  locateRulesDirectory,
+  syncRules,
+  validateRules,
+} from '../lib/rules.js';
 import serveHandler from '../lib/serve.js';
 import { resolvePackageVersion, reviewCommand } from '../review.js';
 
@@ -190,9 +198,9 @@ yargs(argv)
       `  $ mesa rules generate         Auto-generate rules from your codebase\n` +
       `  $ mesa review                 Run a review manually\n\n` +
       `${secondary('Rules:')}\n` +
-      `  Rules live in .claude/skills/ as version-controlled files. Each rule\n` +
-      `  defines what to check, which files it applies to, and its severity.\n` +
-      `  Rules can be colocated with packages for monorepo support.`
+      `  Rules live in .mesa/rules/ as version-controlled markdown files. Each\n` +
+      `  rule defines what to check, which files it applies to, and its severity.\n` +
+      `  Globs use repo-root-relative paths for monorepo support.`
   )
   // ---------------------------------------------------------------------------
   // mesa init
@@ -203,7 +211,7 @@ yargs(argv)
     (y: Argv) => {
       y.usage(
         `${secondary('mesa init')} ${tertiary('[options]')}\n\n` +
-          'Creates .mesa/config.yaml, .claude/skills/ for rules, .mcp.json for\n' +
+          'Creates .mesa/config.yaml, .mesa/rules/ for rules, .mcp.json for\n' +
           'Claude Code MCP integration, and installs a Claude Code review hook.\n' +
           'Optionally generates starter rules to get going immediately.'
       )
@@ -265,7 +273,7 @@ yargs(argv)
         .option('rules', {
           describe: 'Path to rules directory',
           type: 'string',
-          defaultDescription: '.claude/skills/',
+          defaultDescription: '.mesa/rules/',
         })
         .example('$0 review', 'Review current branch against main')
         .example('$0 review -b develop', 'Review against a different base branch')
@@ -306,8 +314,8 @@ yargs(argv)
       `${secondary('mesa rules')} <command>\n\n` +
         'Rules define what Mesa checks during a review. Each rule has a title,\n' +
         'severity (error/warning/info), file patterns (globs), and instructions\n' +
-        'for the reviewer. Rules are stored in .claude/skills/ as version-\n' +
-        'controlled files and can be colocated with packages.'
+        'for the reviewer. Rules are stored in .mesa/rules/ as version-\n' +
+        'controlled markdown files with repo-root-relative globs.'
     )
       .demandCommand(1, 'Please specify a rules subcommand. Run "mesa rules --help" for options.')
       .command(
@@ -332,6 +340,12 @@ yargs(argv)
         'Check all rule files for correct structure',
         {},
         wrapHandler('rules-validate', validateRules as (argv: unknown) => number)
+      )
+      .command(
+        'sync',
+        'Regenerate .claude/skills/ from .mesa/rules/',
+        {},
+        wrapHandler('rules-sync', () => syncRules()) as (argv: unknown) => Promise<void>
       )
       .command(
         'locate',
@@ -359,7 +373,7 @@ yargs(argv)
               'Walk through an interactive flow to define a new review rule.\n' +
               'Mesa analyzes the target directory, generates rule instructions\n' +
               'with AI, previews which files would match, and saves the rule\n' +
-              'to .claude/skills/.'
+              'to .mesa/rules/.'
           )
             .positional('target', {
               describe: 'Directory the rule targets (e.g. src/api, packages/web)',
@@ -367,10 +381,6 @@ yargs(argv)
             })
             .option('intent', {
               describe: 'What the rule should enforce (e.g. "no direct DB queries in handlers")',
-              type: 'string',
-            })
-            .option('scope', {
-              describe: 'Where to save the rule: repo root or a package directory',
               type: 'string',
             })
             .option('severity', {

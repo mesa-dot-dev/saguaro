@@ -1,8 +1,6 @@
 import type { RulePolicy } from '../types/types.js';
 
-export interface StarterRuleSkill extends RulePolicy {}
-
-export const STARTER_RULE_SKILLS: StarterRuleSkill[] = [
+export const STARTER_RULE_SKILLS: RulePolicy[] = [
   {
     id: 'no-console-log',
     title: 'No console.log in production code',
@@ -307,4 +305,4 @@ export const STARTER_RULE_SKILLS: StarterRuleSkill[] = [
     },
     tags: ['security', 'authentication', 'timing-attack', 'cross-file'],
   },
-] as const satisfies StarterRuleSkill[];
+] as const satisfies RulePolicy[];

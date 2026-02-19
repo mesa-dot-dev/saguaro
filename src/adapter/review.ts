@@ -23,7 +23,7 @@ export interface ReviewAdapterResult {
 }
 
 export async function runReview(request: ReviewAdapterRequest, runtime?: ReviewRuntime): Promise<ReviewAdapterResult> {
-  const effectiveRuntime = runtime ?? createNodeReviewRuntime();
+  const effectiveRuntime = runtime ?? createNodeReviewRuntime({ rulesDir: request.rulesDir });
   const changedFilesOverride = request.changedFilesOverride;
 
   // Always ensure diffs are available — the review is meaningless without them
@@ -32,7 +32,7 @@ export async function runReview(request: ReviewAdapterRequest, runtime?: ReviewR
   const reviewCore = createReviewCore({
     input: {
       listChangedFiles: (base, head) => changedFilesOverride ?? effectiveRuntime.listChangedFiles(base, head),
-      loadRules: (changedFiles) => effectiveRuntime.loadRules(changedFiles, request.rulesDir),
+      loadRules: (changedFiles) => effectiveRuntime.loadRules(changedFiles),
     },
     reviewer: effectiveRuntime.createReviewer(request.configPath),
   });

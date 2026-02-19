@@ -13,6 +13,8 @@ import {
   writeGeneratedRules,
 } from '../../adapter/skills.js';
 import { generateRules } from '../../generator/index.js';
+import { syncSkillsFromRules } from '../../lib/skill-sync.js';
+import { findRepoRoot } from '../../lib/skills.js';
 import type { RulePolicy, Severity } from '../../types/types.js';
 
 // ---------------------------------------------------------------------------
@@ -46,7 +48,7 @@ function errorResult(message: string): CallToolResult {
 
 function handleListRules(args: Record<string, unknown>): CallToolResult {
   debug('mesa_list_rules called', args);
-  const { skills } = listSkillsAdapter({});
+  const { skills } = listSkillsAdapter();
   const tags = args.tags as string[] | undefined;
 
   const mapped = skills.map((s) => ({
@@ -87,7 +89,7 @@ function handleExplainRule(args: Record<string, unknown>): CallToolResult {
 
 function handleValidateRules(): CallToolResult {
   debug('mesa_validate_rules called');
-  const { validated, errors } = validateSkillsAdapter({});
+  const { validated, errors } = validateSkillsAdapter();
   debug(`mesa_validate_rules: ${validated.length} validated, ${errors.length} errors`);
   return jsonResult({
     valid: errors.length === 0,
@@ -103,7 +105,6 @@ function handleCreateRule(args: Record<string, unknown>): CallToolResult {
   const globs = args.globs as string[];
   const instructions = args.instructions as string;
   const id = args.id as string | undefined;
-  const scope = args.scope as string | undefined;
   const examples = args.examples as { violations?: string[]; compliant?: string[] } | undefined;
 
   if (!title || !severity || !globs || !instructions) {
@@ -116,7 +117,6 @@ function handleCreateRule(args: Record<string, unknown>): CallToolResult {
     globs,
     instructions,
     id,
-    scope,
     examples,
   });
 
@@ -141,6 +141,18 @@ function handleDeleteRule(args: Record<string, unknown>): CallToolResult {
   }
 
   return jsonResult({ deleted: true, id: ruleId });
+}
+
+function handleSyncRules(): CallToolResult {
+  debug('mesa_sync_rules called');
+  const repoRoot = findRepoRoot();
+  const result = syncSkillsFromRules(repoRoot);
+  debug(`mesa_sync_rules: ${result.generated.length} generated, ${result.removed.length} removed`);
+  return jsonResult({
+    generated: result.generated.length,
+    removed: result.removed.length,
+    errors: result.errors,
+  });
 }
 
 async function handleGenerateRules(): Promise<CallToolResult> {
@@ -264,6 +276,8 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
       return handleCreateRule(args);
     case 'mesa_delete_rule':
       return handleDeleteRule(args);
+    case 'mesa_sync_rules':
+      return handleSyncRules();
     case 'mesa_generate_rules':
       try {
         return await handleGenerateRules();
