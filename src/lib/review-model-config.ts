@@ -32,6 +32,10 @@ const ReviewSchema = z.object({
   files_per_worker: z.number().int().positive().default(3),
 });
 
+const HookSchema = z.object({
+  enabled: z.boolean().default(true),
+});
+
 export const MesaConfigSchema = z
   .object({
     model: z.object({
@@ -42,6 +46,7 @@ export const MesaConfigSchema = z
     output: OutputSchema.default({ cursor_deeplink: true }),
     index: IndexSchema.default({ enabled: true, blast_radius_depth: 2, context_token_budget: 4000 }),
     review: ReviewSchema.default({ max_steps_size: 10, files_per_worker: 3 }),
+    hook: HookSchema.default({ enabled: true }),
   })
   .strict();
 

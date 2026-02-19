@@ -53,6 +53,14 @@ review:
 
   # Number of files to include in each worker batch
   files_per_worker: 2
+
+# =============================================================================
+# Hook Settings
+# =============================================================================
+
+hook:
+  # Automatically review code when Claude Code finishes writing
+  enabled: true
 `;
 }
 

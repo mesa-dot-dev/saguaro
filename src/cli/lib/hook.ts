@@ -4,6 +4,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import { runHookReview } from '../../lib/hook-runner.js';
 import { logger } from '../../lib/logger.js';
+import { loadValidatedConfig } from '../../lib/review-model-config.js';
 import { findRepoRoot } from '../../lib/rule-resolution.js';
 
 const CLAUDE_SETTINGS_DIR = '.claude';
@@ -171,6 +172,11 @@ export async function runHook(argv: HookRunArgv): Promise<number> {
   // Loop prevention: if Claude is already fixing violations from a previous
   // Stop hook run, let it finish without re-triggering a review.
   if (input?.stop_hook_active) {
+    return 0;
+  }
+
+  const config = loadValidatedConfig(argv.config);
+  if (!config.hook.enabled) {
     return 0;
   }
 

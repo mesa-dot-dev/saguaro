@@ -143,13 +143,14 @@ export const STARTER_RULE_SKILLS: RulePolicy[] = [
     severity: 'error',
     globs: ['**/*.ts', '**/*.tsx', '**/*.js', '!**/*.test.*', '!**/*.spec.*'],
     instructions:
-      'TODO and FIXME comments that reference security-critical settings must not be merged.\nThese indicate known security gaps that are being deferred rather than addressed.\n\n## What to Look For\n\nFlag any \\`TODO\\`, \\`FIXME\\`, \\`HACK\\`, or \\`XXX\\` comment that contains any of these\nsecurity-sensitive terms:\n- SSL, TLS, HTTPS, encryption, certificate\n- auth, authentication, authorization, token, session\n- rate-limit, rate limit, throttle, brute-force\n- sanitize, validate, escape, XSS, injection\n- CORS, CSP, CSRF\n- secret, credential, password, API key\n\n## Why This Matters\n\n- A TODO to "re-enable SSL" means SSL is currently disabled\n- A FIXME for "add rate limiting" means the endpoint is currently unprotected\n- These comments document known vulnerabilities that should block merge\n\n## Exceptions\n\n- TODOs that reference a tracking ticket (e.g., \\`TODO(SEC-123)\\`) and describe future enhancements\n  rather than missing security controls may be acceptable if the current state is still secure\n',
+      'TODO and FIXME comments that reference security-critical settings must not be merged.\nThese indicate known security gaps that are being deferred rather than addressed.\n\n## What to Look For\n\nFlag any \\`TODO\\`, \\`FIXME\\`, \\`HACK\\`, or \\`XXX\\` comment that contains any of these\nsecurity-sensitive terms:\n- SSL, TLS, HTTPS, encryption, certificate\n- auth, authentication, authorization, token, session\n- rate-limit, rate limit, throttle, brute-force\n- sanitize, validate, escape, XSS, injection\n- CORS, CSP, CSRF\n- secret, credential, password, API key\n\n## Why This Matters\n\n- A TODO to "re-enable SSL" means SSL is currently disabled\n- A FIXME for "add rate limiting" means the endpoint is currently unprotected\n- These comments document known vulnerabilities that should block merge\n\n## Exceptions\n\n- TODOs that reference a tracking ticket with a numeric ID (e.g., \\`TODO(SEC-123)\\`) and describe\n  future enhancements rather than missing security controls may be acceptable if the current state\n  is still secure. A bare prefix without a ticket number (e.g., \\`TODO(SEC)\\`) is NOT a valid\n  ticket reference and must still be flagged.\n',
     examples: {
       violations: [
         '// TODO: re-enable SSL',
         '// FIXME: add rate limiting before production',
         '// TODO: validate auth token',
         '// HACK: disabled CORS for testing',
+        '// TODO(SEC): fix authentication bypass',
       ],
       compliant: [
         '// TODO: add dark mode support',
