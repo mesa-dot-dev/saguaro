@@ -228,6 +228,7 @@ async function handleReview(args: Record<string, unknown>): Promise<CallToolResu
     onProgress: (event) => {
       debug('review-progress', event);
     },
+    source: 'mcp',
   });
   const durationMs = Date.now() - startMs;
 

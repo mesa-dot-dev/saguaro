@@ -1,5 +1,6 @@
 export * from './adapter/review.js';
 export * from './adapter/rules.js';
+export { appendReviewEntry, getDefaultHistoryPath, readReviewHistory } from './lib/history.js';
 export type { MesaRuleFile, MesaRuleParseError, MesaRulesResult } from './lib/mesa-rules.js';
 export {
   buildMesaRuleMarkdown,
@@ -11,3 +12,4 @@ export {
 export type { SyncResult } from './lib/skill-sync.js';
 export { syncSkillsFromRules } from './lib/skill-sync.js';
 export { createMesaMcpServer, startMcpServer } from './mcp/server.js';
+export type { ReviewHistoryEntry } from './types/types.js';

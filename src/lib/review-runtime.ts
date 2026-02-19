@@ -10,6 +10,11 @@ import {
 import { runReviewAgent } from './review-runner.js';
 import { resolveRulesForFiles } from './rule-resolution.js';
 
+export interface ModelInfo {
+  provider: string;
+  model: string;
+}
+
 export interface ReviewRuntime {
   listChangedFiles(baseRef: string, headRef: string): Promise<string[]> | string[];
   loadRules(changedFiles: string[]):
@@ -21,7 +26,7 @@ export interface ReviewRuntime {
         filesWithRules: Map<string, RulePolicy[]>;
         rulesLoaded: number;
       };
-  createReviewer(configPath?: string): Reviewer;
+  createReviewer(configPath?: string): { reviewer: Reviewer; modelInfo: ModelInfo };
 }
 
 function createGitFileResolver(ref: string): (filePath: string) => string | null {
@@ -48,24 +53,27 @@ export function createNodeReviewRuntime(options?: { rulesDir?: string }): Review
       const model = resolveModelFromResolvedConfig(modelConfig);
 
       return {
-        async review(input) {
-          try {
-            return await runReviewAgent({
-              filesWithRules: input.filesWithRules,
-              diffs: input.diffs ?? new Map(),
-              model,
-              filesPerWorker: resolvedConfig.filesPerWorker,
-              maxSteps: resolvedConfig.maxSteps,
-              verbose: input.verbose,
-              codebaseContext: input.codebaseContext,
-              onProgress: input.onProgress,
-              resolveFile: createGitFileResolver(input.headRef),
-              abortSignal: input.abortSignal,
-            });
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            throw new AgentExecutionError(message, error);
-          }
+        modelInfo: { provider: modelConfig.provider, model: modelConfig.model },
+        reviewer: {
+          async review(input) {
+            try {
+              return await runReviewAgent({
+                filesWithRules: input.filesWithRules,
+                diffs: input.diffs ?? new Map(),
+                model,
+                filesPerWorker: resolvedConfig.filesPerWorker,
+                maxSteps: resolvedConfig.maxSteps,
+                verbose: input.verbose,
+                codebaseContext: input.codebaseContext,
+                onProgress: input.onProgress,
+                resolveFile: createGitFileResolver(input.headRef),
+                abortSignal: input.abortSignal,
+              });
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              throw new AgentExecutionError(message, error);
+            }
+          },
         },
       };
     },

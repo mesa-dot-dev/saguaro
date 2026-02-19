@@ -89,6 +89,7 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
         diffs,
         onProgress: progressReporter ? progressReporter.onProgress : undefined,
         abortSignal: options.abortSignal,
+        source: 'cli',
       });
       progressReporter?.finish();
       outcome = reviewResult.outcome;

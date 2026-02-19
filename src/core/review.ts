@@ -48,6 +48,7 @@ interface BaseReviewOutcome {
   filesWithRules: number;
   totalChecks: number;
   durationMs: number;
+  rulesEvaluated: string[];
 }
 
 export interface NoChangedFilesOutcome extends BaseReviewOutcome {
@@ -98,11 +99,15 @@ export function createReviewCore(deps: ReviewCoreDeps): ReviewCore {
           filesWithRules: 0,
           totalChecks: 0,
           durationMs: clock.nowMs() - startedAtMs,
+          rulesEvaluated: [],
         };
       }
 
       const filesWithRulesMap = rulesResolution.filesWithRules;
       const totalChecks = Array.from(filesWithRulesMap.values()).reduce((acc, fileRules) => acc + fileRules.length, 0);
+      const rulesEvaluated = [
+        ...new Set(Array.from(filesWithRulesMap.values()).flatMap((rules) => rules.map((r) => r.id))),
+      ];
 
       if (filesWithRulesMap.size === 0) {
         return {
@@ -112,6 +117,7 @@ export function createReviewCore(deps: ReviewCoreDeps): ReviewCore {
           filesWithRules: 0,
           totalChecks,
           durationMs: clock.nowMs() - startedAtMs,
+          rulesEvaluated,
         };
       }
 
@@ -142,6 +148,7 @@ export function createReviewCore(deps: ReviewCoreDeps): ReviewCore {
         filesWithRules: filesWithRulesMap.size,
         totalChecks,
         durationMs,
+        rulesEvaluated,
         result,
       };
     },

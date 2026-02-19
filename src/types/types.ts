@@ -98,3 +98,14 @@ export type ReviewProgressEvent =
   | ReviewRunSummaryProgressEvent;
 
 export type ReviewProgressCallback = (event: ReviewProgressEvent) => void;
+
+export interface ReviewHistoryEntry {
+  timestamp: string;
+  source: 'cli' | 'hook' | 'mcp';
+  baseRef: string;
+  headRef: string;
+  provider: string;
+  model: string;
+  rulesEvaluated: string[];
+  result: ReviewResult;
+}

@@ -52,7 +52,12 @@ function updateGitignore(repoRoot: string): void {
     `${escapeRegExp(GITIGNORE_BLOCK_START)}[\\s\\S]*?${escapeRegExp(GITIGNORE_BLOCK_END)}`
   );
 
-  const newBlock = [GITIGNORE_BLOCK_START, `${SKILLS_DIR}/${MESA_SKILL_NAME}/`, GITIGNORE_BLOCK_END].join('\n');
+  const newBlock = [
+    GITIGNORE_BLOCK_START,
+    `${SKILLS_DIR}/${MESA_SKILL_NAME}/`,
+    '.mesa/history/',
+    GITIGNORE_BLOCK_END,
+  ].join('\n');
 
   const hasExistingBlock = blockPattern.test(content);
 

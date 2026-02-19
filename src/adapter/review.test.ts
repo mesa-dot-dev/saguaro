@@ -27,25 +27,28 @@ describe('runReview adapter translation', () => {
         ]),
       }),
       createReviewer: () => ({
-        review: async () => ({
-          violations: [
-            {
-              ruleId: 'no-console-log',
-              ruleTitle: 'No console.log in production code',
-              severity: 'warning',
-              file: 'src/app.ts',
-              line: 10,
-              message: 'console.log should not be used',
+        modelInfo: { provider: 'anthropic', model: 'test-model' },
+        reviewer: {
+          review: async () => ({
+            violations: [
+              {
+                ruleId: 'no-console-log',
+                ruleTitle: 'No console.log in production code',
+                severity: 'warning',
+                file: 'src/app.ts',
+                line: 10,
+                message: 'console.log should not be used',
+              },
+            ],
+            summary: {
+              filesReviewed: 1,
+              rulesChecked: 1,
+              errors: 0,
+              warnings: 1,
+              infos: 0,
             },
-          ],
-          summary: {
-            filesReviewed: 1,
-            rulesChecked: 1,
-            errors: 0,
-            warnings: 1,
-            infos: 0,
-          },
-        }),
+          }),
+        },
       }),
     };
 
@@ -87,16 +90,19 @@ describe('runReview adapter translation', () => {
         filesWithRules: new Map(),
       }),
       createReviewer: () => ({
-        review: async () => ({
-          violations: [],
-          summary: {
-            filesReviewed: 0,
-            rulesChecked: 0,
-            errors: 0,
-            warnings: 0,
-            infos: 0,
-          },
-        }),
+        modelInfo: { provider: 'anthropic', model: 'test-model' },
+        reviewer: {
+          review: async () => ({
+            violations: [],
+            summary: {
+              filesReviewed: 0,
+              rulesChecked: 0,
+              errors: 0,
+              warnings: 0,
+              infos: 0,
+            },
+          }),
+        },
       }),
     };
 

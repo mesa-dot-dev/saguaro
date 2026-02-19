@@ -65,6 +65,7 @@ export async function runHookReview(options: HookRunOptions): Promise<HookDecisi
     codebaseContext,
     diffs: mergedDiffs,
     abortSignal: options.abortSignal,
+    source: 'hook',
   });
 
   if (outcome.kind !== 'reviewed') {

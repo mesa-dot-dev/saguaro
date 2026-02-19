@@ -25,6 +25,7 @@ import {
   validateRules,
 } from '../lib/rules.js';
 import serveHandler from '../lib/serve.js';
+import { statsCommand } from '../lib/stats.js';
 import { resolvePackageVersion, reviewCommand } from '../review.js';
 
 process.on('unhandledRejection', (reason) => {
@@ -518,6 +519,30 @@ yargs(argv)
         wrapHandler('hook-run', runHook as (argv: unknown) => Promise<number>)
       );
   })
+  .command(
+    'stats',
+    'Show review history and usage analytics',
+    (y: Argv) => {
+      y.usage(
+        `${secondary('mesa stats')} ${tertiary('[options]')}\n\n` +
+          'Displays aggregated analytics from your local review history.\n' +
+          'Includes cost, token usage, model breakdown, violation trends,\n' +
+          'and rule effectiveness. Data comes from .mesa/history/reviews.jsonl\n' +
+          '(never sent anywhere).'
+      )
+        .option('days', {
+          alias: 'd',
+          describe: 'Only include reviews from the last N days',
+          type: 'number',
+        })
+        .example('$0 stats', 'Show all-time review analytics')
+        .example('$0 stats -d 7', 'Show last 7 days')
+        .example('$0 stats -d 30', 'Show last 30 days');
+    },
+    wrapHandler('stats', ((argv: { days?: number }) => {
+      return statsCommand({ days: argv.days });
+    }) as (argv: unknown) => number)
+  )
   .middleware((argv) => {
     const command = argv._[0];
     if (!command || command === 'init') return;
