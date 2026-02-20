@@ -149,6 +149,30 @@ describe('mesa_delete_rule', () => {
   });
 });
 
+describe('mesa_get_generated_rule_details', () => {
+  test('returns error when no rules have been generated', async () => {
+    await withTempRepo(async () => {
+      const { client } = await createTestClient();
+      const result = await callTool(client, 'mesa_get_generated_rule_details', {
+        rule_ids: ['some-rule'],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(textContent(result)).toContain('No generated rules in session');
+    });
+  });
+
+  test('returns validation error when rule_ids is missing', async () => {
+    await withTempRepo(async () => {
+      const { client } = await createTestClient();
+      const result = await callTool(client, 'mesa_get_generated_rule_details', {});
+
+      expect(result.isError).toBe(true);
+      expect(textContent(result)).toContain('Invalid');
+    });
+  });
+});
+
 describe('mesa_review', () => {
   test('returns error gracefully when called without proper git context', async () => {
     await withTempRepo(async () => {

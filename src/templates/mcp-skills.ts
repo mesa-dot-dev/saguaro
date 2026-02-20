@@ -57,6 +57,15 @@ description: Generate a single Mesa review rule using the AI pipeline with previ
 name: mesa-generaterules
 description: Auto-generate Mesa review rules using the full AI pipeline with approval before writing
 ---
+## Important — Two-Phase Data Model
+
+\`mesa_generate_rules\` returns **compact summaries only** (id, title, severity, globs) to stay within tool output limits. Full rule details (instructions, examples) are held in server session state.
+
+- To inspect full rule details, call \`mesa_get_generated_rule_details\` with an array of rule IDs.
+- To write rules to disk, call \`mesa_write_accepted_rules\` with an array of rule IDs.
+
+Both tools read from the same session state populated by \`mesa_generate_rules\`. Do NOT call \`mesa_generate_rules\` again — it would overwrite the session.
+
 ## Flow
 
 1. **Start the pipeline** — Call the \`mesa_generate_rules\` MCP tool.
@@ -66,9 +75,9 @@ description: Auto-generate Mesa review rules using the full AI pipeline with app
    - Files scanned
    - Rules generated
    - Duration
-   - A compact list of all generated rules (ID + one-line description each)
+   Do NOT list individual rules here — the list is too long and users don't want to scroll.
 
-3. **Choose review mode** — Always ask the user how they want to review the generated rules. Present these options:
+3. **Choose review mode** — Use the \`AskUserQuestion\` tool to ask the user how they want to review the generated rules. Present these options:
    - **Accept all** — Create all rules as-is without individual review
    - **Bulk review by group** — Group rules by package/domain (inferred from their glob patterns) and let the user accept or skip entire groups at a time
    - **Review individually** — Go through each rule one by one for Accept/Skip/Edit decisions
@@ -76,24 +85,23 @@ description: Auto-generate Mesa review rules using the full AI pipeline with app
 
 4. **Execute the chosen review mode:**
 
-   **If "Accept all":** proceed directly to writing all rules.
+   **If "Accept all":** Proceed directly to writing all rules.
 
-   **If "Bulk review by group":** Group rules by their target area based on glob patterns (e.g., all rules with \`packages/web/**\` globs form a "Web Package" group). Present the groups with rule counts and a brief description, then let the user select which groups to accept. All rules in non-selected groups are skipped.
+   **If "Bulk review by group":** Group rules by their target area based on glob patterns (e.g., all rules with \`packages/web/**\` globs form a "Web Package" group). Present a single compact table with one row per group showing: group name and rule count. Do NOT list individual rules within each group. Then use \`AskUserQuestion\` with \`multiSelect: true\` to let the user select which groups to accept. All rules in non-selected groups are skipped.
 
-   **If "Review individually":** For each rule, present:
-   - **Title**, **ID**, **severity**
-   - **Globs** (file patterns)
-   - **Instructions** (the full rule body)
-   - **Examples** (violations and compliant snippets, if present)
+   **If "Review individually":**
+   - Batch rules into groups of 5-10.
+   - For each batch, call \`mesa_get_generated_rule_details\` with the batch's rule IDs to fetch full details.
+   - For each rule in the batch, present: **Title**, **ID**, **severity**, **Globs**, **Instructions** (the full rule body), **Examples** (if present).
+   - Then use \`AskUserQuestion\` to ask: **Accept / Skip / Edit**
+     - **Accept** — mark for creation
+     - **Skip** — discard this rule
+     - **Edit** — let the user modify fields, then re-confirm
+   - Repeat for each batch until all rules have been reviewed.
 
-   Then ask: **Accept / Skip / Edit**
-   - **Accept** — mark for creation
-   - **Skip** — discard this rule
-   - **Edit** — let the user modify fields, then re-confirm
+   **If "Skip all":** Discard everything and confirm.
 
-   **If "Skip all":** discard everything and confirm.
-
-5. **Write accepted rules** — Collect the IDs of all accepted rules, then call \`mesa_write_accepted_rules\` once with the full list of accepted rule IDs. The server holds the generated rules in memory and writes them using the same deterministic codepath as the CLI (scope placement, skill file structure). Do NOT call \`mesa_create_rule\` individually — use \`mesa_write_accepted_rules\` for batch generation results.
+5. **Write accepted rules** — Collect the IDs of all accepted rules, then call \`mesa_write_accepted_rules\` once with the full list of accepted rule IDs. The server writes them using the same deterministic codepath as the CLI (scope computed from globs, skill files created). Do NOT call \`mesa_create_rule\` individually — use \`mesa_write_accepted_rules\` for batch generation results.
 
 6. **Final summary** — Report how many rules were written vs. skipped, with their IDs and file paths (from the tool response).
 `,

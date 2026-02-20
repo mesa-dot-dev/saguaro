@@ -74,9 +74,23 @@ export function createMesaMcpServer(): McpServer {
     'mesa_generate_rules',
     {
       description:
-        'Run the full rule generation pipeline (codebase scanning, import graph indexing, LLM analysis, synthesis). Returns proposed rules without writing them. Use mesa_write_accepted_rules to persist accepted rules.',
+        'Run the full rule generation pipeline (codebase scanning, import graph indexing, LLM analysis, synthesis). Returns compact rule summaries (id, title, severity, globs) without writing them. Full rule details (instructions, examples) are held in session — use mesa_get_generated_rule_details to fetch them. Use mesa_write_accepted_rules to persist accepted rules.',
     },
     () => handleToolCall('mesa_generate_rules', {})
+  );
+
+  server.registerTool(
+    'mesa_get_generated_rule_details',
+    {
+      description:
+        'Fetch full details (instructions, examples, tags) for specific generated rules by ID. Reads from session state populated by the most recent mesa_generate_rules call. Use this to inspect rules before approving them.',
+      inputSchema: {
+        rule_ids: z
+          .array(z.string())
+          .describe('Array of rule IDs to fetch full details for (from mesa_generate_rules output)'),
+      },
+    },
+    (args) => handleToolCall('mesa_get_generated_rule_details', args)
   );
 
   server.registerTool(

@@ -117,13 +117,38 @@ async function handleGenerateRules(): Promise<CallToolResult> {
   lastGeneratedRules = result.rules;
   debug(`mesa_generate_rules returning ${result.rules.length} rules (stored in session state)`);
   return jsonResult({
-    rules: result.rules,
+    rules: result.rules.map((r) => ({
+      id: r.id,
+      title: r.title,
+      severity: r.severity,
+      globs: r.globs,
+    })),
     summary: {
       filesScanned: result.summary.filesScanned,
       rulesGenerated: result.summary.rulesGenerated,
       durationMs: result.summary.durationMs,
     },
   });
+}
+
+function handleGetGeneratedRuleDetails(args: Record<string, unknown>): CallToolResult {
+  debug('mesa_get_generated_rule_details called', args);
+  const ruleIds = args.rule_ids as string[];
+
+  if (!ruleIds || !Array.isArray(ruleIds) || ruleIds.length === 0) {
+    return errorResult('rule_ids is required and must be a non-empty array of rule ID strings');
+  }
+
+  if (lastGeneratedRules.length === 0) {
+    return errorResult('No generated rules in session. Run mesa_generate_rules first.');
+  }
+
+  const requestedSet = new Set(ruleIds);
+  const found = lastGeneratedRules.filter((r) => requestedSet.has(r.id));
+  const notFound = ruleIds.filter((id) => !lastGeneratedRules.some((r) => r.id === id));
+
+  debug(`mesa_get_generated_rule_details: ${found.length} found, ${notFound.length} not found`);
+  return jsonResult({ rules: found, notFound });
 }
 
 async function handleGenerateRule(args: Record<string, unknown>): Promise<CallToolResult> {
@@ -220,44 +245,69 @@ async function handleReview(args: Record<string, unknown>): Promise<CallToolResu
   }
 }
 
+function measureResult(result: CallToolResult): { chars: number; contentBlocks: number } {
+  let chars = 0;
+  const content = result.content as { type: string; text?: string }[];
+  for (const block of content) {
+    if (block.text) chars += block.text.length;
+  }
+  return { chars, contentBlocks: content.length };
+}
+
 export async function handleToolCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
   debug(`handleToolCall: ${name}`);
+  let result: CallToolResult;
   switch (name) {
     case 'mesa_validate_rules':
-      return handleValidateRules();
+      result = handleValidateRules();
+      break;
     case 'mesa_create_rule':
-      return handleCreateRule(args);
+      result = handleCreateRule(args);
+      break;
     case 'mesa_delete_rule':
-      return handleDeleteRule(args);
+      result = handleDeleteRule(args);
+      break;
     case 'mesa_sync_rules':
-      return handleSyncRules();
+      result = handleSyncRules();
+      break;
     case 'mesa_generate_rules':
       try {
-        return await handleGenerateRules();
+        result = await handleGenerateRules();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         debug('mesa_generate_rules EXCEPTION', { error: message, stack: err instanceof Error ? err.stack : undefined });
-        return errorResult(`Rule generation failed: ${message}`);
+        result = errorResult(`Rule generation failed: ${message}`);
       }
+      break;
     case 'mesa_generate_rule':
       try {
-        return await handleGenerateRule(args);
+        result = await handleGenerateRule(args);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         debug('mesa_generate_rule EXCEPTION', { error: message, stack: err instanceof Error ? err.stack : undefined });
-        return errorResult(`Rule generation failed: ${message}`);
+        result = errorResult(`Rule generation failed: ${message}`);
       }
+      break;
+    case 'mesa_get_generated_rule_details':
+      result = handleGetGeneratedRuleDetails(args);
+      break;
     case 'mesa_write_accepted_rules':
-      return handleWriteAcceptedRules(args);
+      result = handleWriteAcceptedRules(args);
+      break;
     case 'mesa_review':
       try {
-        return await handleReview(args);
+        result = await handleReview(args);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         debug('mesa_review EXCEPTION', { error: message, stack: err instanceof Error ? err.stack : undefined });
-        return errorResult(`Review failed: ${message}`);
+        result = errorResult(`Review failed: ${message}`);
       }
+      break;
     default:
-      return errorResult(`Unknown tool: ${name}`);
+      result = errorResult(`Unknown tool: ${name}`);
   }
+
+  const { chars, contentBlocks } = measureResult(result);
+  debug(`handleToolCall complete: ${name}`, { chars, contentBlocks, isError: result.isError ?? false });
+  return result;
 }
