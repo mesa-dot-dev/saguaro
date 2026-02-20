@@ -4,9 +4,7 @@ import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
 import { runReview } from '../adapter/review.js';
 import type { ReviewEngineOutcome } from '../core/review.js';
-import { getCodebaseContext } from '../indexer/index.js';
 import { MesaError } from '../lib/errors.js';
-import { getDiffs, getRepoRoot, listChangedFilesFromGit } from '../lib/git.js';
 import { logger } from '../lib/logger.js';
 import { loadValidatedConfig } from '../lib/review-model-config.js';
 import type { ReviewProgressEvent, ReviewResult, Violation } from '../types/types.js';
@@ -41,35 +39,8 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
   try {
     const config = loadValidatedConfig(options.config);
     const cursorDeeplink = config.output.cursor_deeplink;
-    const indexSettings = {
-      enabled: config.index.enabled,
-      blastRadiusDepth: config.index.blast_radius_depth,
-      contextTokenBudget: config.index.context_token_budget,
-    };
-
-    const changedFiles = listChangedFilesFromGit(baseRef, headRef);
-    const diffs = getDiffs(baseRef, headRef);
 
     console.log(chalk.gray(`Starting Mesa code review comparing ${CLI_ACCENT(baseRef)} → ${CLI_ACCENT(headRef)}.`));
-
-    if (options.verbose) {
-      logger.verbose(`\nPre-computed diffs for ${diffs.size} files.`);
-    }
-
-    // Compute codebase context for the indexer (graceful — never blocks review)
-    let codebaseContext = '';
-    if (indexSettings.enabled && changedFiles.length > 0) {
-      // rootDir = repo root (indexing scope), cacheDir = alongside config (repo-root/.mesa/cache)
-      const repoRoot = getRepoRoot();
-      codebaseContext = await getCodebaseContext({
-        rootDir: repoRoot,
-        cacheDir: path.join(repoRoot, '.mesa', 'cache'),
-        changedFiles,
-        blastRadiusDepth: indexSettings.blastRadiusDepth,
-        tokenBudget: indexSettings.contextTokenBudget,
-        verbose: options.verbose,
-      });
-    }
 
     if (options.verbose) {
       logger.verbose('\nRunning code review agent...');
@@ -85,8 +56,6 @@ export async function reviewCommand(options: ReviewOptions): Promise<number> {
         rulesDir: options.rules,
         verbose: options.verbose,
         configPath: options.config,
-        codebaseContext,
-        diffs,
         onProgress: progressReporter ? progressReporter.onProgress : undefined,
         abortSignal: options.abortSignal,
         source: 'cli',
