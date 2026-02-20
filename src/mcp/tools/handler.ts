@@ -19,6 +19,7 @@ import type { RulePolicy, Severity } from '../../types/types.js';
 // State: last generated rules (survives across tool calls within a session)
 // ---------------------------------------------------------------------------
 let lastGeneratedRules: RulePolicy[] = [];
+let detailsCursor = 0;
 
 const LOG_FILE = path.join(os.tmpdir(), 'mesa-mcp-debug.log');
 
@@ -115,6 +116,7 @@ async function handleGenerateRules(): Promise<CallToolResult> {
   debug('mesa_generate_rules called');
   const result = await generateRules({ cwd: process.cwd() });
   lastGeneratedRules = result.rules;
+  detailsCursor = 0;
   debug(`mesa_generate_rules returning ${result.rules.length} rules (stored in session state)`);
   return jsonResult({
     rules: result.rules.map((r) => ({
@@ -131,24 +133,33 @@ async function handleGenerateRules(): Promise<CallToolResult> {
   });
 }
 
+const DETAILS_BATCH_SIZE = 10;
+
 function handleGetGeneratedRuleDetails(args: Record<string, unknown>): CallToolResult {
   debug('mesa_get_generated_rule_details called', args);
-  const ruleIds = args.rule_ids as string[];
-
-  if (!ruleIds || !Array.isArray(ruleIds) || ruleIds.length === 0) {
-    return errorResult('rule_ids is required and must be a non-empty array of rule ID strings');
-  }
 
   if (lastGeneratedRules.length === 0) {
     return errorResult('No generated rules in session. Run mesa_generate_rules first.');
   }
 
-  const requestedSet = new Set(ruleIds);
-  const found = lastGeneratedRules.filter((r) => requestedSet.has(r.id));
-  const notFound = ruleIds.filter((id) => !lastGeneratedRules.some((r) => r.id === id));
+  const ruleIds = args.rule_ids as string[] | undefined;
 
-  debug(`mesa_get_generated_rule_details: ${found.length} found, ${notFound.length} not found`);
-  return jsonResult({ rules: found, notFound });
+  // ID-based mode: targeted lookup
+  if (ruleIds && Array.isArray(ruleIds) && ruleIds.length > 0) {
+    const requestedSet = new Set(ruleIds);
+    const found = lastGeneratedRules.filter((r) => requestedSet.has(r.id));
+    debug(`mesa_get_generated_rule_details: ${found.length} found by ID`);
+    return jsonResult({ rules: found });
+  }
+
+  // No args: return next batch from cursor
+  const slice = lastGeneratedRules.slice(detailsCursor, detailsCursor + DETAILS_BATCH_SIZE);
+  const result = jsonResult({ rules: slice, total: lastGeneratedRules.length, offset: detailsCursor });
+  debug(
+    `mesa_get_generated_rule_details: cursor=${detailsCursor} returning ${slice.length}/${lastGeneratedRules.length}`
+  );
+  detailsCursor += slice.length;
+  return result;
 }
 
 async function handleGenerateRule(args: Record<string, unknown>): Promise<CallToolResult> {

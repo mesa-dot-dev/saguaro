@@ -90,12 +90,12 @@ Both tools read from the same session state populated by \`mesa_generate_rules\`
    **If "Bulk review by group":** Group rules by their target area based on glob patterns (e.g., all rules with \`packages/web/**\` globs form a "Web Package" group). Present a single compact table with one row per group showing: group name and rule count. Do NOT list individual rules within each group. Then use \`AskUserQuestion\` with \`multiSelect: true\` to let the user select which groups to accept. All rules in non-selected groups are skipped.
 
    **If "Review individually":**
-   - Batch rules into groups of 5-10.
-   - For each batch, call \`mesa_get_generated_rule_details\` with the batch's rule IDs to fetch full details.
+   - Call \`mesa_get_generated_rule_details\` with no arguments to get the next batch of 10 rules. The server tracks position automatically — just keep calling it for each batch.
    - For each rule in the batch, present: **Title**, **ID**, **severity**, **Globs**, **Instructions** (the full rule body), **Examples** (if present).
-   - Then use \`AskUserQuestion\` to ask: **Accept / Skip / Edit**
+   - Then use \`AskUserQuestion\` to ask: **Accept / Skip / Accept all remaining / Edit**
      - **Accept** — mark for creation
      - **Skip** — discard this rule
+     - **Accept all remaining** — mark this rule and all remaining unreviewed rules for creation, stop reviewing
      - **Edit** — let the user modify fields, then re-confirm
    - Repeat for each batch until all rules have been reviewed.
 

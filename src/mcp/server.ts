@@ -83,11 +83,12 @@ export function createMesaMcpServer(): McpServer {
     'mesa_get_generated_rule_details',
     {
       description:
-        'Fetch full details (instructions, examples, tags) for specific generated rules by ID. Reads from session state populated by the most recent mesa_generate_rules call. Use this to inspect rules before approving them.',
+        'Fetch full details (instructions, examples, tags) for generated rules. Call with no arguments to get the next batch of 10 rules. Optionally pass rule_ids to fetch specific rules by ID.',
       inputSchema: {
         rule_ids: z
           .array(z.string())
-          .describe('Array of rule IDs to fetch full details for (from mesa_generate_rules output)'),
+          .optional()
+          .describe('Optional array of rule IDs for targeted lookup. Omit to get next batch.'),
       },
     },
     (args) => handleToolCall('mesa_get_generated_rule_details', args)

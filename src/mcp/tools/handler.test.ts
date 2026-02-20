@@ -162,13 +162,13 @@ describe('mesa_get_generated_rule_details', () => {
     });
   });
 
-  test('returns validation error when rule_ids is missing', async () => {
+  test('returns error when called with no args and no session', async () => {
     await withTempRepo(async () => {
       const { client } = await createTestClient();
       const result = await callTool(client, 'mesa_get_generated_rule_details', {});
 
       expect(result.isError).toBe(true);
-      expect(textContent(result)).toContain('Invalid');
+      expect(textContent(result)).toContain('No generated rules in session');
     });
   });
 });
