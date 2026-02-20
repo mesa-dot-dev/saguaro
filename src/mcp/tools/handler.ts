@@ -104,10 +104,9 @@ function handleSyncRules(): CallToolResult {
   debug('mesa_sync_rules called');
   const repoRoot = findRepoRoot();
   const result = syncSkillsFromRules(repoRoot);
-  debug(`mesa_sync_rules: synced=${result.synced}, removed=${result.removed.length}`);
+  debug(`mesa_sync_rules: synced=${result.synced}`);
   return jsonResult({
     synced: result.synced,
-    removed: result.removed.length,
     errors: result.errors,
   });
 }

@@ -360,9 +360,6 @@ const syncRules = (): number => {
   }
 
   console.log(chalk.green(`Synced mesa-rules skill to .claude/skills/`));
-  if (result.removed.length > 0) {
-    console.log(chalk.gray(`  Removed ${result.removed.length} legacy skill dir(s)`));
-  }
   return result.errors.length > 0 ? 1 : 0;
 };
 
