@@ -29,52 +29,46 @@ export async function generateRulesCommand(argv: GenerateRulesArgv): Promise<num
   const spinner = new CliSpinner();
   spinner.start('Scanning codebase...');
 
-  let totalAreas = 0;
-  let areasCompleted = 0;
+  let totalZones = 0;
+  let zonesCompleted = 0;
+  let totalFiles = 0;
 
   const onProgress = (event: GeneratorProgressEvent): void => {
     switch (event.type) {
       case 'indexing':
-        spinner.update('Building codebase index...');
+        spinner.update('Indexing codebase...');
         break;
       case 'scan_complete':
-        totalAreas = event.zoneCount;
-        spinner.update(
-          `Scanned ${event.totalFiles} source files (${event.zoneCount} functional ${event.zoneCount > 1 ? 'areas' : 'area'})`
-        );
+        totalZones = event.zoneCount;
+        totalFiles = event.totalFiles;
+        spinner.update(`Found ${event.totalFiles} source files`);
         logger.verbose(chalk.gray(`  Extensions: ${formatExtensions(event.extensions)}`));
         break;
       case 'zone_started':
-        // Don't restart the spinner per-area — areas run in parallel so
-        // only one spinner message would be visible anyway. Instead, show
-        // an aggregate message set once below.
-        if (areasCompleted === 0) {
-          spinner.start(
-            totalAreas > 1
-              ? `Analyzing ${totalAreas} functional areas...`
-              : `Analyzing ${event.zoneName} (${event.selectedFileCount}/${event.fileCount} files)...`
-          );
+        if (zonesCompleted === 0) {
+          spinner.start(`Analyzing ${totalFiles} files for patterns...`);
         }
         break;
       case 'zone_completed':
-        areasCompleted++;
-        spinner.log(
+        zonesCompleted++;
+        logger.verbose(
           chalk.gray(
             `  ${event.zoneName} — ${event.rulesProposed} candidates (${(event.durationMs / 1000).toFixed(1)}s)`
           )
         );
-        if (areasCompleted < totalAreas) {
-          spinner.update(`Analyzing codebase (${areasCompleted}/${totalAreas} functional areas complete)...`);
+        if (zonesCompleted < totalZones) {
+          const pct = Math.round((zonesCompleted / totalZones) * 100);
+          spinner.update(`Analyzing ${totalFiles} files for patterns... ${pct}%`);
         }
         break;
       case 'synthesis_started':
-        spinner.start(`Consolidating ${event.candidateCount} candidates...`);
+        spinner.start(`Refining ${event.candidateCount} candidate rules...`);
         break;
       case 'synthesis_completed':
         spinner.stop();
-        console.log(
+        logger.verbose(
           chalk.gray(
-            `  Consolidated: ${event.candidateCount} candidates → ${event.finalCount} rules (${(event.durationMs / 1000).toFixed(1)}s)`
+            `  Refined: ${event.candidateCount} candidates → ${event.finalCount} rules (${(event.durationMs / 1000).toFixed(1)}s)`
           )
         );
         break;

@@ -554,12 +554,23 @@ function formatRule(rule: RulePolicy): string {
   ];
 
   if (rule.examples) {
-    lines.push('');
     if (rule.examples.violations?.length) {
-      lines.push(`**Violations:** ${rule.examples.violations.join(', ')}`);
+      lines.push('');
+      lines.push('**Violations:**');
+      for (const v of rule.examples.violations) {
+        lines.push('```');
+        lines.push(v);
+        lines.push('```');
+      }
     }
     if (rule.examples.compliant?.length) {
-      lines.push(`**Compliant:** ${rule.examples.compliant.join(', ')}`);
+      lines.push('');
+      lines.push('**Compliant:**');
+      for (const c of rule.examples.compliant) {
+        lines.push('```');
+        lines.push(c);
+        lines.push('```');
+      }
     }
   }
 
