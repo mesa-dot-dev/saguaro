@@ -33,7 +33,7 @@ interface ProviderConfig {
 const PROVIDER_REGISTRY: Record<ModelProvider, ProviderConfig> = {
   anthropic: {
     envKey: 'ANTHROPIC_API_KEY',
-    label: 'Anthropic (recommended)',
+    label: 'Anthropic',
     models: [
       { id: 'claude-opus-4-6', label: 'Claude Opus 4.6 (recommended)' },
       { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
