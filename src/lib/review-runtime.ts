@@ -68,6 +68,7 @@ export function createNodeReviewRuntime(options?: { rulesDir?: string }): Review
                 onProgress: input.onProgress,
                 resolveFile: createGitFileResolver(input.headRef),
                 abortSignal: input.abortSignal,
+                modelId: modelConfig.model,
               });
             } catch (error) {
               const message = error instanceof Error ? error.message : String(error);

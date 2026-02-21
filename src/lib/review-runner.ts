@@ -7,6 +7,22 @@ import { z } from 'zod';
 import type { ReviewProgressCallback, ReviewResult, RulePolicy, Violation } from '../types/types.js';
 import { logger } from './logger.js';
 
+interface ModelPricing {
+  inputPerMillion: number;
+  outputPerMillion: number;
+}
+
+const MODEL_PRICING: Record<string, ModelPricing> = {
+  'claude-opus-4-6': { inputPerMillion: 5, outputPerMillion: 25 },
+  'claude-sonnet-4-6': { inputPerMillion: 3, outputPerMillion: 15 },
+};
+
+export function estimateCost(modelId: string, inputTokens: number, outputTokens: number): number | undefined {
+  const pricing = MODEL_PRICING[modelId];
+  if (!pricing) return undefined;
+  return (inputTokens / 1_000_000) * pricing.inputPerMillion + (outputTokens / 1_000_000) * pricing.outputPerMillion;
+}
+
 export interface RunReviewOptions {
   filesWithRules: Map<string, RulePolicy[]>;
   diffs: Map<string, string>;
@@ -21,6 +37,8 @@ export interface RunReviewOptions {
   resolveFile?: (path: string) => string | null;
   /** Signal to abort in-flight LLM requests (e.g. on SIGINT) */
   abortSignal?: AbortSignal;
+  /** The model identifier string (e.g. "claude-opus-4-6") for cost estimation */
+  modelId?: string;
 }
 
 const DEFAULT_FILES_PER_WORKER = 3;
@@ -260,8 +278,7 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
       infos: allViolations.filter((v) => v.severity === 'info').length,
       inputTokens: totalInputTokens,
       outputTokens: totalOutputTokens,
-      // Opus 4.6 pricing is : $5 per million input tokens and $25 per million output tokens
-      cost: (totalInputTokens / 1000000) * 5 + (totalOutputTokens / 1000000) * 25,
+      cost: options.modelId ? estimateCost(options.modelId, totalInputTokens, totalOutputTokens) : undefined,
     },
   };
 }

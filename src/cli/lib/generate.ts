@@ -8,6 +8,8 @@ import { writeGeneratedRules } from '../../adapter/rules.js';
 import type { GeneratorProgressEvent } from '../../generator/index.js';
 import { generateRules } from '../../generator/index.js';
 import { logger } from '../../lib/logger.js';
+import { loadValidatedConfig } from '../../lib/review-model-config.js';
+import { estimateCost } from '../../lib/review-runner.js';
 import type { RulePolicy } from '../../types/types.js';
 import { createReadline } from './prompt.js';
 import { CliSpinner } from './spinner.js';
@@ -108,8 +110,6 @@ export async function generateRulesCommand(argv: GenerateRulesArgv): Promise<num
 
   const durationSec = (result.summary.durationMs / 1000).toFixed(1);
   const { inputTokens, outputTokens } = result.summary;
-  // Opus 4.6 pricing is : $5 per million input tokens and $25 per million output tokens
-  const cost = (inputTokens / 1000000) * 5 + (outputTokens / 1000000) * 25;
   const tokenStr = `${(inputTokens / 1000).toFixed(1)}K input + ${(outputTokens / 1000).toFixed(1)}K output`;
 
   console.log(chalk.green(`\n${accepted.length} rule(s) written to .mesa/rules/`));
@@ -119,7 +119,11 @@ export async function generateRulesCommand(argv: GenerateRulesArgv): Promise<num
   console.log(chalk.gray(`  Files scanned: ${result.summary.filesScanned}`));
   console.log(chalk.gray(`  Duration:      ${durationSec}s`));
   console.log(chalk.gray(`  Tokens:        ${tokenStr}`));
-  console.log(chalk.gray(`  Est. cost:     ~$${cost.toFixed(2)}`));
+  const config = loadValidatedConfig(argv.config);
+  const cost = estimateCost(config.model.name, inputTokens, outputTokens);
+  if (cost !== undefined) {
+    console.log(chalk.gray(`  Est. cost:     ~$${cost.toFixed(2)}`));
+  }
 
   return 0;
 }

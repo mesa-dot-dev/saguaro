@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
 import { writeMesaRuleFile } from '../../lib/mesa-rules.js';
+import type { ModelProvider } from '../../lib/review-model-config.js';
 import { findRepoRoot } from '../../lib/rule-resolution.js';
 import { syncSkillsFromRules } from '../../lib/skill-sync.js';
 import { getMcpJsonConfig } from '../../mcp/config.js';
@@ -15,15 +16,52 @@ const mesaDir = '.mesa';
 const skillsDir = '.claude/skills';
 const configPath = path.join(mesaDir, 'config.yaml');
 const envLocalPath = '.env.local';
-const apiKeyEnvName = 'ANTHROPIC_API_KEY';
 const secondary = chalk.hex('#be3c00');
 const tertiary = chalk.hex('#ffecba');
-const DEFAULT_PROVIDER = 'anthropic' as const;
-const DEFAULT_MODEL = 'claude-opus-4-6';
+
+interface ProviderModelOption {
+  id: string;
+  label: string;
+}
+
+interface ProviderConfig {
+  envKey: string;
+  label: string;
+  models: ProviderModelOption[];
+}
+
+const PROVIDER_REGISTRY: Record<ModelProvider, ProviderConfig> = {
+  anthropic: {
+    envKey: 'ANTHROPIC_API_KEY',
+    label: 'Anthropic (recommended)',
+    models: [
+      { id: 'claude-opus-4-6', label: 'Claude Opus 4.6 (recommended)' },
+      { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+    ],
+  },
+  openai: {
+    envKey: 'OPENAI_API_KEY',
+    label: 'OpenAI',
+    models: [
+      { id: 'gpt-5.2-codex', label: 'GPT-5.2 Codex (recommended)' },
+      { id: 'gpt-5.1-codex', label: 'GPT-5.1 Codex' },
+    ],
+  },
+  google: {
+    envKey: 'GOOGLE_API_KEY',
+    label: 'Google',
+    models: [
+      { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro (recommended)' },
+      { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash' },
+    ],
+  },
+};
+
+const CUSTOM_MODEL_OPTION = { id: 'custom', label: 'Custom model name' } as const;
 
 type SkillSetupChoice = 'default' | 'generate' | 'skip';
 
-function buildConfigContent(): string {
+function buildConfigContent(provider: ModelProvider, modelName: string): string {
   return `# Mesa Configuration
 # =============================================================================
 # Model Configuration
@@ -32,8 +70,8 @@ function buildConfigContent(): string {
 # (.env.local, .env, or shell export).
 
 model:
-  provider: ${DEFAULT_PROVIDER}
-  name: ${DEFAULT_MODEL}
+  provider: ${provider}
+  name: ${modelName}
 
 # =============================================================================
 # Output Configuration
@@ -113,25 +151,64 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   fs.mkdirSync(rootMesaDir, { recursive: true });
   fs.mkdirSync(rootSkillsDir, { recursive: true });
   const rl1 = createReadline();
+  let selectedProvider: ModelProvider;
+  try {
+    const providerChoice = await askChoice(rl1, secondary('Which AI provider would you like to use?'), [
+      { id: 'anthropic' as const, label: PROVIDER_REGISTRY.anthropic.label },
+      { id: 'openai' as const, label: PROVIDER_REGISTRY.openai.label },
+      { id: 'google' as const, label: PROVIDER_REGISTRY.google.label },
+    ]);
+    selectedProvider = providerChoice.id;
+  } finally {
+    rl1.close();
+  }
+
+  const providerConfig = PROVIDER_REGISTRY[selectedProvider];
+
+  const rl2 = createReadline();
+  let selectedModel: string;
+  try {
+    const modelOptions = [...providerConfig.models, CUSTOM_MODEL_OPTION];
+    const modelChoice = await askChoice(
+      rl2,
+      secondary('Which model?') + chalk.gray('  (you can change this anytime in .mesa/config.yaml)'),
+      modelOptions
+    );
+    if (modelChoice.id === 'custom') {
+      selectedModel = await ask(rl2, secondary('Enter model name'));
+      if (!selectedModel) {
+        console.log(chalk.red('Model name cannot be empty.'));
+        return 1;
+      }
+    } else {
+      selectedModel = modelChoice.id;
+    }
+  } finally {
+    rl2.close();
+  }
+
+  const rl3 = createReadline();
   let apiKey = '';
   try {
     const keyInput = await ask(
-      rl1,
-      secondary('Paste your Anthropic API key (or type "n" to skip and set ANTHROPIC_API_KEY in .env.local, .env)')
+      rl3,
+      secondary(
+        `Paste your ${providerConfig.envKey} (or type "n" to skip and set ${providerConfig.envKey} in .env.local, .env)`
+      )
     );
     const normalizedInput = keyInput.trim();
     const skippedWithN = normalizedInput.toLowerCase() === 'n';
     apiKey = skippedWithN ? '' : normalizedInput;
   } finally {
-    rl1.close();
+    rl3.close();
   }
 
   const wroteApiKey = apiKey.length > 0;
 
   // Write config and env before rule generation (config must exist for other commands)
-  fs.writeFileSync(path.join(repoRoot, configPath), buildConfigContent());
+  fs.writeFileSync(path.join(repoRoot, configPath), buildConfigContent(selectedProvider, selectedModel));
   if (wroteApiKey) {
-    upsertEnvValue(path.join(repoRoot, envLocalPath), apiKeyEnvName, apiKey);
+    upsertEnvValue(path.join(repoRoot, envLocalPath), providerConfig.envKey, apiKey);
   }
 
   // Write .mcp.json for Claude Code auto-discovery
@@ -140,17 +217,17 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   // Write MCP skill files for slash commands
   writeMcpSkills(path.resolve(process.cwd(), skillsDir));
 
-  const rl2 = createReadline();
+  const rl4 = createReadline();
   let skillSetupChoice: SkillSetupChoice;
   try {
-    const choice = await askChoice(rl2, secondary('How would you like to set up review rules?'), [
+    const choice = await askChoice(rl4, secondary('How would you like to set up review rules?'), [
       { id: 'generate', label: 'Generate rules from your codebase' },
       { id: 'default', label: 'Use Mesa starter rules' },
       { id: 'skip', label: 'Skip and create rules manually' },
     ] as const);
     skillSetupChoice = choice.id;
   } finally {
-    rl2.close();
+    rl4.close();
   }
 
   if (skillSetupChoice === 'default') {
@@ -181,9 +258,9 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-generaterules/`));
   console.log(chalk.gray(`  Updated: .claude/settings.json (Claude Code integration)`));
   if (wroteApiKey) {
-    console.log(chalk.gray(`  Updated: ${relEnvPath} (${apiKeyEnvName})`));
+    console.log(chalk.gray(`  Updated: ${relEnvPath} (${providerConfig.envKey})`));
   } else {
-    console.log(chalk.gray(`  Add ${apiKeyEnvName} in your environment (.env.local, .env).`));
+    console.log(chalk.gray(`  Add ${providerConfig.envKey} in your environment (.env.local, .env).`));
   }
   console.log(secondary(`\nRun ${tertiary('mesa review')} to review your changes.`));
 
