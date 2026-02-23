@@ -1,5 +1,6 @@
 import path from 'node:path';
-import { createReviewCore, type ReviewEngineOutcome } from '../core/review.js';
+import { createReviewCore } from '../core/review.js';
+import type { ReviewEngineOutcome } from '../core/types.js';
 import { getCodebaseContext } from '../indexer/index.js';
 import { getDiffs, getRepoRoot, listChangedFilesFromGit } from '../lib/git.js';
 import { appendReviewEntry } from '../lib/history.js';

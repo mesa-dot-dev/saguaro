@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
 import { runReview } from '../adapter/review.js';
-import type { ReviewEngineOutcome } from '../core/review.js';
+import type { ReviewEngineOutcome } from '../core/types.js';
 import { MesaError } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
 import { loadValidatedConfig } from '../lib/review-model-config.js';

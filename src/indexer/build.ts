@@ -1,11 +1,11 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { SKIP_DIRS } from './constants.js';
 import { isSupportedFile, parseFile } from './parsers/index.js';
 import { createResolver } from './resolver.js';
 import type { JsonIndexStore } from './store.js';
 import type { CodebaseIndex, FileEntry } from './types.js';
-import { SKIP_DIRS } from './types.js';
 
 const MAX_FILE_SIZE = 1000000;
 

@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { ResolverFactory } from 'oxc-resolver';
+import { SKIP_DIRS } from './constants.js';
 import type { Language } from './types.js';
-import { SKIP_DIRS } from './types.js';
 
 /**
  * Thin abstraction over module resolution.

@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { minimatch } from 'minimatch';
-import { IGNORED_DIRS } from './constants.js';
+import { IGNORED_DIRS, matchesGlobs } from './constants.js';
 
 interface PreviewMatch {
   line: number;
@@ -63,24 +62,6 @@ function walkDir(dir: string, files: string[] = []): string[] {
   }
 
   return files;
-}
-
-function matchesGlobs(relativePath: string, globs: string[]): boolean {
-  // Split globs into positive and negative
-  const positiveGlobs = globs.filter((g) => !g.startsWith('!'));
-  const negativeGlobs = globs.filter((g) => g.startsWith('!')).map((g) => g.slice(1));
-
-  // Must match at least one positive glob
-  const matchesPositive = positiveGlobs.length === 0 || positiveGlobs.some((g) => minimatch(relativePath, g));
-
-  if (!matchesPositive) {
-    return false;
-  }
-
-  // Must not match any negative glob
-  const matchesNegative = negativeGlobs.some((g) => minimatch(relativePath, g));
-
-  return !matchesNegative;
 }
 
 function findViolations(filePath: string, patterns: string[]): PreviewMatch[] {

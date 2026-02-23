@@ -1,4 +1,4 @@
-import type { Reviewer } from '../core/review.js';
+import type { Reviewer } from '../core/types.js';
 import type { RulePolicy } from '../types/types.js';
 import { AgentExecutionError } from './errors.js';
 import { getFileAtRef, listChangedFilesFromGit } from './git.js';

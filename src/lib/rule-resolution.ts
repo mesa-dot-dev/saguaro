@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { minimatch } from 'minimatch';
 import type { RulePolicy } from '../types/types.js';
+import { matchesGlobs } from './constants.js';
 import type { MesaRulesResult } from './mesa-rules.js';
 import { loadMesaRules, loadMesaRulesFromDir } from './mesa-rules.js';
 
@@ -96,22 +96,4 @@ export function sortRulesByPriority<T extends Pick<RulePolicy, 'id' | 'priority'
   });
 }
 
-export function matchesGlobs(filePath: string, globs: string[]): boolean {
-  let matched = false;
-  let excluded = false;
-
-  for (const glob of globs) {
-    if (glob.startsWith('!')) {
-      if (minimatch(filePath, glob.slice(1))) {
-        excluded = true;
-      }
-      continue;
-    }
-
-    if (minimatch(filePath, glob)) {
-      matched = true;
-    }
-  }
-
-  return matched && !excluded;
-}
+export { matchesGlobs } from './constants.js';

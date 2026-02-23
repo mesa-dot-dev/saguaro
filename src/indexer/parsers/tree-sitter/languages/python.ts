@@ -1,7 +1,7 @@
 import type { ExportRef, ParseResult } from '../../../types.js';
+import type { SyntaxNode } from '../common.js';
+import { truncate } from '../common.js';
 import { createParser } from '../init.js';
-import type { SyntaxNode } from '../types.js';
-import { truncate } from '../types.js';
 
 type UnresolvedImport = ParseResult['imports'][number];
 

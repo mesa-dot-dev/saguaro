@@ -4,7 +4,7 @@ import { Minimatch } from 'minimatch';
 import { z } from 'zod';
 import { logger } from '../lib/logger.js';
 import type { RulePolicy } from '../types/types.js';
-import { RuleProposalSchema, TriageDecisionSchema } from './types.js';
+import { RuleProposalSchema, TriageDecisionSchema } from './schemas.js';
 
 const TRIAGE_PROMPT = `You are a senior engineering lead reviewing candidate code review rules generated from different zones of a codebase.
 

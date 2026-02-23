@@ -13,15 +13,9 @@ import { STARTER_RULE_SKILLS } from '../templates/starter-rule-skills.js';
 import type { RulePolicy } from '../types/types.js';
 import { computeArchitecturalContext } from './architecture.js';
 import { scanAndSelectFiles } from './scanner.js';
+import { RuleProposalSchema } from './schemas.js';
 import { synthesizeRules } from './synthesis.js';
-import {
-  type GenerateRulesOptions,
-  type GeneratorResult,
-  RuleProposalSchema,
-  type ScanResult,
-  type ZoneAnalysisResult,
-  type ZoneConfig,
-} from './types.js';
+import type { GenerateRulesOptions, GeneratorResult, ScanResult, ZoneAnalysisResult, ZoneConfig } from './types.js';
 
 /** Pick a diverse fixed set of starter rules as few-shot references for zone analysis. */
 const FEW_SHOT_IDS = ['no-console-log', 'require-sanitized-auth-redirect', 'guard-percentage-division'] as const;

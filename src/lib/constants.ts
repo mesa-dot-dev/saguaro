@@ -1,3 +1,5 @@
+import { minimatch } from 'minimatch';
+
 export const IGNORED_DIRS = new Set([
   'node_modules',
   '.git',
@@ -28,4 +30,25 @@ export function toKebabCase(text: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
+}
+
+/** Returns true only if filePath matches at least one positive glob and no negation (`!`) globs. */
+export function matchesGlobs(filePath: string, globs: string[]): boolean {
+  let matched = false;
+  let excluded = false;
+
+  for (const glob of globs) {
+    if (glob.startsWith('!')) {
+      if (minimatch(filePath, glob.slice(1))) {
+        excluded = true;
+      }
+      continue;
+    }
+
+    if (minimatch(filePath, glob)) {
+      matched = true;
+    }
+  }
+
+  return matched && !excluded;
 }

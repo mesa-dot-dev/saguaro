@@ -88,25 +88,3 @@ export interface ParseResult {
   imports: Omit<ImportRef, 'resolvedPath'>[];
   exports: ExportRef[];
 }
-
-/**
- * Directories to skip during file discovery and tsconfig scanning.
- */
-export const SKIP_DIRS = new Set([
-  'node_modules',
-  'dist',
-  'build',
-  '.git',
-  '.mesa',
-  '.next',
-  '.nuxt',
-  '.output',
-  'coverage',
-  '__pycache__',
-  '.turbo',
-  '.cache',
-  'vendor',
-  '.venv',
-  'venv',
-  'target',
-]);
