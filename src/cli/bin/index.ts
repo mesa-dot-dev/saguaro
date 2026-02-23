@@ -11,19 +11,10 @@ import { logger } from '../../lib/logger.js';
 import { findRepoRoot } from '../../lib/rule-resolution.js';
 import checkHandler from '../lib/check.js';
 import { generateRulesCommand } from '../lib/generate.js';
-import { installHook, runHook, uninstallHook } from '../lib/hook.js';
+import { installHook, runHook, runPreTool, uninstallHook } from '../lib/hook.js';
 import indexCmdHandler from '../lib/index-cmd.js';
 import initHandler from '../lib/init.js';
-import {
-  createRule,
-  deleteRule,
-  explainRule,
-  listRules,
-  locateRulesDirectory,
-  rulesFor,
-  syncRules,
-  validateRules,
-} from '../lib/rules.js';
+import { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, validateRules } from '../lib/rules.js';
 import serveHandler from '../lib/serve.js';
 import { statsCommand } from '../lib/stats.js';
 import { resolvePackageVersion, reviewCommand } from '../review.js';
@@ -294,18 +285,6 @@ yargs(argv)
     )
       .demandCommand(1, 'Please specify a rules subcommand. Run "mesa rules --help" for options.')
       .command(
-        'for <paths..>',
-        'Show rules that apply to the given files or directories',
-        (y: Argv) => {
-          y.positional('paths', {
-            describe: 'File or directory paths to check rules against',
-            type: 'string',
-            array: true,
-          });
-        },
-        wrapHandler('rules-for', rulesFor as (argv: unknown) => number)
-      )
-      .command(
         'list',
         'List all rules with their IDs, titles, and severity',
         {},
@@ -327,12 +306,6 @@ yargs(argv)
         'Check all rule files for correct structure',
         {},
         wrapHandler('rules-validate', validateRules as (argv: unknown) => number)
-      )
-      .command(
-        'sync',
-        'Regenerate .claude/skills/ from .mesa/rules/',
-        {},
-        wrapHandler('rules-sync', () => syncRules()) as (argv: unknown) => Promise<void>
       )
       .command(
         'locate',
@@ -517,6 +490,12 @@ yargs(argv)
           });
         },
         wrapHandler('hook-run', runHook as (argv: unknown) => Promise<number>)
+      )
+      .command(
+        'pre-tool',
+        false, // hidden — internal command called by PreToolUse hook
+        {},
+        wrapHandler('hook-pre-tool', runPreTool as (argv: unknown) => number)
       );
   })
   .command(

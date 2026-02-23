@@ -4,7 +4,6 @@ import chalk from 'chalk';
 import { writeMesaRuleFile } from '../../lib/mesa-rules.js';
 import type { ModelProvider } from '../../lib/review-model-config.js';
 import { findRepoRoot } from '../../lib/rule-resolution.js';
-import { syncSkillsFromRules } from '../../lib/skill-sync.js';
 import { getMcpJsonConfig } from '../../mcp/config.js';
 import { getMcpSkillFiles } from '../../templates/mcp-skills.js';
 import { STARTER_RULE_SKILLS } from '../../templates/starter-rule-skills.js';
@@ -97,8 +96,13 @@ review:
 # =============================================================================
 
 hook:
-  # Automatically review code when Claude Code finishes writing
+  # Master switch for all Mesa hooks
   enabled: true
+
+  # Stop hook: full LLM review after Claude finishes writing code
+  # The PreToolUse hook injects rules proactively, so this is opt-in
+  stop:
+    enabled: false
 `;
 }
 
@@ -135,6 +139,18 @@ function writeMcpSkills(skillsDirPath: string): void {
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
     fs.writeFileSync(fullPath, skill.content);
   }
+}
+
+function ensureMesaGitignore(repoRoot: string): void {
+  const gitignorePath = path.join(repoRoot, '.gitignore');
+  const entry = '.mesa/history/';
+  let content = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8') : '';
+
+  if (content.includes(entry)) return;
+
+  const trimmed = content.trimEnd();
+  content = trimmed.length > 0 ? `${trimmed}\n${entry}\n` : `${entry}\n`;
+  fs.writeFileSync(gitignorePath, content, 'utf8');
 }
 
 const initHandler = async (argv: { force?: boolean }): Promise<number> => {
@@ -207,6 +223,9 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
 
   // Write config and env before rule generation (config must exist for other commands)
   fs.writeFileSync(path.join(repoRoot, configPath), buildConfigContent(selectedProvider, selectedModel));
+
+  // Ensure .mesa/history/ is gitignored
+  ensureMesaGitignore(repoRoot);
   if (wroteApiKey) {
     upsertEnvValue(path.join(repoRoot, envLocalPath), providerConfig.envKey, apiKey);
   }
@@ -234,7 +253,6 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
     for (const starter of STARTER_RULE_SKILLS) {
       writeMesaRuleFile(repoRoot, starter);
     }
-    syncSkillsFromRules(repoRoot);
     console.log(chalk.gray(`  Added starter rules to .mesa/rules/. Add more with ${tertiary('mesa rules create')}.`));
   } else if (skillSetupChoice === 'generate') {
     await generateRulesCommand({ config: path.join(repoRoot, configPath) });
@@ -256,7 +274,7 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-review/`));
   console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-createrule/`));
   console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-generaterules/`));
-  console.log(chalk.gray(`  Updated: .claude/settings.json (Claude Code integration)`));
+  console.log(chalk.gray(`  Updated: .claude/settings.json (PreToolUse + Stop hooks)`));
   if (wroteApiKey) {
     console.log(chalk.gray(`  Updated: ${relEnvPath} (${providerConfig.envKey})`));
   } else {

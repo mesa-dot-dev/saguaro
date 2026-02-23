@@ -62,15 +62,6 @@ export function createMesaMcpServer(): McpServer {
   );
 
   server.registerTool(
-    'mesa_sync_rules',
-    {
-      description:
-        'Regenerate .claude/skills/ from .mesa/rules/. Run after cloning a repo or when skills are out of sync.',
-    },
-    () => handleToolCall('mesa_sync_rules', {})
-  );
-
-  server.registerTool(
     'mesa_generate_rules',
     {
       description:

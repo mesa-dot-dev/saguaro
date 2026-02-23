@@ -12,7 +12,6 @@ import {
 } from '../../adapter/rules.js';
 import { generateRules } from '../../generator/index.js';
 import { findRepoRoot } from '../../lib/rule-resolution.js';
-import { syncSkillsFromRules } from '../../lib/skill-sync.js';
 import type { RulePolicy, Severity } from '../../types/types.js';
 
 // ---------------------------------------------------------------------------
@@ -99,17 +98,6 @@ function handleDeleteRule(args: Record<string, unknown>): CallToolResult {
   }
 
   return jsonResult({ deleted: true, id: ruleId });
-}
-
-function handleSyncRules(): CallToolResult {
-  debug('mesa_sync_rules called');
-  const repoRoot = findRepoRoot();
-  const result = syncSkillsFromRules(repoRoot);
-  debug(`mesa_sync_rules: synced=${result.synced}`);
-  return jsonResult({
-    synced: result.synced,
-    errors: result.errors,
-  });
 }
 
 async function handleGenerateRules(): Promise<CallToolResult> {
@@ -277,9 +265,6 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
       break;
     case 'mesa_delete_rule':
       result = handleDeleteRule(args);
-      break;
-    case 'mesa_sync_rules':
-      result = handleSyncRules();
       break;
     case 'mesa_generate_rules':
       try {

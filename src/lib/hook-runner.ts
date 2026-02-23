@@ -1,7 +1,8 @@
 import path from 'node:path';
 import { runReview } from '../adapter/review.js';
 import { getCodebaseContext } from '../indexer/index.js';
-import type { Violation } from '../types/types.js';
+import type { RulePolicy, Violation } from '../types/types.js';
+import { matchesGlobs } from './constants.js';
 import {
   getLocalDiffs,
   getRepoRoot,
@@ -9,7 +10,9 @@ import {
   listLocalChangedFilesFromGit,
   listUntrackedFiles,
 } from './git.js';
+import { loadMesaRules } from './mesa-rules.js';
 import { loadValidatedConfig } from './review-model-config.js';
+import { sortRulesByPriority } from './rule-resolution.js';
 
 export interface HookDecision {
   decision: 'allow' | 'block';
@@ -99,4 +102,98 @@ export function formatViolationsForClaude(violations: Violation[]): string {
   }
 
   return lines.join('\n').trimEnd();
+}
+
+/** Load all Mesa rules for a given file. Returns null when no rules match. */
+export function resolveRulesForFileAsMarkdown(absoluteFilePath: string, repoRoot: string): string | null {
+  return resolveRulesForFile(absoluteFilePath, repoRoot).markdown;
+}
+
+function resolveRulesForFile(
+  absoluteFilePath: string,
+  repoRoot: string
+): { markdown: string | null; matchedCount: number } {
+  const { rules } = loadMesaRules(repoRoot);
+  if (rules.length === 0) return { markdown: null, matchedCount: 0 };
+
+  const relativePath = path.relative(repoRoot, absoluteFilePath);
+
+  const matched: RulePolicy[] = [];
+  for (const rule of rules) {
+    if (matchesGlobs(relativePath, rule.policy.globs)) {
+      matched.push(rule.policy);
+    }
+  }
+
+  if (matched.length === 0) return { markdown: null, matchedCount: 0 };
+
+  const sorted = sortRulesByPriority(matched);
+  return { markdown: formatRulesAsContext(sorted), matchedCount: sorted.length };
+}
+
+export interface PreToolHookInput {
+  hook_event_name: string;
+  tool_name: string;
+  tool_input: {
+    file_path?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export interface PreToolHookResult {
+  exitCode: number;
+  stdout: string | null;
+  matchedCount: number;
+}
+
+export function runPreToolHook(options: { input: PreToolHookInput; repoRoot: string }): PreToolHookResult {
+  const { input, repoRoot } = options;
+  const filePath = input.tool_input?.file_path;
+  if (!filePath) return { exitCode: 0, stdout: null, matchedCount: 0 };
+
+  const { markdown, matchedCount } = resolveRulesForFile(filePath, repoRoot);
+  if (!markdown) return { exitCode: 0, stdout: null, matchedCount: 0 };
+
+  const response = {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      additionalContext: markdown,
+    },
+  };
+
+  return { exitCode: 0, stdout: JSON.stringify(response), matchedCount };
+}
+
+function formatRulesAsContext(rules: RulePolicy[]): string {
+  const parts: string[] = [];
+  parts.push(`# Mesa: ${rules.length} rule(s) apply to this file\n`);
+  parts.push('Follow ALL of these rules when making your changes:\n');
+
+  for (const rule of rules) {
+    parts.push(`## ${rule.id} (${rule.severity})\n`);
+    parts.push(rule.instructions);
+
+    if (rule.examples?.violations?.length) {
+      parts.push('\n### Violations\n');
+      for (const v of rule.examples.violations) {
+        parts.push('```');
+        parts.push(v);
+        parts.push('```\n');
+      }
+    }
+
+    if (rule.examples?.compliant?.length) {
+      parts.push('### Compliant\n');
+      for (const c of rule.examples.compliant) {
+        parts.push('```');
+        parts.push(c);
+        parts.push('```\n');
+      }
+    }
+
+    parts.push('---\n');
+  }
+
+  return parts.join('\n').trimEnd();
 }

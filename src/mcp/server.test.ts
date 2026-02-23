@@ -27,7 +27,6 @@ describe('MCP server', () => {
       'mesa_generate_rules',
       'mesa_get_generated_rule_details',
       'mesa_review',
-      'mesa_sync_rules',
       'mesa_validate_rules',
       'mesa_write_accepted_rules',
     ]);

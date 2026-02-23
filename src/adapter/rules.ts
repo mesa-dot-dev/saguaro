@@ -7,7 +7,6 @@ import { generateRule } from '../lib/rule-generator.js';
 import type { PreviewRuleResult } from '../lib/rule-preview.js';
 import { previewRule } from '../lib/rule-preview.js';
 import { findRepoRoot } from '../lib/rule-resolution.js';
-import { syncSkillsFromRules } from '../lib/skill-sync.js';
 import { analyzeTarget } from '../lib/target-analysis.js';
 import type { RulePolicy, Severity } from '../types/types.js';
 
@@ -103,7 +102,6 @@ export function deleteRuleAdapter(request: { ruleId: string }): DeleteRuleAdapte
     return { deleted: false };
   }
   deleteMesaRuleFile(repoRoot, request.ruleId);
-  syncSkillsFromRules(repoRoot);
   return { deleted: true };
 }
 
@@ -143,9 +141,6 @@ export function createRuleAdapter(request: CreateRuleAdapterRequest): CreateRule
   // Write to .mesa/rules/
   const policyFilePath = writeMesaRuleFile(repoRoot, policy);
 
-  // Sync the mesa-rules skill to .claude/skills/
-  syncSkillsFromRules(repoRoot);
-
   return {
     policyFilePath,
     rule: policy,
@@ -164,8 +159,6 @@ export function writeGeneratedRules(rules: RulePolicy[]): WriteGeneratedRulesRes
       path: filePath,
     });
   }
-
-  syncSkillsFromRules(repoRoot);
 
   return { written };
 }
