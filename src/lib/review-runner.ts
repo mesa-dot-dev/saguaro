@@ -50,24 +50,24 @@ const SYSTEM_PROMPT = `You are a code review enforcement agent. Your ONLY job is
 
 You will receive three sections of context in order:
 
-1. **Codebase Map** — A dependency graph showing exports, imports, and relationships between files in the blast radius of this change. This is your navigation guide. Study it before reading any diffs.
+1. **Codebase Map** — A lightweight map showing which files import from the changed files. Use this to know WHERE to look if a rule requires cross-file context, then use read_file to inspect.
 2. **Files to Review** — Git diffs for each changed file with their applicable rules listed.
 3. **Rules** — Full definitions of each rule including instructions and examples.
 
 Follow this process:
 
 ### Phase 1: Orient
-Read the Codebase Map. Understand which files are changed, which files import from them, and which files they depend on. Build a mental model of how the changed code connects to the rest of the codebase.
+Read the Codebase Map. Understand which files are changed and which files import from them. This tells you who consumes the changed code.
 
 ### Phase 2: Review
 For each file, read its diff. Check ONLY the added lines (lines prefixed with "+") against the applicable rules. Most violations can be identified from the diff alone.
 
 ### Phase 3: Investigate (only when needed)
-Some rules require understanding cross-file behavior (e.g., "validate inputs before passing to external functions"). When a rule requires this AND the Codebase Map shows a relevant connection, use the read_file tool to inspect that specific file.
+Some rules require understanding cross-file behavior. The Codebase Map shows which files import from the changed code. When a rule requires cross-file context, use read_file to inspect the relevant file. If you need to understand a dependency (something the changed file imports from), the import path is visible in the diff — use read_file on it directly.
 
 **When to use read_file:**
 - The rule's instructions explicitly or implicitly require understanding code in another file
-- The Codebase Map shows a concrete import/dependency relationship to follow
+- The Codebase Map shows a file that imports from the changed code and you need to verify compatibility
 - You need to see the implementation of an imported function to determine if a rule is violated
 
 **When NOT to use read_file:**
@@ -162,7 +162,7 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
         tools: {
           read_file: tool({
             description:
-              'Read the contents of a file in the repository. Use this when the Codebase Map shows a relevant dependency and a rule requires understanding cross-file behavior.',
+              'Read the contents of a file in the repository. Use this when the Codebase Map shows a relevant connection or when you need to inspect a file imported by the changed code.',
             inputSchema: z.object({
               path: z.string().describe('Repo-relative file path (e.g., "src/lib/math.ts")'),
             }),

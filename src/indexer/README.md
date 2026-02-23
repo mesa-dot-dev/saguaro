@@ -1,8 +1,8 @@
 # Indexer
 
-The indexer builds a dependency graph of a repository's source files so the code review agent can understand **blast radius** — which files are affected when a set of files change.
+The indexer builds an import graph of a repository's source files so the code review agent can understand **blast radius** — which files are affected when a set of files change.
 
-It extracts imports and exports from source files, resolves import paths to repo-relative file paths, and caches the result as `index.json`. At review time, the cached index is used to compute which files are connected to the changed files via BFS traversal, and that context is injected into the LLM prompt as markdown.
+It extracts imports and exports from source files, resolves import paths to repo-relative file paths, and caches the result as `index.json`. At review time, the cached index is used to compute which files import from the changed files via importers-only BFS traversal. The resulting lightweight context map is injected into the LLM prompt as markdown, serving as a **navigation map** that tells the agent where to look with `read_file` rather than a full dependency dump.
 
 **The LLM never parses files directly. It reads pre-computed context.**
 
@@ -20,8 +20,8 @@ It extracts imports and exports from source files, resolves import paths to repo
                                                                      ▼
   5. QUERY (at review time)                              6. FORMAT
   ┌───────────────────┐                                  ┌──────────────┐
-  │ BFS blast radius  │─────────────────────────────────▶│ Markdown for │
-  │ from changed files│                                  │ LLM prompt   │
+  │ Importers-only BFS│─────────────────────────────────▶│ Navigation   │
+  │ + barrel detection│                                  │ map for LLM  │
   └───────────────────┘                                  └──────────────┘
 ```
 
@@ -30,9 +30,9 @@ It extracts imports and exports from source files, resolves import paths to repo
 ```
 indexer/
 ├── index.ts              Entry point. getCodebaseContext() orchestrates everything.
-│                         Builds context markdown with token budgeting.
+│                         Builds lightweight navigation map with token budgeting.
 ├── build.ts              File discovery, incremental hashing, parse + resolve loop.
-├── store.ts              JSON persistence + blast radius BFS traversal.
+├── store.ts              JSON persistence + importers-only blast radius BFS + barrel detection.
 ├── resolver.ts           Module resolution. oxc-resolver for TS/JS, convention-based
 │                         for Python/Go/Rust/Java/Kotlin.
 ├── types.ts              All shared types: CodebaseIndex, FileEntry, ImportRef,
@@ -51,6 +51,18 @@ indexer/
             ├── java.ts    Java import/export extraction.
             └── kotlin.ts  Kotlin import/export extraction.
 ```
+
+## Blast Radius
+
+The blast radius BFS starts from changed files and walks **importers only** (files that import from a changed file). Upstream dependencies are excluded — import statements are already visible in the diff, and the agent uses `read_file` to investigate upstream files when needed.
+
+- **Default depth:** 1 (configurable via `index.blast_radius_depth`)
+- **Barrel detection:** Index/barrel files (`index.ts`, `mod.rs`, `__init__.py`, etc.) where >50% of exports are re-exports get one extra level of `importedBy` traversal, so the real consumers behind a barrel are included
+- **Labels:** `changed` (directly modified) or `importer` (imports from a changed file)
+
+The context format is a lightweight navigation map:
+- **Changed files** show exports (excluding re-exports) and `importedBy` list
+- **Importer files** show which changed files they import from and which symbols they use
 
 ## Key Interfaces
 

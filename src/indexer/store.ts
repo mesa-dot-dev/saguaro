@@ -4,7 +4,29 @@ import type { CodebaseIndex, FileEntry } from './types.js';
 
 export const CURRENT_VERSION = 2;
 
-type BlastLabel = 'changed' | 'importer' | 'dependency';
+type BlastLabel = 'changed' | 'importer';
+
+const BARREL_FILENAMES = new Set([
+  'index.ts',
+  'index.js',
+  'index.mjs',
+  'index.cjs',
+  'index.tsx',
+  'index.jsx',
+  'mod.rs',
+  '__init__.py',
+]);
+
+function isBarrelFile(filePath: string, entry: FileEntry): boolean {
+  const basename = path.basename(filePath);
+  if (!BARREL_FILENAMES.has(basename)) return false;
+
+  const totalExports = entry.exports.length;
+  if (totalExports === 0) return false;
+
+  const reExportCount = entry.exports.filter((e) => e.kind === 're-export' || e.kind === 're-export-all').length;
+  return reExportCount / totalExports > 0.5;
+}
 
 export class JsonIndexStore {
   private readonly indexPath: string;
@@ -47,21 +69,13 @@ export class JsonIndexStore {
     return entry.importedBy;
   }
 
-  getDependencies(filePath: string): string[] {
-    const entry = this.getFile(filePath);
-    if (!entry) return [];
-    return entry.imports.map((imp) => imp.resolvedPath).filter((p): p is string => p !== null);
-  }
-
   getBlastRadius(roots: string[], maxDepth: number): Map<string, BlastLabel> {
     const result = new Map<string, BlastLabel>();
 
-    // Seed all roots as 'changed'
     for (const root of roots) {
       result.set(root, 'changed');
     }
 
-    // BFS frontier: each item is [filePath, currentDepth]
     let frontier: Array<[string, number]> = roots.map((r) => [r, 0]);
 
     while (frontier.length > 0) {
@@ -70,22 +84,25 @@ export class JsonIndexStore {
       for (const [filePath, depth] of frontier) {
         if (depth >= maxDepth) continue;
 
-        // Traverse importedBy edges (files that import this file)
         const importers = this.getImporters(filePath);
         for (const importer of importers) {
-          if (!result.has(importer)) {
-            result.set(importer, 'importer');
-            nextFrontier.push([importer, depth + 1]);
-          }
-        }
+          if (result.has(importer)) continue;
 
-        // Traverse import edges (files this file depends on)
-        const dependencies = this.getDependencies(filePath);
-        for (const dep of dependencies) {
-          if (!result.has(dep)) {
-            result.set(dep, 'dependency');
-            nextFrontier.push([dep, depth + 1]);
+          result.set(importer, 'importer');
+
+          const importerEntry = this.getFile(importer);
+          if (importerEntry && isBarrelFile(importer, importerEntry)) {
+            // Barrel file: follow one extra level to catch real consumers,
+            // but do NOT add barrel consumers to the BFS frontier.
+            const barrelConsumers = this.getImporters(importer);
+            for (const consumer of barrelConsumers) {
+              if (!result.has(consumer)) {
+                result.set(consumer, 'importer');
+              }
+            }
           }
+
+          nextFrontier.push([importer, depth + 1]);
         }
       }
 

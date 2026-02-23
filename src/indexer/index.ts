@@ -1,4 +1,3 @@
-import path from 'node:path';
 import { buildIndex } from './build.js';
 import { JsonIndexStore } from './store.js';
 import type { ExportRef, FileEntry } from './types.js';
@@ -21,7 +20,7 @@ export async function getCodebaseContext(options: {
   tokenBudget?: number;
   verbose?: boolean;
 }): Promise<string> {
-  const { rootDir, cacheDir, changedFiles, blastRadiusDepth = 2, tokenBudget, verbose } = options;
+  const { rootDir, cacheDir, changedFiles, blastRadiusDepth = 1, tokenBudget, verbose } = options;
 
   try {
     const store = new JsonIndexStore(cacheDir);
@@ -45,56 +44,28 @@ export async function getCodebaseContext(options: {
 }
 
 // ---------------------------------------------------------------------------
-// Connection info — links a blast radius file to the changed files it relates to
+// Connection info — links an importer file to the changed files it imports from
 // ---------------------------------------------------------------------------
 
-interface FileConnection {
+interface ImporterConnection {
   changedFile: string;
   symbols: string[];
-  direction: 'imports-from' | 'imported-by';
-  /** True when the import is `import * as X from '...'` — all exports are considered used */
-  hasNamespaceImport?: boolean;
-  /** True when the import is `import X from '...'` — match the default export by isDefault, not name */
-  hasDefaultImport?: boolean;
 }
 
 /**
- * For a non-changed file in the blast radius, find how it connects to changed files.
- *
- * - 'imports-from': this file imports symbols from a changed file
- * - 'imported-by': a changed file imports symbols from this file
+ * For an importer file in the blast radius, find which changed files it imports from
+ * and which symbols it uses.
  */
-function getFileConnections(
-  filePath: string,
-  entry: FileEntry,
-  changedFiles: Set<string>,
-  changedEntries: Map<string, FileEntry>
-): FileConnection[] {
-  const connections: FileConnection[] = [];
-
-  // This file imports from changed files (importer direction)
+function getImporterConnection(entry: FileEntry, changedFiles: Set<string>): ImporterConnection[] {
+  const connections: ImporterConnection[] = [];
   for (const imp of entry.imports) {
     if (imp.resolvedPath && changedFiles.has(imp.resolvedPath)) {
-      const symbols = collectImportSymbols(imp);
-      connections.push({ changedFile: imp.resolvedPath, symbols, direction: 'imports-from' });
+      connections.push({
+        changedFile: imp.resolvedPath,
+        symbols: collectImportSymbols(imp),
+      });
     }
   }
-
-  // Changed files import from this file (dependency direction)
-  for (const [changedFile, changedEntry] of changedEntries) {
-    for (const imp of changedEntry.imports) {
-      if (imp.resolvedPath === filePath) {
-        connections.push({
-          changedFile,
-          symbols: collectImportSymbols(imp),
-          hasNamespaceImport: imp.namespaceAlias != null,
-          hasDefaultImport: imp.defaultAlias != null,
-          direction: 'imported-by',
-        });
-      }
-    }
-  }
-
   return connections;
 }
 
@@ -113,22 +84,15 @@ const DEFAULT_TOKEN_BUDGET = 4000;
 const CHARS_PER_TOKEN = 4;
 
 function buildContextSection(
-  blastRadius: Map<string, 'changed' | 'importer' | 'dependency'>,
+  blastRadius: Map<string, 'changed' | 'importer'>,
   changedFiles: Set<string>,
   store: JsonIndexStore,
   tokenBudget = DEFAULT_TOKEN_BUDGET
 ): string {
   const charBudget = tokenBudget * CHARS_PER_TOKEN;
 
-  const priorityMap = { changed: 0, importer: 1, dependency: 2 };
+  const priorityMap = { changed: 0, importer: 1 };
   const sorted = [...blastRadius.entries()].sort((a, b) => priorityMap[a[1]] - priorityMap[b[1]]);
-
-  // Pre-fetch changed file entries once to avoid repeated store lookups
-  const changedEntries = new Map<string, FileEntry>();
-  for (const cf of changedFiles) {
-    const entry = store.getFile(cf);
-    if (entry) changedEntries.set(cf, entry);
-  }
 
   const sections: { text: string; priority: number }[] = [];
 
@@ -136,12 +100,12 @@ function buildContextSection(
     const entry = store.getFile(filePath);
     if (!entry) continue;
 
-    const connections = relation === 'changed' ? [] : getFileConnections(filePath, entry, changedFiles, changedEntries);
+    const text =
+      relation === 'changed'
+        ? formatChangedFile(filePath, entry)
+        : formatImporterFile(filePath, getImporterConnection(entry, changedFiles));
 
-    sections.push({
-      text: formatFileContext(filePath, entry, relation, connections),
-      priority: priorityMap[relation],
-    });
+    sections.push({ text, priority: priorityMap[relation] });
   }
 
   let totalChars = 0;
@@ -158,96 +122,31 @@ function buildContextSection(
   return `## Codebase Context\n\n${included.join('\n\n')}`;
 }
 
-function formatFileContext(
-  filePath: string,
-  entry: FileEntry,
-  relation: 'changed' | 'importer' | 'dependency',
-  connections: FileConnection[]
-): string {
-  const label = buildRelationLabel(relation, connections);
-  const lines: string[] = [`### ${filePath} ${label}`];
+// ---------------------------------------------------------------------------
+// Formatters — changed files vs importer files
+// ---------------------------------------------------------------------------
 
+function formatChangedFile(filePath: string, entry: FileEntry): string {
+  const lines: string[] = [`### ${filePath} (changed)`];
   const exportedSymbols = entry.exports.filter((e) => e.kind !== 're-export' && e.kind !== 're-export-all');
-
-  if (relation === 'changed' || connections.length === 0) {
-    // Changed files: show all exports. No connections: fallback to showing all.
-    if (exportedSymbols.length > 0) {
-      lines.push(`Exports: ${exportedSymbols.map(formatExport).join(', ')}`);
-    }
-  } else {
-    // Non-changed files with connections: split into used vs other.
-    // Only 'imported-by' connections determine which exports are "used" —
-    // 'imports-from' connections describe what THIS file consumes, not what it provides.
-    const importedByConns = connections.filter((c) => c.direction === 'imported-by');
-
-    // Namespace import (`import * as X`) means all exports are used
-    const allUsed = importedByConns.some((c) => c.hasNamespaceImport);
-
-    const usedNames = new Set(importedByConns.flatMap((c) => c.symbols));
-    const hasDefaultImport = importedByConns.some((c) => c.hasDefaultImport);
-
-    const used = allUsed
-      ? exportedSymbols
-      : exportedSymbols.filter((e) => usedNames.has(e.name) || (hasDefaultImport && e.isDefault));
-    const other = allUsed
-      ? []
-      : exportedSymbols.filter((e) => !usedNames.has(e.name) && !(hasDefaultImport && e.isDefault));
-
-    if (used.length > 0) {
-      lines.push(`Used symbols: ${used.map(formatExport).join(', ')}`);
-      if (other.length > 0) {
-        lines.push(`Also exports: ${other.map((e) => e.name).join(', ')}`);
-      }
-    } else if (exportedSymbols.length > 0) {
-      // No used symbols (importer or no 'imported-by' connections): show all
-      lines.push(`Exports: ${exportedSymbols.map(formatExport).join(', ')}`);
-    }
+  if (exportedSymbols.length > 0) {
+    lines.push(`Exports: ${exportedSymbols.map(formatExport).join(', ')}`);
   }
-
-  const reExports = entry.exports.filter((e) => e.kind === 're-export' || e.kind === 're-export-all');
-  if (reExports.length > 0) {
-    for (const re of reExports) {
-      if (re.kind === 're-export-all') {
-        lines.push(`Re-exports all from: ${re.reExportSource}`);
-      } else {
-        lines.push(`Re-exports ${re.name} from: ${re.reExportSource}`);
-      }
-    }
-  }
-
-  const localImports = entry.imports.filter((imp) => imp.resolvedPath);
-  if (localImports.length > 0) {
-    const importLines = localImports.map((imp) => {
-      const symbols = [...imp.symbols, ...(imp.typeSymbols ?? []).map((s) => `type ${s}`)];
-      const symbolStr = symbols.length > 0 ? `: ${symbols.join(', ')}` : '';
-      return `${imp.resolvedPath}${symbolStr}`;
-    });
-    lines.push(`Imports from: ${importLines.join('; ')}`);
-  }
-
   if (entry.importedBy.length > 0) {
     lines.push(`Imported by: ${entry.importedBy.join(', ')}`);
   }
-
   return lines.join('\n');
 }
 
-function buildRelationLabel(relation: 'changed' | 'importer' | 'dependency', connections: FileConnection[]): string {
-  if (relation === 'changed') return '(changed)';
-
+function formatImporterFile(filePath: string, connections: ImporterConnection[]): string {
   if (connections.length === 0) {
-    return relation === 'importer' ? '(imports from changed file)' : '(dependency of changed file)';
+    return `### ${filePath} (imports from changed file)`;
   }
-
   const parts = connections.map((c) => {
     const symbolStr = c.symbols.length > 0 ? ` ${c.symbols.join(', ')}` : '';
-    if (c.direction === 'imports-from') {
-      return `imports${symbolStr} from ${c.changedFile}`;
-    }
-    return `imported by ${c.changedFile}`;
+    return `imports${symbolStr} from ${c.changedFile}`;
   });
-
-  return `(${parts.join('; ')})`;
+  return `### ${filePath} (${parts.join('; ')})`;
 }
 
 function formatExport(exp: ExportRef): string {

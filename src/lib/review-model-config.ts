@@ -23,7 +23,7 @@ const OutputSchema = z.object({
 
 const IndexSchema = z.object({
   enabled: z.boolean().default(true),
-  blast_radius_depth: z.number().int().positive().default(2),
+  blast_radius_depth: z.number().int().positive().default(1),
   context_token_budget: z.number().int().positive().default(4000),
 });
 
@@ -44,7 +44,7 @@ export const MesaConfigSchema = z
     }),
     api_keys: z.record(z.string(), z.string()).optional(),
     output: OutputSchema.default({ cursor_deeplink: true }),
-    index: IndexSchema.default({ enabled: true, blast_radius_depth: 2, context_token_budget: 4000 }),
+    index: IndexSchema.default({ enabled: true, blast_radius_depth: 1, context_token_budget: 4000 }),
     review: ReviewSchema.default({ max_steps: 10, files_per_batch: 3 }),
     hook: HookSchema.default({ enabled: true }),
   })

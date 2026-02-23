@@ -47,7 +47,7 @@
 - **Silence is success** - No output unless a rule is violated
 - **No defaults** - Zero built-in rules; you define everything
 - **Rules in code** - `.mesa/rules/` directory, version-controlled with git
-- **Codebase-aware** - Import graph, blast radius, and symbol-level context
+- **Codebase-aware** - Import graph, importer blast radius, and navigation context
 - **Local-first** - CLI tool with user-provided API keys
 - **Multi-provider** - Anthropic, OpenAI, Google via Vercel AI SDK
 
@@ -61,7 +61,7 @@
 | **No default checks** | Zero built-in rules; user defines everything |
 | **Rules in code** | `.mesa/rules/` directory in repo, versioned via git |
 | **Local-first** | CLI tool; user provides own API keys |
-| **Codebase-aware** | Import graph analysis + blast radius for surgical context |
+| **Codebase-aware** | Import graph analysis + importer blast radius for navigation context |
 | **Parallel execution** | Workers split files for concurrent LLM calls |
 | **Graceful degradation** | Indexing failures never block reviews |
 | **Layered architecture** | CLI → adapter → core/lib separation of concerns |
@@ -703,8 +703,8 @@ $ mesa review --base main
 |  4. CODEBASE INDEXING (graceful — never blocks review)        |
 |                                                               |
 |     buildIndex()       — SWC/tree-sitter parse                |
-|     getBlastRadius()   — BFS from changed files               |
-|     buildContext()     — Symbol-level filtering, token budget  |
+|     getBlastRadius()   — Importers-only BFS, barrel-aware     |
+|     buildContext()     — Lightweight navigation map            |
 +---------------------------------------------------------------+
                         |
                         v
@@ -754,8 +754,8 @@ The system prompt guides the agent through three phases:
 ## Your Workflow
 
 ### Phase 1: Orient
-Read the Codebase Map (if provided) to understand what files are involved
-and how they connect to each other.
+Read the Codebase Map (if provided) to understand which files import
+from the changed files.
 
 ### Phase 2: Review
 For each file and its applicable rules:
@@ -765,7 +765,8 @@ For each file and its applicable rules:
 
 ### Phase 3: Investigate
 If a potential violation needs context from other files:
-- Use read_file to check related code
+- Use read_file to check related code (including upstream
+  dependencies visible in import statements from the diff)
 - Verify the violation before reporting
 
 ## Output Format
@@ -808,7 +809,7 @@ All context is injected into the prompt upfront — the agent does not fetch dif
 
 - **Diffs:** Pre-computed via `git diff`, injected per-file (truncated at 30KB)
 - **Rules:** Full rule definitions with instructions and examples
-- **Codebase context:** Import graph analysis with symbol-level filtering (see below)
+- **Codebase context:** Lightweight navigation map from import graph analysis (see below)
 
 ---
 
@@ -816,7 +817,7 @@ All context is injected into the prompt upfront — the agent does not fetch dif
 
 ### Overview
 
-The indexer builds an import graph of the codebase, computes a "blast radius" from changed files, and generates a token-budgeted context section for the review prompt. This gives the agent structural awareness without dumping the entire codebase.
+The indexer builds an import graph of the codebase, computes an importers-only "blast radius" from changed files, and generates a token-budgeted navigation map for the review prompt. This tells the agent which files are connected to the changes — it uses `read_file` to investigate further.
 
 ### Supported Languages
 
@@ -851,10 +852,10 @@ Reverse Index (importedBy edges)
 JSON Persistence (.mesa/cache/index.json)
         |
         v
-Blast Radius BFS (from changed files, configurable depth)
+Blast Radius BFS (importers-only, barrel-aware, configurable depth)
         |
         v
-Symbol-Level Context (used vs other exports, token budget)
+Lightweight Context Map (exports + importers for changed files, connections for importer files)
 ```
 
 ### Incremental Updates
@@ -863,32 +864,39 @@ Files are hashed (SHA-256). On subsequent runs, only changed files are re-parsed
 
 ### Blast Radius
 
-Starting from changed files, BFS traverses:
-- **Importers** — files that import from a changed file
-- **Dependencies** — files that a changed file imports from
+Starting from changed files, BFS traverses **importers only** (files that import from a changed file). Upstream dependencies (files that a changed file imports from) are deliberately excluded — import statements are already visible in the diff, and the agent can use `read_file` to inspect upstream files when needed.
 
 Each file in the radius is classified:
 - `changed` — directly modified in the diff
 - `importer` — imports symbols from a changed file
-- `dependency` — exports symbols consumed by a changed file
 
-### Symbol-Level Filtering
+**Barrel file detection:** Index/barrel files (e.g. `index.ts`, `mod.rs`, `__init__.py`) that primarily re-export (>50% of exports are re-exports) get one extra level of `importedBy` traversal. This ensures the real consumers behind a barrel file are included without increasing the default depth for all files.
 
-For files in the blast radius, the context builder cross-references imports and exports to show only relevant information:
+Default depth is **1** (configurable via `index.blast_radius_depth` in `.mesa/config.yaml`).
+
+### Context Format
+
+The context section is a lightweight navigation map — it tells the agent which files are connected, not the full dependency graph. The agent uses `read_file` to investigate further.
+
+For **changed files**, the context shows exports and importers:
 
 ```markdown
-### src/agent/config.ts (imported by src/agent/runner.ts)
-Used symbols: loadMesaConfig(): MesaConfig, resolveModel(): LanguageModel
-Also exports: resolveApiKey, validateConfig
-Imports from: src/types/types.ts: Rule, Severity
-Imported by: src/agent/runner.ts, src/cli/review.ts
+### src/lib/config.ts (changed)
+Exports: loadConfig(): MesaConfig, resolveModel(): LanguageModel
+Imported by: src/lib/runner.ts, src/cli/review.ts
+```
+
+For **importer files**, the context shows which changed files they import from and which symbols they use:
+
+```markdown
+### src/lib/runner.ts (imports loadConfig, resolveModel from src/lib/config.ts)
 ```
 
 Key behaviors:
-- **`imported-by` connections:** Cross-reference which symbols a changed file actually imports. Show full signatures for used symbols, names-only for the rest.
-- **Default imports:** Matched via `isDefault` on exports (not by name, since aliases differ)
-- **Namespace imports** (`import * as X`): All exports are considered used
-- **Token budget:** Default 4000 tokens (~16KB). Changed files are prioritized, then importers, then dependencies. Sections that exceed the budget are skipped.
+- **Changed files:** Show non-re-export exports with signatures, plus `importedBy` list
+- **Importer files:** Single line showing connected changed files and imported symbols
+- **No upstream dependencies:** Import paths are in the diff; the agent uses `read_file` for upstream context
+- **Token budget:** Default 4000 tokens (~16KB). Changed files are prioritized over importers. Sections that exceed the budget are skipped.
 
 ### Graceful Failure
 
@@ -1020,7 +1028,7 @@ interface PlacementOption {
 
 ```typescript
 interface CodebaseIndex {
-  version: 1;
+  version: 2;
   rootDir: string;
   indexedAt: string;  // ISO 8601
   files: Record<string, FileEntry>;
@@ -1073,10 +1081,16 @@ model:
 output:
   cursor_deeplink: true
 
+# Index Settings
+index:
+  enabled: true                # Enable/disable codebase indexing
+  blast_radius_depth: 1        # BFS depth for importer traversal (default: 1)
+  context_token_budget: 4000   # Max tokens for codebase context section
+
 # Review Settings
 review:
-  max_steps_size: 50           # Maximum tool-calling steps per worker
-  files_per_worker: 2          # Number of files per parallel worker batch
+  max_steps: 10                # Maximum tool-calling steps per worker
+  files_per_batch: 3           # Number of files per parallel worker batch
 ```
 
 API keys are loaded from environment variables (`.env.local`, `.env`, or shell export). The config file does **not** contain API keys.
