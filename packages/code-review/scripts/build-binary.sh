@@ -17,8 +17,18 @@ bun build "$ENTRY" --compile --minify \
   --external @swc/wasm \
   --outfile "$OUTDIR/mesa"
 
+WASM_DIR="$OUTDIR/wasm"
+mkdir -p "$WASM_DIR"
+cp "$(bun -e "process.stdout.write(require.resolve('web-tree-sitter/tree-sitter.wasm'))")" "$WASM_DIR/"
+for lang in python go rust java kotlin; do
+  cp "$(bun -e "process.stdout.write(require.resolve('tree-sitter-wasms/out/tree-sitter-${lang}.wasm'))")" "$WASM_DIR/"
+done
+
 echo ""
 echo "Built:"
 ls -lh "$OUTDIR/mesa"
+echo ""
+echo "WASM files:"
+ls -lh "$WASM_DIR/"
 echo ""
 echo "Test with: $OUTDIR/mesa --version"

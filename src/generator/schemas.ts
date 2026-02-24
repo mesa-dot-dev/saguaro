@@ -8,15 +8,11 @@ export const RuleProposalSchema = z.object({
   instructions: z.string().describe('What to flag and why — be specific'),
   examples: z
     .object({
-      violations: z.array(z.string()).optional().describe('Code snippets (10-120 chars) showing violations'),
-      compliant: z.array(z.string()).optional().describe('Code snippets (10-120 chars) showing correct code'),
+      violations: z.array(z.string()).describe('Code snippets (10-120 chars) showing violations'),
+      compliant: z.array(z.string()).describe('Code snippets (10-120 chars) showing correct code'),
     })
-    .optional()
     .describe('Concrete code examples of violations and compliant patterns'),
-  tags: z
-    .array(z.string())
-    .optional()
-    .describe('Lowercase hyphenated tags for categorization (e.g., "architecture", "security")'),
+  tags: z.array(z.string()).describe('Lowercase hyphenated tags for categorization (e.g., "architecture", "security")'),
 });
 
 export const TriageDecisionSchema = z.object({

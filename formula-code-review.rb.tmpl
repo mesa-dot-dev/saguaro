@@ -10,6 +10,7 @@ class ${FORMULA_CLASS_NAME} < Formula
 
   def install
     bin.install "mesa"
+    (bin/"wasm").install Dir["wasm/*"]
   end
 
   test do

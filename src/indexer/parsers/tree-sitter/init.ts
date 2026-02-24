@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import path from 'node:path';
 
 const require = createRequire(import.meta.url);
 
@@ -21,6 +22,25 @@ let LanguageClass: { load(path: string): Promise<TreeSitterLanguage> } | null = 
 const grammars = new Map<string, TreeSitterLanguage>();
 
 /**
+ * Detect whether we're running inside a Bun compiled binary.
+ * In compiled binaries, import.meta.url resolves to /$bunfs/root/ where
+ * WASM files don't exist. Emscripten's Parser.init() calls abort() when
+ * it can't find tree-sitter.wasm — an uncatchable process-level crash.
+ */
+function isCompiledBinary(): boolean {
+  return (process.argv[1] ?? '').startsWith('/$bunfs/');
+}
+
+/**
+ * Resolve the directory containing WASM files when running as a compiled binary.
+ * Returns null in dev mode (bun run) where default resolution works.
+ */
+function resolveWasmDir(): string | null {
+  if (!isCompiledBinary()) return null;
+  return path.join(path.dirname(process.execPath), 'wasm');
+}
+
+/**
  * Initialize the web-tree-sitter WASM runtime. Safe to call multiple times.
  */
 export async function initTreeSitter(): Promise<void> {
@@ -28,7 +48,16 @@ export async function initTreeSitter(): Promise<void> {
 
   const mod = await import('web-tree-sitter');
   const { Parser, Language } = mod;
-  await Parser.init();
+
+  const wasmDir = resolveWasmDir();
+  if (wasmDir) {
+    await Parser.init({
+      locateFile: () => path.join(wasmDir, 'tree-sitter.wasm'),
+    });
+  } else {
+    await Parser.init();
+  }
+
   ParserCtor = Parser as unknown as ParserConstructor;
   LanguageClass = Language as unknown as { load(path: string): Promise<TreeSitterLanguage> };
 }
@@ -48,7 +77,9 @@ export async function getLanguage(lang: string): Promise<TreeSitterLanguage> {
     throw new Error(`No tree-sitter grammar configured for language: ${lang}`);
   }
 
-  const wasmPath = require.resolve(specifier);
+  const wasmDir = resolveWasmDir();
+  const wasmPath = wasmDir ? path.join(wasmDir, path.basename(specifier)) : require.resolve(specifier);
+
   const grammar = await LanguageClass!.load(wasmPath);
   grammars.set(lang, grammar);
   return grammar;
