@@ -6,12 +6,10 @@ class ${FORMULA_CLASS_NAME} < Formula
   license "Apache-2.0"
   version "${VERSION}"
 
+  depends_on arch: :arm64
+
   def install
-    if Hardware::CPU.arm?
-      bin.install "mesa-darwin-arm64" => "mesa"
-    else
-      bin.install "mesa-darwin-x64" => "mesa"
-    end
+    bin.install "mesa"
   end
 
   test do
