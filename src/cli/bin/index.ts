@@ -22,13 +22,13 @@ import { resolvePackageVersion, reviewCommand } from '../review.js';
 process.on('unhandledRejection', (reason) => {
   const message = reason instanceof Error ? reason.message : String(reason);
   console.error(chalk.red(`\n[Mesa] Unexpected error: ${message}`));
-  console.error(chalk.gray('This is a bug. Please report it at https://github.com/anthropics/mesa/issues'));
+  console.error(chalk.gray('This is a bug. Please report it in our discord: https://discord.com/invite/2vvEJFrCHV'));
   process.exitCode = 1;
 });
 
 process.on('uncaughtException', (error) => {
   console.error(chalk.red(`\n[Mesa] Unexpected error: ${error.message}`));
-  console.error(chalk.gray('This is a bug. Please report it at https://github.com/anthropics/mesa/issues'));
+  console.error(chalk.gray('This is a bug. Please report it in our discord: https://discord.com/invite/2vvEJFrCHV'));
   process.exit(1);
 });
 
