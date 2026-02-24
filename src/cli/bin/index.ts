@@ -14,6 +14,7 @@ import { generateRulesCommand } from '../lib/generate.js';
 import { installHook, runHook, runPreTool, uninstallHook } from '../lib/hook.js';
 import indexCmdHandler from '../lib/index-cmd.js';
 import initHandler from '../lib/init.js';
+import modelHandler from '../lib/model.js';
 import { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, validateRules } from '../lib/rules.js';
 import serveHandler from '../lib/serve.js';
 import { statsCommand } from '../lib/stats.js';
@@ -155,7 +156,8 @@ yargs(argv)
       '  Available slash commands inside Claude Code:\n\n' +
       `    ${secondary('/mesa-review')}          Run a code review. Optionally specify a branch / head ref.\n` +
       `    ${secondary('/mesa-createrule')}      Create a new review rule\n` +
-      `    ${secondary('/mesa-generaterules')}   Auto-generate rules from your codebase\n\n` +
+      `    ${secondary('/mesa-generaterules')}   Auto-generate rules from your codebase\n` +
+      `    ${secondary('/mesa-model')}           Switch the AI model for reviews\n\n` +
       '  Mesa also adds a configurable hook that automatically reviews code\n' +
       '  after each iteration Claude Code makes to your codebase. If violations\n' +
       '  are found, Claude is blocked and asked to fix them before completing.'
@@ -194,6 +196,19 @@ yargs(argv)
         .example('$0 init --force', 'Re-initialize, overwriting existing config');
     },
     wrapHandler('init', initHandler as (argv: unknown) => Promise<number>)
+  )
+  .command(
+    'model',
+    'Switch the AI model used for code reviews',
+    (y: Argv) => {
+      y.usage(
+        `${secondary('mesa model')}\n\n` +
+          'Interactive prompt to switch the AI provider and model used\n' +
+          'for code reviews. Updates .mesa/config.yaml. Optionally sets\n' +
+          'the API key if one is not found for the selected provider.'
+      ).example('$0 model', 'Switch model interactively');
+    },
+    wrapHandler('model', modelHandler as (argv: unknown) => Promise<number>)
   )
 
   .command(

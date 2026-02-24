@@ -117,6 +117,34 @@ export function createMesaMcpServer(): McpServer {
     (args) => handleToolCall('mesa_generate_rule', args)
   );
 
+  server.registerTool(
+    'mesa_get_models',
+    {
+      description: 'Get available AI models for code review, grouped by provider. Returns current model if configured.',
+      inputSchema: {
+        provider: z
+          .enum(['anthropic', 'openai', 'google'])
+          .optional()
+          .describe('Filter to a specific provider. Omit to get all providers.'),
+      },
+    },
+    (args) => handleToolCall('mesa_get_models', args)
+  );
+
+  server.registerTool(
+    'mesa_set_model',
+    {
+      description:
+        'Set the AI model used for code reviews. Updates .mesa/config.yaml. Optionally saves API key to .env.local.',
+      inputSchema: {
+        provider: z.enum(['anthropic', 'openai', 'google']).describe('AI provider'),
+        model: z.string().describe('Model identifier (e.g. claude-opus-4-6, gpt-5.2-codex)'),
+        api_key: z.string().optional().describe('API key for the provider (saved to .env.local if provided)'),
+      },
+    },
+    (args) => handleToolCall('mesa_set_model', args)
+  );
+
   return server;
 }
 

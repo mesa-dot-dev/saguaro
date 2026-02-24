@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
 import { writeMesaRuleFile } from '../../lib/mesa-rules.js';
+import { getModelCatalog, upsertEnvValue } from '../../lib/model-catalog.js';
 import type { ModelProvider } from '../../lib/review-model-config.js';
 import { findRepoRoot } from '../../lib/rule-resolution.js';
 import { getMcpJsonConfig } from '../../mcp/config.js';
@@ -17,46 +18,6 @@ const configPath = path.join(mesaDir, 'config.yaml');
 const envLocalPath = '.env.local';
 const secondary = chalk.hex('#be3c00');
 const tertiary = chalk.hex('#ffecba');
-
-interface ProviderModelOption {
-  id: string;
-  label: string;
-}
-
-interface ProviderConfig {
-  envKey: string;
-  label: string;
-  models: ProviderModelOption[];
-}
-
-const PROVIDER_REGISTRY: Record<ModelProvider, ProviderConfig> = {
-  anthropic: {
-    envKey: 'ANTHROPIC_API_KEY',
-    label: 'Anthropic',
-    models: [
-      { id: 'claude-opus-4-6', label: 'Claude Opus 4.6 (recommended)' },
-      { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-    ],
-  },
-  openai: {
-    envKey: 'OPENAI_API_KEY',
-    label: 'OpenAI',
-    models: [
-      { id: 'gpt-5.2-codex', label: 'GPT-5.2 Codex (recommended)' },
-      { id: 'gpt-5.1-codex', label: 'GPT-5.1 Codex' },
-    ],
-  },
-  google: {
-    envKey: 'GOOGLE_API_KEY',
-    label: 'Google',
-    models: [
-      { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro (recommended)' },
-      { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash' },
-    ],
-  },
-};
-
-const CUSTOM_MODEL_OPTION = { id: 'custom', label: 'Custom model name' } as const;
 
 type SkillSetupChoice = 'default' | 'generate' | 'skip';
 
@@ -106,25 +67,6 @@ hook:
 `;
 }
 
-function upsertEnvValue(filePath: string, key: string, value: string): void {
-  const escapedValue = value.replace(/\n/g, '');
-  const nextLine = `${key}=${escapedValue}`;
-  const exists = fs.existsSync(filePath);
-  const content = exists ? fs.readFileSync(filePath, 'utf8') : '';
-  const lines = content === '' ? [] : content.split(/\r?\n/);
-  const keyPattern = new RegExp(`^\\s*${key}=`);
-  const matchIndex = lines.findIndex((line) => keyPattern.test(line));
-
-  if (matchIndex >= 0) {
-    lines[matchIndex] = nextLine;
-  } else {
-    lines.push(nextLine);
-  }
-
-  const normalized = `${lines.filter((line) => line.length > 0).join('\n')}\n`;
-  fs.writeFileSync(filePath, normalized);
-}
-
 const mcpJsonPath = '.mcp.json';
 
 function writeMcpJson(): void {
@@ -166,25 +108,34 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
 
   fs.mkdirSync(rootMesaDir, { recursive: true });
   fs.mkdirSync(rootSkillsDir, { recursive: true });
+
+  const catalog = await getModelCatalog();
+
   const rl1 = createReadline();
   let selectedProvider: ModelProvider;
   try {
-    const providerChoice = await askChoice(rl1, secondary('Which AI provider would you like to use?'), [
-      { id: 'anthropic' as const, label: PROVIDER_REGISTRY.anthropic.label },
-      { id: 'openai' as const, label: PROVIDER_REGISTRY.openai.label },
-      { id: 'google' as const, label: PROVIDER_REGISTRY.google.label },
-    ]);
+    const providerChoice = await askChoice(
+      rl1,
+      secondary('Which AI provider would you like to use?'),
+      catalog.map((p) => ({ id: p.id, label: p.label }))
+    );
     selectedProvider = providerChoice.id;
   } finally {
     rl1.close();
   }
 
-  const providerConfig = PROVIDER_REGISTRY[selectedProvider];
+  const providerConfig = catalog.find((p) => p.id === selectedProvider)!;
 
   const rl2 = createReadline();
   let selectedModel: string;
   try {
-    const modelOptions = [...providerConfig.models, CUSTOM_MODEL_OPTION];
+    const modelOptions = [
+      ...providerConfig.models.map((m) => ({
+        id: m.id,
+        label: m.recommended ? `${m.label} (recommended)` : m.label,
+      })),
+      { id: 'custom' as const, label: 'Custom model name' },
+    ];
     const modelChoice = await askChoice(
       rl2,
       secondary('Which model?') + chalk.gray('  (you can change this anytime in .mesa/config.yaml)'),
@@ -274,6 +225,7 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-review/`));
   console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-createrule/`));
   console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-generaterules/`));
+  console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-model/`));
   console.log(chalk.gray(`  Updated: .claude/settings.json (PreToolUse + Stop hooks)`));
   if (wroteApiKey) {
     console.log(chalk.gray(`  Updated: ${relEnvPath} (${providerConfig.envKey})`));

@@ -11,6 +11,7 @@ import {
   writeGeneratedRules,
 } from '../../adapter/rules.js';
 import { generateRules } from '../../generator/index.js';
+import { getCurrentModel, getModelCatalog, setModel } from '../../lib/model-catalog.js';
 import { findRepoRoot } from '../../lib/rule-resolution.js';
 import type { RulePolicy, Severity } from '../../types/types.js';
 
@@ -195,6 +196,35 @@ function handleWriteAcceptedRules(args: Record<string, unknown>): CallToolResult
   return jsonResult({ ...result, skippedIds });
 }
 
+async function handleGetModels(args: Record<string, unknown>): Promise<CallToolResult> {
+  debug('mesa_get_models called', args);
+  const providerFilter = args.provider as string | undefined;
+  const catalog = await getModelCatalog();
+  const providers = providerFilter ? catalog.filter((p) => p.id === providerFilter) : catalog;
+  const current = getCurrentModel();
+  return jsonResult({ providers, current });
+}
+
+function handleSetModel(args: Record<string, unknown>): CallToolResult {
+  debug('mesa_set_model called', args);
+  const provider = args.provider as string;
+  const model = args.model as string;
+  const apiKey = args.api_key as string | undefined;
+
+  if (!provider || !model) {
+    return errorResult('provider and model are required');
+  }
+
+  setModel(provider as 'anthropic' | 'openai' | 'google', model, apiKey ? { apiKey } : undefined);
+
+  return jsonResult({
+    success: true,
+    provider,
+    model,
+    message: 'You can change this anytime in .mesa/config.yaml',
+  });
+}
+
 async function handleReview(args: Record<string, unknown>): Promise<CallToolResult> {
   const baseRef = (args.base_branch as string) ?? 'main';
   const headRef = (args.head_branch as string) ?? 'HEAD';
@@ -288,6 +318,12 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
       break;
     case 'mesa_get_generated_rule_details':
       result = handleGetGeneratedRuleDetails(args);
+      break;
+    case 'mesa_get_models':
+      result = await handleGetModels(args);
+      break;
+    case 'mesa_set_model':
+      result = handleSetModel(args);
       break;
     case 'mesa_write_accepted_rules':
       result = handleWriteAcceptedRules(args);

@@ -173,6 +173,89 @@ describe('mesa_get_generated_rule_details', () => {
   });
 });
 
+describe('mesa_get_models', () => {
+  test('returns providers and models', async () => {
+    await withTempRepo(async () => {
+      const { client } = await createTestClient();
+      const result = await callTool(client, 'mesa_get_models', {});
+      const data = parseContent(result) as { providers: unknown[]; current: unknown };
+
+      expect(result.isError).toBeFalsy();
+      expect(data.providers.length).toBeGreaterThanOrEqual(3);
+      expect(data.current).toBeNull();
+    });
+  });
+
+  test('returns current model when config exists', async () => {
+    await withTempRepo(async (root) => {
+      const mesaDir = path.join(root, '.mesa');
+      fs.mkdirSync(mesaDir, { recursive: true });
+      fs.writeFileSync(path.join(mesaDir, 'config.yaml'), 'model:\n  provider: anthropic\n  name: claude-opus-4-6\n');
+
+      const { client } = await createTestClient();
+      const result = await callTool(client, 'mesa_get_models', {});
+      const data = parseContent(result) as { current: { provider: string; model: string } };
+
+      expect(data.current).toEqual({ provider: 'anthropic', model: 'claude-opus-4-6' });
+    });
+  });
+
+  test('filters by provider when specified', async () => {
+    await withTempRepo(async () => {
+      const { client } = await createTestClient();
+      const result = await callTool(client, 'mesa_get_models', { provider: 'anthropic' });
+      const data = parseContent(result) as { providers: { id: string }[] };
+
+      expect(data.providers).toHaveLength(1);
+      expect(data.providers[0].id).toBe('anthropic');
+    });
+  });
+});
+
+describe('mesa_set_model', () => {
+  test('updates config with new provider and model', async () => {
+    await withTempRepo(async (root) => {
+      const mesaDir = path.join(root, '.mesa');
+      fs.mkdirSync(mesaDir, { recursive: true });
+      fs.writeFileSync(path.join(mesaDir, 'config.yaml'), 'model:\n  provider: anthropic\n  name: claude-opus-4-6\n');
+
+      const { client } = await createTestClient();
+      const result = await callTool(client, 'mesa_set_model', {
+        provider: 'openai',
+        model: 'gpt-5.2-codex',
+      });
+      const data = parseContent(result) as { success: boolean; provider: string; model: string };
+
+      expect(result.isError).toBeFalsy();
+      expect(data.success).toBe(true);
+      expect(data.provider).toBe('openai');
+      expect(data.model).toBe('gpt-5.2-codex');
+
+      const config = fs.readFileSync(path.join(mesaDir, 'config.yaml'), 'utf8');
+      expect(config).toContain('provider: openai');
+      expect(config).toContain('name: gpt-5.2-codex');
+    });
+  });
+
+  test('saves API key to .env.local when provided', async () => {
+    await withTempRepo(async (root) => {
+      const mesaDir = path.join(root, '.mesa');
+      fs.mkdirSync(mesaDir, { recursive: true });
+      fs.writeFileSync(path.join(mesaDir, 'config.yaml'), 'model:\n  provider: anthropic\n  name: claude-opus-4-6\n');
+
+      const { client } = await createTestClient();
+      await callTool(client, 'mesa_set_model', {
+        provider: 'openai',
+        model: 'gpt-5.2-codex',
+        api_key: 'sk-test-key-123',
+      });
+
+      const envContent = fs.readFileSync(path.join(root, '.env.local'), 'utf8');
+      expect(envContent).toContain('OPENAI_API_KEY=sk-test-key-123');
+    });
+  });
+});
+
 describe('mesa_review', () => {
   test('returns error gracefully when called without proper git context', async () => {
     await withTempRepo(async () => {

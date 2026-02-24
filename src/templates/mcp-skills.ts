@@ -106,5 +106,28 @@ Both tools read from the same session state populated by \`mesa_generate_rules\`
 6. **Final summary** — Report how many rules were written vs. skipped, with their IDs and file paths (from the tool response).
 `,
     },
+    {
+      skillFilePath: 'mesa-model/SKILL.md',
+      content: `---
+name: mesa-model
+description: Switch the AI model used for Mesa code reviews
+---
+## Flow
+
+1. **Get available models** — Call the \`mesa_get_models\` MCP tool to get available providers, models, and the current selection.
+
+2. **Show current model** — Display the user's current model configuration (if set).
+
+3. **Pick a provider** — Use \`AskUserQuestion\` to let the user pick a provider from the list returned by \`mesa_get_models\`.
+
+4. **Pick a model** — Call \`mesa_get_models\` with the selected provider to get its model list. Use \`AskUserQuestion\` to let the user pick a model. Include a "Custom model name" option — if chosen, ask the user to type the model identifier.
+
+5. **Set the model** — Call \`mesa_set_model\` with the selected provider and model.
+
+6. **Check API key** — If the provider's API key is not set in the environment, ask the user to provide it. If they do, call \`mesa_set_model\` again with the \`api_key\` field included.
+
+7. **Confirm** — Tell the user the model has been updated and mention they can also edit \`.mesa/config.yaml\` directly.
+`,
+    },
   ];
 }
