@@ -1,13 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
+import { anyFileMatchesGlob, detectEcosystems } from '../../lib/detect-ecosystems.js';
 import { writeMesaRuleFile } from '../../lib/mesa-rules.js';
 import { getModelCatalog, upsertEnvValue } from '../../lib/model-catalog.js';
 import type { ModelProvider } from '../../lib/review-model-config.js';
 import { findRepoRoot } from '../../lib/rule-resolution.js';
+import { selectStarterRules } from '../../lib/select-starter-rules.js';
 import { getMcpJsonConfig } from '../../mcp/config.js';
+import { ECOSYSTEM_REGISTRY } from '../../templates/ecosystems.js';
 import { getMcpSkillFiles } from '../../templates/mcp-skills.js';
-import { STARTER_RULE_SKILLS } from '../../templates/starter-rule-skills.js';
+import { STARTER_RULES } from '../../templates/starter-rules.js';
 import { generateRulesCommand } from './generate.js';
 import { installHook } from './hook.js';
 import { ask, askChoice, createReadline } from './prompt.js';
@@ -201,10 +204,23 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   }
 
   if (skillSetupChoice === 'default') {
-    for (const starter of STARTER_RULE_SKILLS) {
-      writeMesaRuleFile(repoRoot, starter);
+    const detected = detectEcosystems(repoRoot);
+    const selected = selectStarterRules(STARTER_RULES, detected, (globs) => anyFileMatchesGlob(repoRoot, globs));
+
+    for (const rule of selected) {
+      writeMesaRuleFile(repoRoot, rule);
     }
-    console.log(chalk.gray(`  Added starter rules to .mesa/rules/. Add more with ${tertiary('mesa rules create')}.`));
+
+    const ecoLabels = ECOSYSTEM_REGISTRY.filter((e) => detected.has(e.id))
+      .map((e) => e.label)
+      .join(', ');
+
+    const ecoSuffix = ecoLabels ? ` (${ecoLabels})` : '';
+    console.log(
+      chalk.gray(
+        `  Applied ${selected.length} starter rules${ecoSuffix}. Add more with ${tertiary('mesa rules create')}.`
+      )
+    );
   } else if (skillSetupChoice === 'generate') {
     await generateRulesCommand({ config: path.join(repoRoot, configPath) });
   } else {

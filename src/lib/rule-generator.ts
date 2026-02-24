@@ -1,7 +1,7 @@
 import type { LanguageModel } from 'ai';
 import { generateText } from 'ai';
 import yaml from 'js-yaml';
-import { STARTER_RULE_SKILLS } from '../templates/starter-rule-skills.js';
+import { STARTER_RULES } from '../templates/starter-rules.js';
 import type { RulePolicy, Severity } from '../types/types.js';
 import { type CodebaseSnippet, toKebabCase } from './constants.js';
 import { RulePolicySchema } from './mesa-rules.js';
@@ -93,7 +93,7 @@ Rules:
 export function selectFewShotExamples(intent: string): RulePolicy[] {
   const intentTokens = tokenize(intent);
 
-  const scored = STARTER_RULE_SKILLS.map((rule) => {
+  const scored = STARTER_RULES.map((rule) => {
     const ruleTokens = [...tokenize(rule.title), ...(rule.tags ?? []).flatMap((tag) => tag.split('-'))];
     const score = intentTokens.reduce(
       (acc, token) => acc + (ruleTokens.some((rt) => rt.includes(token) || token.includes(rt)) ? 1 : 0),

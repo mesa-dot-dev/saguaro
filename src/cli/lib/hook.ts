@@ -151,7 +151,7 @@ export async function installHook(): Promise<number> {
 
   writeSettings(settingsPath, settings);
 
-  logger.info(secondary('Mesa hooks installed (PreToolUse + Stop).'));
+  logger.info(secondary('Claude Code hooks installed'));
   return 0;
 }
 

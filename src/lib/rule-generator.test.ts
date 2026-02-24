@@ -24,9 +24,9 @@ describe('selectFewShotExamples', () => {
   });
 
   test('selects relevant examples by title matching', () => {
-    const examples = selectFewShotExamples('console.log production code');
+    const examples = selectFewShotExamples('floating promises async await');
     const ids = examples.map((e) => e.id);
-    expect(ids).toContain('no-console-log');
+    expect(ids).toContain('no-floating-promises');
   });
 
   test('returns examples even for unrelated intent', () => {

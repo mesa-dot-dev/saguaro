@@ -9,7 +9,7 @@ import { JsonIndexStore } from '../indexer/store.js';
 import type { CodebaseIndex } from '../indexer/types.js';
 import { loadReviewAdapterConfig, resolveModelFromResolvedConfig } from '../lib/review-model-config.js';
 import { findRepoRoot } from '../lib/rule-resolution.js';
-import { STARTER_RULE_SKILLS } from '../templates/starter-rule-skills.js';
+import { STARTER_RULES } from '../templates/starter-rules.js';
 import type { RulePolicy } from '../types/types.js';
 import { computeArchitecturalContext } from './architecture.js';
 import { scanAndSelectFiles } from './scanner.js';
@@ -18,8 +18,8 @@ import { synthesizeRules } from './synthesis.js';
 import type { GenerateRulesOptions, GeneratorResult, ScanResult, ZoneAnalysisResult, ZoneConfig } from './types.js';
 
 /** Pick a diverse fixed set of starter rules as few-shot references for zone analysis. */
-const FEW_SHOT_IDS = ['no-console-log', 'require-sanitized-auth-redirect', 'guard-percentage-division'] as const;
-const FEW_SHOT_EXAMPLES = STARTER_RULE_SKILLS.filter((r) => (FEW_SHOT_IDS as readonly string[]).includes(r.id));
+const FEW_SHOT_IDS = ['no-floating-promises', 'missing-effect-cleanup', 'n-plus-one-query'] as const;
+const FEW_SHOT_EXAMPLES = STARTER_RULES.filter((r) => (FEW_SHOT_IDS as readonly string[]).includes(r.id));
 
 const ZONE_ANALYSIS_SYSTEM = `You are a senior developer extracting code review rules from a zone of a codebase.
 

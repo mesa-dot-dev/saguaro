@@ -310,7 +310,7 @@ yargs(argv)
         'Show full details for a rule (instructions, globs, examples)',
         (y: Argv) => {
           y.positional('ruleId', {
-            describe: 'Rule ID (e.g. no-console-log)',
+            describe: 'Rule ID (e.g. n-plus-one-query)',
             type: 'string',
           });
         },
@@ -333,7 +333,7 @@ yargs(argv)
         'Delete a rule by its ID',
         (y: Argv) => {
           y.positional('ruleId', {
-            describe: 'Rule ID to delete (e.g. no-console-log)',
+            describe: 'Rule ID to delete (e.g. n-plus-one-query)',
             type: 'string',
           });
         },
