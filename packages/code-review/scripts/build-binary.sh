@@ -14,11 +14,13 @@ echo "Building mesa v$VERSION → $OUTDIR"
 
 bun build "$ENTRY" --compile --minify \
   --define "__MESA_VERSION__=\"$VERSION\"" \
+  --external @swc/wasm \
   --target=bun-darwin-arm64 \
   --outfile "$OUTDIR/mesa-darwin-arm64"
 
 bun build "$ENTRY" --compile --minify \
   --define "__MESA_VERSION__=\"$VERSION\"" \
+  --external @swc/wasm \
   --target=bun-darwin-x64 \
   --outfile "$OUTDIR/mesa-darwin-x64"
 
