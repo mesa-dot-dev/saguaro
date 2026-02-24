@@ -18,10 +18,11 @@ bun build "$ENTRY" --compile --minify \
   --outfile "$OUTDIR/mesa"
 
 WASM_DIR="$OUTDIR/wasm"
+PKG_MODULES="$PKG_DIR/node_modules"
 mkdir -p "$WASM_DIR"
-cp "$(bun -e "process.stdout.write(require.resolve('web-tree-sitter/tree-sitter.wasm'))")" "$WASM_DIR/"
+cp "$PKG_MODULES/web-tree-sitter/tree-sitter.wasm" "$WASM_DIR/"
 for lang in python go rust java kotlin; do
-  cp "$(bun -e "process.stdout.write(require.resolve('tree-sitter-wasms/out/tree-sitter-${lang}.wasm'))")" "$WASM_DIR/"
+  cp "$PKG_MODULES/tree-sitter-wasms/out/tree-sitter-${lang}.wasm" "$WASM_DIR/"
 done
 
 echo ""
