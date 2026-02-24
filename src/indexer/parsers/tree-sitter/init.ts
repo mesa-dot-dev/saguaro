@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
@@ -37,7 +38,7 @@ function isCompiledBinary(): boolean {
  */
 function resolveWasmDir(): string | null {
   if (!isCompiledBinary()) return null;
-  return path.join(path.dirname(process.execPath), 'wasm');
+  return path.join(path.dirname(fs.realpathSync(process.execPath)), 'wasm');
 }
 
 /**
