@@ -6,11 +6,12 @@ class ${FORMULA_CLASS_NAME} < Formula
   license "Apache-2.0"
   version "${VERSION}"
 
-  depends_on "node"
-
   def install
-    system "npm", "install", *std_npm_args
-    bin.install_symlink libexec.glob("bin/*")
+    if Hardware::CPU.arm?
+      bin.install "mesa-darwin-arm64" => "mesa"
+    else
+      bin.install "mesa-darwin-x64" => "mesa"
+    end
   end
 
   test do

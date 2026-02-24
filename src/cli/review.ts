@@ -203,7 +203,15 @@ function formatToolCallLogLine(toolName: string, filePath?: string): string {
   return filePath ? `  ${toolName}: ${filePath}` : `  ${toolName}:`;
 }
 
+declare const __MESA_VERSION__: string | undefined;
+
 export function resolvePackageVersion(): string {
+  // When built with `bun build --compile --define`, the version is baked in at compile time.
+  if (typeof __MESA_VERSION__ === 'string' && __MESA_VERSION__.length > 0) {
+    return __MESA_VERSION__;
+  }
+
+  // Fallback: read from package.json on disk (development / npm-installed).
   const candidatePaths = [
     path.resolve(__dirname, '..', '..', 'package.json'),
     path.resolve(__dirname, '..', '..', '..', 'package.json'),

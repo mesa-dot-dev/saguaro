@@ -1,6 +1,6 @@
 {
   "name": "@mesa/code-review",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
@@ -17,6 +17,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:binary": "bash scripts/build-binary.sh",
     "prepack": "bun run build",
     "review": "bun run build && node dist/cli/bin/index.js review",
     "typecheck": "tsc --noEmit"
