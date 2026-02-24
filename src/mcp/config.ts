@@ -22,13 +22,12 @@ function isHomebrewPath(filePath: string): boolean {
 
 export function getMcpJsonConfig(): McpJsonConfig {
   if (isCompiledBinary()) {
-    // In compiled Bun binaries, argv[0] is the real binary path and
-    // argv[1] is the internal /$bunfs/ entry point (unusable on disk).
-    const binaryPath = process.argv[0] ?? 'mesa';
-    const command = isHomebrewPath(binaryPath) ? 'mesa' : binaryPath;
+    // In compiled Bun binaries, both argv[0] ("bun") and argv[1] ("/$bunfs/...")
+    // are useless for determining the real binary path. The binary is always
+    // invocable as "mesa" (installed via Homebrew or on PATH).
     return {
       mcpServers: {
-        mesa: { type: 'stdio', command, args: ['serve'] },
+        mesa: { type: 'stdio', command: 'mesa', args: ['serve'] },
       },
     };
   }
