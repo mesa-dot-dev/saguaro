@@ -36,6 +36,12 @@ function jsonResult(data: unknown): CallToolResult {
   };
 }
 
+function textResult(message: string): CallToolResult {
+  return {
+    content: [{ type: 'text', text: message }],
+  };
+}
+
 function errorResult(message: string): CallToolResult {
   debug('ERROR:', message);
   return {
@@ -78,11 +84,7 @@ function handleCreateRule(args: Record<string, unknown>): CallToolResult {
   });
 
   debug('mesa_create_rule created', { id: result.rule.id, path: result.policyFilePath });
-  return jsonResult({
-    id: result.rule.id,
-    title: result.rule.title,
-    path: result.policyFilePath,
-  });
+  return textResult(`Rule created: ${result.rule.id}\nFile: ${result.policyFilePath}`);
 }
 
 function handleDeleteRule(args: Record<string, unknown>): CallToolResult {
@@ -164,7 +166,7 @@ async function handleGenerateRule(args: Record<string, unknown>): Promise<CallTo
 
   const result = await generateRuleAdapter({ target, intent, title, severity });
   debug('mesa_generate_rule returning', { ruleId: result.rule.id });
-  return jsonResult(result);
+  return textResult(`Rule generated: ${result.rule.id}`);
 }
 
 function handleWriteAcceptedRules(args: Record<string, unknown>): CallToolResult {
