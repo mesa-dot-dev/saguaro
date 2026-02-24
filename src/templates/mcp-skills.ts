@@ -114,19 +114,29 @@ description: Switch the AI model used for Mesa code reviews
 ---
 ## Flow
 
-1. **Get available models** — Call the \`mesa_get_models\` MCP tool to get available providers, models, and the current selection.
+1. **Fetch catalog** — Call \`mesa_get_models\` once (no arguments). This returns all providers with their models (sorted newest-first, recommended flagged), the current model, and \`api_key_configured\` per provider.
 
-2. **Show current model** — Display the user's current model configuration (if set).
+2. **Show current model** — If \`current\` is set, display: "Current model: {provider} / {model}". Otherwise: "No model configured."
 
-3. **Pick a provider** — Use \`AskUserQuestion\` to let the user pick a provider from the list returned by \`mesa_get_models\`.
+3. **Pick a provider** — Use \`AskUserQuestion\` with the providers from step 1 as options (there are exactly 3: Anthropic, OpenAI, Google).
 
-4. **Pick a model** — Call \`mesa_get_models\` with the selected provider to get its model list. Use \`AskUserQuestion\` to let the user pick a model. Include a "Custom model name" option — if chosen, ask the user to type the model identifier.
+4. **Pick a model** — From the step 1 data, find the selected provider's model list. Present the models as a numbered text list — do NOT use AskUserQuestion (there are too many models for 4 options). Format each line as:
 
-5. **Set the model** — Call \`mesa_set_model\` with the selected provider and model.
+\`\`\`
+  1. model-id — Label (recommended)
+  2. model-id — Label
+  ...
+\`\`\`
 
-6. **Check API key** — If the provider's API key is not set in the environment, ask the user to provide it. If they do, call \`mesa_set_model\` again with the \`api_key\` field included.
+Then ask: "Pick a number, or type a model ID directly."
 
-7. **Confirm** — Tell the user the model has been updated and mention they can also edit \`.mesa/config.yaml\` directly.
+IMPORTANT: Use the exact \`id\` field from the catalog as the model identifier. Do NOT modify, reformat, or abbreviate model IDs.
+
+5. **Set the model** — Call \`mesa_set_model\` with the exact \`provider\` and \`model\` id. If \`mesa_set_model\` returns an error, show the error and do NOT retry with a modified model ID.
+
+6. **API key** — Check \`api_key_configured\` from the \`mesa_set_model\` response. If \`false\`, tell the user: "No {envKey} found. Paste your key or type 'n' to skip." If they provide a key, call \`mesa_set_model\` again with the \`api_key\` field.
+
+7. **Confirm** — Say the model was updated. Always end with: "You can also set this directly in .mesa/config.yaml"
 `,
     },
   ];

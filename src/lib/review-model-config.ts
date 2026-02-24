@@ -29,7 +29,7 @@ const IndexSchema = z.object({
 
 const ReviewSchema = z.object({
   max_steps: z.number().int().positive().default(10),
-  files_per_batch: z.number().int().positive().default(3),
+  files_per_batch: z.number().int().positive().default(2),
 });
 
 const HookSchema = z.object({
@@ -50,7 +50,7 @@ export const MesaConfigSchema = z
     api_keys: z.record(z.string(), z.string()).optional(),
     output: OutputSchema.default({ cursor_deeplink: true }),
     index: IndexSchema.default({ enabled: true, blast_radius_depth: 1, context_token_budget: 4000 }),
-    review: ReviewSchema.default({ max_steps: 10, files_per_batch: 3 }),
+    review: ReviewSchema.default({ max_steps: 10, files_per_batch: 2 }),
     hook: HookSchema.default({ enabled: true, stop: { enabled: false } }),
   })
   .strict();

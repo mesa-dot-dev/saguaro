@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import dotenv from 'dotenv';
 import yaml from 'js-yaml';
 import type { ModelProvider } from './review-model-config.js';
 import { findRepoRoot } from './rule-resolution.js';
@@ -87,7 +88,7 @@ interface ModelsDevModel {
   name: string;
   family: string;
   tool_call?: boolean;
-  modalities?: { input?: string[]; output?: string[] };
+  release_date?: string;
 }
 
 interface ModelsDevProvider {
@@ -96,6 +97,23 @@ interface ModelsDevProvider {
 }
 
 type ModelsDevResponse = Record<string, ModelsDevProvider>;
+
+/** True if ID ends with a YYYYMMDD date suffix (e.g. claude-opus-4-5-20251101) */
+const DATE_PINNED_RE = /^(.+)-(\d{8})$/;
+
+/** True if ID ends with a YYYY-MM-DD date suffix (e.g. gpt-4o-2024-05-13) */
+const DASH_DATE_RE = /^(.+)-(\d{4}-\d{2}-\d{2})$/;
+
+/** Models not useful for code review */
+const SKIP_PATTERNS = ['-live-', '-deep-research', '-tts', '-embedding'];
+
+function isDatePinned(id: string): boolean {
+  return DATE_PINNED_RE.test(id) || DASH_DATE_RE.test(id);
+}
+
+function isReviewCapable(id: string): boolean {
+  return !SKIP_PATTERNS.some((p) => id.includes(p));
+}
 
 async function fetchModelsDevCatalog(): Promise<ProviderEntry[] | null> {
   try {
@@ -125,9 +143,14 @@ async function fetchModelsDevCatalog(): Promise<ProviderEntry[] | null> {
       const provider = json[pid];
       if (!provider?.models) continue;
 
-      // Filter to text-generating models with tool calling (needed for reviews)
       const models: ModelEntry[] = Object.values(provider.models)
-        .filter((m) => m.tool_call === true)
+        .filter((m) => m.tool_call === true && !isDatePinned(m.id) && isReviewCapable(m.id))
+        .sort((a, b) => {
+          // Newest first by release_date
+          const da = a.release_date ?? '0000-00-00';
+          const db = b.release_date ?? '0000-00-00';
+          return db.localeCompare(da);
+        })
         .map((m) => ({
           id: m.id,
           label: m.name,
@@ -213,11 +236,23 @@ export function setModel(provider: ModelProvider, modelName: string, options?: {
 
   if (options?.apiKey) {
     const envLocalPath = path.resolve(repoRoot, '.env.local');
-    const providerEntry = SUPPORTED_PROVIDERS.find((p) => p.id === provider);
-    if (providerEntry) {
-      upsertEnvValue(envLocalPath, providerEntry.envKey, options.apiKey);
+    const envKey = ENV_KEYS[provider];
+    if (envKey) {
+      upsertEnvValue(envLocalPath, envKey, options.apiKey);
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// API key check
+// ---------------------------------------------------------------------------
+
+export function checkApiKey(provider: ModelProvider): boolean {
+  const repoRoot = findRepoRoot();
+  dotenv.config({ path: path.resolve(repoRoot, '.env.local'), override: false, quiet: true });
+  dotenv.config({ path: path.resolve(repoRoot, '.env'), override: false, quiet: true });
+  const envKey = ENV_KEYS[provider];
+  return !!process.env[envKey];
 }
 
 // ---------------------------------------------------------------------------

@@ -52,9 +52,6 @@ review:
   # Maximum tool-calling steps per review batch
   max_steps: 50
 
-  # Number of files per review batch
-  files_per_batch: 2
-
 # =============================================================================
 # Hook Settings
 # =============================================================================

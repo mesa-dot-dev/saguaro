@@ -11,7 +11,7 @@ import {
   writeGeneratedRules,
 } from '../../adapter/rules.js';
 import { generateRules } from '../../generator/index.js';
-import { getCurrentModel, getModelCatalog, setModel } from '../../lib/model-catalog.js';
+import { checkApiKey, getCurrentModel, getModelCatalog, setModel } from '../../lib/model-catalog.js';
 import { findRepoRoot } from '../../lib/rule-resolution.js';
 import type { RulePolicy, Severity } from '../../types/types.js';
 
@@ -202,12 +202,16 @@ async function handleGetModels(args: Record<string, unknown>): Promise<CallToolR
   const catalog = await getModelCatalog();
   const providers = providerFilter ? catalog.filter((p) => p.id === providerFilter) : catalog;
   const current = getCurrentModel();
-  return jsonResult({ providers, current });
+  const providersWithKeyStatus = providers.map((p) => ({
+    ...p,
+    api_key_configured: checkApiKey(p.id),
+  }));
+  return jsonResult({ providers: providersWithKeyStatus, current });
 }
 
-function handleSetModel(args: Record<string, unknown>): CallToolResult {
+async function handleSetModel(args: Record<string, unknown>): Promise<CallToolResult> {
   debug('mesa_set_model called', args);
-  const provider = args.provider as string;
+  const provider = args.provider as 'anthropic' | 'openai' | 'google';
   const model = args.model as string;
   const apiKey = args.api_key as string | undefined;
 
@@ -215,13 +219,25 @@ function handleSetModel(args: Record<string, unknown>): CallToolResult {
     return errorResult('provider and model are required');
   }
 
-  setModel(provider as 'anthropic' | 'openai' | 'google', model, apiKey ? { apiKey } : undefined);
+  // Validate model exists in catalog
+  const catalog = await getModelCatalog();
+  const providerEntry = catalog.find((p) => p.id === provider);
+  const modelExists = providerEntry?.models.some((m) => m.id === model);
+
+  if (!modelExists) {
+    const available = providerEntry?.models.slice(0, 5).map((m) => m.id) ?? [];
+    return errorResult(
+      `Model "${model}" not found in ${provider} catalog. Available: ${available.join(', ')}. Use an exact model ID from mesa_get_models.`
+    );
+  }
+
+  setModel(provider, model, apiKey ? { apiKey } : undefined);
 
   return jsonResult({
     success: true,
     provider,
     model,
-    message: 'You can change this anytime in .mesa/config.yaml',
+    api_key_configured: checkApiKey(provider),
   });
 }
 
@@ -323,7 +339,7 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
       result = await handleGetModels(args);
       break;
     case 'mesa_set_model':
-      result = handleSetModel(args);
+      result = await handleSetModel(args);
       break;
     case 'mesa_write_accepted_rules':
       result = handleWriteAcceptedRules(args);
