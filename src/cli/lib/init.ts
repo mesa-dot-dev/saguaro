@@ -190,11 +190,15 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   const rl4 = createReadline();
   let skillSetupChoice: SkillSetupChoice;
   try {
-    const choice = await askChoice(rl4, secondary('How would you like to set up review rules? (you can always add rules later)'), [
-      { id: 'generate', label: 'Generate rules from your codebase' },
-      { id: 'default', label: 'Use Mesa starter rules' },
-      { id: 'skip', label: 'Skip and create rules manually' },
-    ] as const);
+    const choice = await askChoice(
+      rl4,
+      secondary('How would you like to set up review rules? (you can always add rules later)'),
+      [
+        { id: 'generate', label: 'Generate rules from your codebase' },
+        { id: 'default', label: 'Use Mesa starter rules' },
+        { id: 'skip', label: 'Skip and create rules manually' },
+      ] as const
+    );
     skillSetupChoice = choice.id;
   } finally {
     rl4.close();
