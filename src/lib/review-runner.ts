@@ -44,15 +44,14 @@ export interface RunReviewOptions {
 const DEFAULT_FILES_PER_WORKER = 3;
 const MAX_DIFF_CHARS = 30000;
 
-const SYSTEM_PROMPT = `You are a code review enforcement agent. Your ONLY job is to check whether new code changes violate the defined rules. You do not make suggestions, observations, or compliments. Silence means approval.
+export const SYSTEM_PROMPT = `You are a code review enforcement agent. Your ONLY job is to check whether new code changes violate the defined rules. You do not make suggestions, observations, or compliments. Silence means approval.
 
 ## Workflow
 
-You will receive three sections of context in order:
+You will receive two sections of context in order:
 
 1. **Codebase Map** — A lightweight map showing which files import from the changed files. Use this to know WHERE to look if a rule requires cross-file context, then use read_file to inspect.
-2. **Files to Review** — Git diffs for each changed file with their applicable rules listed.
-3. **Rules** — Full definitions of each rule including instructions and examples.
+2. **Files to Review** — For each changed file: its git diff followed by the rules to check against it. Use read_file when a rule requires understanding code beyond the diff.
 
 Follow this process:
 
@@ -60,7 +59,7 @@ Follow this process:
 Read the Codebase Map. Understand which files are changed and which files import from them. This tells you who consumes the changed code.
 
 ### Phase 2: Review
-For each file, read its diff. Check ONLY the added lines (lines prefixed with "+") against the applicable rules. Most violations can be identified from the diff alone.
+For each file, carefully check every added line (lines prefixed with "+") against each rule listed below that file's diff. Evaluate each rule independently — do not skip rules. Do not apply rules from other file sections. Most violations can be identified from the diff alone.
 
 ### Phase 3: Investigate (only when needed)
 Some rules require understanding cross-file behavior. The Codebase Map shows which files import from the changed code. When a rule requires cross-file context, use read_file to inspect the relevant file. If you need to understand a dependency (something the changed file imports from), the import path is visible in the diff — use read_file on it directly.
@@ -513,7 +512,7 @@ function truncateDiff(diff: string): string {
   return `${diff.slice(0, MAX_DIFF_CHARS)}\n[diff truncated]`;
 }
 
-function buildPrompt(options: {
+export function buildPrompt(options: {
   diffs: Map<string, string>;
   filesWithRules: Map<string, RulePolicy[]>;
   codebaseContext?: string;
@@ -530,10 +529,11 @@ function buildPrompt(options: {
   lines.push('## Files to Review');
   lines.push('');
 
-  for (const [file, rules] of options.filesWithRules) {
-    const ruleList = rules.map((rule) => `${rule.id} (${rule.severity})`).join(', ');
+  const entries = Array.from(options.filesWithRules.entries());
+  for (let i = 0; i < entries.length; i++) {
+    const [file, rules] = entries[i];
+
     lines.push(`### ${file}`);
-    lines.push(`Applicable rules: ${ruleList}`);
 
     const diff = options.diffs.get(file);
     if (diff) {
@@ -545,25 +545,26 @@ function buildPrompt(options: {
     }
 
     lines.push('');
-  }
-
-  lines.push('---');
-  lines.push('');
-  lines.push('## Rules');
-  lines.push('');
-
-  const uniqueRules = new Set<RulePolicy>(Array.from(options.filesWithRules.values()).flat());
-  for (const rule of uniqueRules) {
-    lines.push(formatRule(rule));
+    lines.push('#### Applicable rules');
     lines.push('');
+
+    for (const rule of rules) {
+      lines.push(formatRule(rule));
+      lines.push('');
+    }
+
+    if (i < entries.length - 1) {
+      lines.push('---');
+      lines.push('');
+    }
   }
 
   return lines.join('\n');
 }
 
-function formatRule(rule: RulePolicy): string {
+export function formatRule(rule: RulePolicy): string {
   const lines: string[] = [
-    `### Rule ID: ${rule.id}`,
+    `##### ${rule.id}`,
     `**Severity:** ${rule.severity}`,
     `**Applies to:** ${rule.globs.join(', ')}`,
     '',

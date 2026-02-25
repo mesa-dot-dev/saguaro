@@ -107,6 +107,7 @@ async function resolveCodebaseContext(options: {
       cacheDir: path.join(repoRoot, '.mesa', 'cache'),
       changedFiles,
       blastRadiusDepth: config.index.blast_radius_depth,
+      maxBlastRadiusFiles: config.index.max_blast_radius_files,
       tokenBudget: config.index.context_token_budget,
       verbose: options.verbose,
     });

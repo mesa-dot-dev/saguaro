@@ -17,17 +17,18 @@ export async function getCodebaseContext(options: {
   cacheDir: string;
   changedFiles: string[];
   blastRadiusDepth?: number;
+  maxBlastRadiusFiles?: number;
   tokenBudget?: number;
   verbose?: boolean;
 }): Promise<string> {
-  const { rootDir, cacheDir, changedFiles, blastRadiusDepth = 1, tokenBudget, verbose } = options;
+  const { rootDir, cacheDir, changedFiles, blastRadiusDepth = 1, maxBlastRadiusFiles, tokenBudget, verbose } = options;
 
   try {
     const store = new JsonIndexStore(cacheDir);
 
     await buildIndex({ rootDir, store, verbose });
 
-    const blastRadius = store.getBlastRadius(changedFiles, blastRadiusDepth);
+    const blastRadius = store.getBlastRadius(changedFiles, blastRadiusDepth, maxBlastRadiusFiles);
 
     if (verbose) {
       console.log(`Blast radius: ${blastRadius.size} files (${changedFiles.length} changed)`);

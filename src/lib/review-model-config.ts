@@ -25,6 +25,7 @@ const IndexSchema = z.object({
   enabled: z.boolean().default(true),
   blast_radius_depth: z.number().int().positive().default(1),
   context_token_budget: z.number().int().positive().default(4000),
+  max_blast_radius_files: z.number().int().positive().default(100),
 });
 
 const ReviewSchema = z.object({
@@ -48,10 +49,10 @@ export const MesaConfigSchema = z
       name: z.string().min(1, 'model.name must not be empty'),
     }),
     api_keys: z.record(z.string(), z.string()).optional(),
-    output: OutputSchema.default({ cursor_deeplink: true }),
-    index: IndexSchema.default({ enabled: true, blast_radius_depth: 1, context_token_budget: 4000 }),
-    review: ReviewSchema.default({ max_steps: 10, files_per_batch: 2 }),
-    hook: HookSchema.default({ enabled: true, stop: { enabled: false } }),
+    output: OutputSchema.default(() => OutputSchema.parse({})),
+    index: IndexSchema.default(() => IndexSchema.parse({})),
+    review: ReviewSchema.default(() => ReviewSchema.parse({})),
+    hook: HookSchema.default(() => HookSchema.parse({})),
   })
   .strict();
 
@@ -98,7 +99,7 @@ export function loadValidatedConfig(configPath?: string): MesaConfig {
     `[config] review: maxSteps=${result.data.review.max_steps}, filesPerBatch=${result.data.review.files_per_batch}`
   );
   logger.debug(
-    `[config] index: enabled=${result.data.index.enabled}, blastRadius=${result.data.index.blast_radius_depth}, tokenBudget=${result.data.index.context_token_budget}`
+    `[config] index: enabled=${result.data.index.enabled}, blastRadius=${result.data.index.blast_radius_depth}, maxFiles=${result.data.index.max_blast_radius_files}, tokenBudget=${result.data.index.context_token_budget}`
   );
 
   return result.data;

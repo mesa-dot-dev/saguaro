@@ -69,12 +69,15 @@ export class JsonIndexStore {
     return entry.importedBy;
   }
 
-  getBlastRadius(roots: string[], maxDepth: number): Map<string, BlastLabel> {
+  getBlastRadius(roots: string[], maxDepth: number, maxFiles?: number): Map<string, BlastLabel> {
     const result = new Map<string, BlastLabel>();
 
     for (const root of roots) {
       result.set(root, 'changed');
     }
+
+    let importerCount = 0;
+    const atCap = (): boolean => maxFiles !== undefined && importerCount >= maxFiles;
 
     let frontier: Array<[string, number]> = roots.map((r) => [r, 0]);
 
@@ -83,22 +86,25 @@ export class JsonIndexStore {
 
       for (const [filePath, depth] of frontier) {
         if (depth >= maxDepth) continue;
+        if (atCap()) break;
 
         const importers = this.getImporters(filePath);
         for (const importer of importers) {
           if (result.has(importer)) continue;
+          if (atCap()) break;
 
           result.set(importer, 'importer');
+          importerCount++;
 
           const importerEntry = this.getFile(importer);
           if (importerEntry && isBarrelFile(importer, importerEntry)) {
-            // Barrel file: follow one extra level to catch real consumers,
-            // but do NOT add barrel consumers to the BFS frontier.
             const barrelConsumers = this.getImporters(importer);
             for (const consumer of barrelConsumers) {
-              if (!result.has(consumer)) {
-                result.set(consumer, 'importer');
-              }
+              if (result.has(consumer)) continue;
+              if (atCap()) break;
+
+              result.set(consumer, 'importer');
+              importerCount++;
             }
           }
 
@@ -106,6 +112,7 @@ export class JsonIndexStore {
         }
       }
 
+      if (atCap()) break;
       frontier = nextFrontier;
     }
 
