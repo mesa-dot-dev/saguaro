@@ -168,6 +168,58 @@ export function getUntrackedDiffs(): Map<string, string> {
   return result;
 }
 
+/**
+ * Get unified diffs for specific files against HEAD.
+ * Accepts an explicit cwd for use from the daemon worker.
+ */
+export function getDiffsForFiles(files: string[], cwd: string): Map<string, string> {
+  if (files.length === 0) return new Map();
+
+  const output = execFileSync('git', ['diff', 'HEAD', '--', ...files], {
+    encoding: 'utf8',
+    maxBuffer: 10 * 1024 * 1024,
+    cwd,
+  });
+
+  const diffs = parseDiffByFile(output);
+
+  // Also check for untracked files (new files not yet staged)
+  const untrackedOutput = execFileSync('git', ['ls-files', '--others', '--exclude-standard', '--', ...files], {
+    encoding: 'utf8',
+    cwd,
+  });
+  const untrackedFiles = untrackedOutput
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  for (const filePath of untrackedFiles) {
+    if (!diffs.has(filePath)) {
+      const absolutePath = path.join(cwd, filePath);
+      try {
+        const content = fs.readFileSync(absolutePath, 'utf8');
+        const lines = content.split('\n');
+        const additions = lines.map((line) => `+${line}`).join('\n');
+        diffs.set(
+          filePath,
+          [
+            `diff --git a/${filePath} b/${filePath}`,
+            'new file mode 100644',
+            '--- /dev/null',
+            `+++ b/${filePath}`,
+            `@@ -0,0 +1,${lines.length} @@`,
+            additions,
+          ].join('\n')
+        );
+      } catch {
+        // Skip unreadable files
+      }
+    }
+  }
+
+  return diffs;
+}
+
 export function getDefaultBranch(): string {
   for (const candidate of ['main', 'master']) {
     try {

@@ -42,6 +42,14 @@ const HookSchema = z.object({
     .default({ enabled: false }),
 });
 
+const DaemonSchema = z.object({
+  enabled: z.boolean().default(false),
+  workers: z.number().int().positive().default(2),
+  idle_timeout: z.number().int().positive().default(1800),
+  agent: z.string().default('auto'),
+  model: z.string().optional(),
+});
+
 export const MesaConfigSchema = z
   .object({
     model: z.object({
@@ -53,6 +61,7 @@ export const MesaConfigSchema = z
     index: IndexSchema.default(() => IndexSchema.parse({})),
     review: ReviewSchema.default(() => ReviewSchema.parse({})),
     hook: HookSchema.default(() => HookSchema.parse({})),
+    daemon: DaemonSchema.optional(),
   })
   .strict();
 

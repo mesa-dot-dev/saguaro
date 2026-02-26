@@ -1,7 +1,16 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
+import { checkDaemonWithPolling, formatFindingsForAgent, postReviewToDaemon } from '../../daemon/hook-client.js';
+import {
+  getLocalDiffs,
+  getRepoRoot,
+  getUntrackedDiffs,
+  listLocalChangedFilesFromGit,
+  listUntrackedFiles,
+} from '../../lib/git.js';
 import type { PreToolHookInput } from '../../lib/hook-runner.js';
 import { runHookReview, runPreToolHook } from '../../lib/hook-runner.js';
 import { logger } from '../../lib/logger.js';
@@ -47,7 +56,10 @@ interface StopHookEntry {
 }
 
 export interface StopHookInput {
+  session_id?: string;
+  last_assistant_message?: string;
   stop_hook_active?: boolean;
+  cwd?: string;
   [key: string]: unknown;
 }
 
@@ -207,6 +219,71 @@ export async function runHook(argv: HookRunArgv): Promise<number> {
   }
 
   const config = loadValidatedConfig(argv.config);
+
+  // Daemon mode: check for previous findings AND queue new background review
+  if (config.daemon?.enabled) {
+    const sessionId = input?.session_id ?? `mesa-${Date.now()}`;
+
+    // Step 1: Check for findings from a PREVIOUS review before queueing new work.
+    // This injects findings into the agent's context via exit code 2.
+    let pendingFindings = '';
+    try {
+      const checkResult = await checkDaemonWithPolling(sessionId);
+      if (checkResult.status === 'findings') {
+        pendingFindings = formatFindingsForAgent(checkResult);
+      }
+    } catch {
+      // Daemon check failure never blocks
+    }
+
+    // Step 2: Queue a new review for the current changes (always, regardless of findings)
+    const repoRoot = getRepoRoot();
+    const localChangedFiles = listLocalChangedFilesFromGit();
+    const untrackedFiles = listUntrackedFiles();
+    const allFiles = [...new Set([...localChangedFiles, ...untrackedFiles])].filter((f) => !isReviewNoise(f));
+
+    if (allFiles.length > 0) {
+      const localDiffs = getLocalDiffs();
+      const untrackedDiffs = getUntrackedDiffs();
+      const mergedDiffs = new Map([...localDiffs, ...untrackedDiffs]);
+
+      const changedFiles = allFiles.map((filePath) => ({
+        path: filePath,
+        diff_hash: createHash('sha256')
+          .update(mergedDiffs.get(filePath) ?? '')
+          .digest('hex'),
+      }));
+
+      const agentSummary = (input?.last_assistant_message as string) ?? null;
+
+      await postReviewToDaemon({
+        sessionId,
+        repoPath: repoRoot,
+        changedFiles,
+        agentSummary,
+      });
+    }
+
+    // Step 3: If there were findings, block and inject them into the agent's context.
+    // - "reason" is short guidance shown only to Claude (not the user)
+    // - "additionalContext" carries the full findings, hidden from the user
+    // - "suppressOutput" hides stdout from verbose mode
+    // Exit 0 + decision:"block" still sets stop_hook_active=true on re-entry.
+    // Keep checking on issue #12667 to see if Anthropic ever makes this cleaner.
+    if (pendingFindings) {
+      const response = JSON.stringify({
+        decision: 'block',
+        reason: 'Review findings — continuing',
+        additionalContext: pendingFindings,
+        suppressOutput: true,
+      });
+      process.stdout.write(response);
+      return 0;
+    }
+
+    return 0;
+  }
+
   if (!config.hook.enabled || !config.hook.stop.enabled) {
     return 0;
   }
@@ -230,8 +307,14 @@ export interface PreToolArgv {
   writeStdout?: (s: string) => void;
 }
 
-export function runPreTool(argv: PreToolArgv): number {
+export async function runPreTool(argv: PreToolArgv): Promise<number> {
+  // Read stdin first — session_id is only available in the JSON input from Claude Code
   const input = argv.input ?? readPreToolStdinJson();
+
+  // Daemon findings are now injected via the Stop hook (not PreToolUse).
+  // The Stop hook fires after every agent turn and has better coverage
+  // than PreToolUse which only fires on Edit|Write.
+
   if (!input) return 0;
 
   const repoRoot = argv.repoRoot ?? findRepoRoot();
@@ -248,6 +331,14 @@ export function runPreTool(argv: PreToolArgv): number {
   }
 
   return result.exitCode;
+}
+
+/** Files that should never be sent for review (tool configs, secrets, etc.). */
+const REVIEW_NOISE_PATTERNS = ['.mcp.json', '.env', '.env.local', '.DS_Store', 'package-lock.json', 'bun.lockb'];
+
+function isReviewNoise(filePath: string): boolean {
+  const basename = path.basename(filePath);
+  return REVIEW_NOISE_PATTERNS.some((p) => basename === p || basename.startsWith('.env.'));
 }
 
 function readPreToolStdinJson(): PreToolHookInput | null {

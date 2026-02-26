@@ -132,6 +132,7 @@ function resolveRulesForFile(
 }
 
 export interface PreToolHookInput {
+  session_id?: string;
   hook_event_name: string;
   tool_name: string;
   tool_input: {

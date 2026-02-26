@@ -10,6 +10,7 @@ import { requireGitRepo } from '../../lib/git.js';
 import { logger } from '../../lib/logger.js';
 import { findRepoRoot } from '../../lib/rule-resolution.js';
 import checkHandler from '../lib/check.js';
+import { daemonStart, daemonStatus, daemonStop } from '../lib/daemon.js';
 import { generateRulesCommand } from '../lib/generate.js';
 import { installHook, runHook, runPreTool, uninstallHook } from '../lib/hook.js';
 import indexCmdHandler from '../lib/index-cmd.js';
@@ -510,7 +511,36 @@ yargs(argv)
         'pre-tool',
         false, // hidden — internal command called by PreToolUse hook
         {},
-        wrapHandler('hook-pre-tool', runPreTool as (argv: unknown) => number)
+        wrapHandler('hook-pre-tool', runPreTool as (argv: unknown) => Promise<number>)
+      );
+  })
+  .command('daemon', false /*I'll open this command when I'm feeling confident */, (y: Argv) => {
+    y.usage(
+      `${secondary('mesa daemon')} <command>\n\n` +
+        'Runs a background daemon that reviews code changes by shelling out\n' +
+        'to your installed agent CLI (claude, codex, etc.). No API key required —\n' +
+        'uses your existing agent subscription.\n\n' +
+        'The daemon starts automatically when hooks fire. Use these commands\n' +
+        'for manual control and debugging.'
+    )
+      .demandCommand(1, 'Please specify a daemon command.')
+      .command(
+        'start',
+        'Start the daemon',
+        {},
+        wrapHandler('daemon-start', daemonStart as (argv: unknown) => Promise<number>)
+      )
+      .command(
+        'stop',
+        'Stop the daemon',
+        {},
+        wrapHandler('daemon-stop', daemonStop as (argv: unknown) => Promise<number>)
+      )
+      .command(
+        'status',
+        'Check daemon status',
+        {},
+        wrapHandler('daemon-status', daemonStatus as (argv: unknown) => number)
       );
   })
   .command(
