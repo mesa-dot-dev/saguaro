@@ -270,18 +270,13 @@ export async function runHook(argv: HookRunArgv): Promise<number> {
       });
     }
 
-    // Step 3: If there were findings, block and inject them into the agent's context.
-    // - "reason" is short guidance shown only to Claude (not the user)
-    // - "additionalContext" carries the full findings, hidden from the user
-    // - "suppressOutput" hides stdout from verbose mode
+    // Step 3: If there were findings, block with the condensed findings in reason.
+    // Only "reason" reaches the agent in Stop hooks — additionalContext is silently dropped.
     // Exit 0 + decision:"block" still sets stop_hook_active=true on re-entry.
-    // Keep checking on issue #12667 to see if Anthropic ever makes this cleaner.
     if (pendingFindings) {
       const response = JSON.stringify({
         decision: 'block',
-        reason: 'Review findings — continuing',
-        additionalContext: pendingFindings,
-        suppressOutput: true,
+        reason: pendingFindings,
       });
       process.stdout.write(response);
       return 0;

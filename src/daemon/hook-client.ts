@@ -229,38 +229,11 @@ export function formatFindingsForAgent(checkResult: CheckResult): string {
   const allFindings = checkResult.findings.flatMap((r) => r.findings);
   if (allFindings.length === 0) return '';
 
-  const errors = allFindings.filter((f) => f.severity === 'error');
-  const warnings = allFindings.filter((f) => f.severity === 'warning');
-
-  const formatEntry = (f: Finding) => {
-    const loc = f.line ? `${f.file}:${f.line}` : f.file;
-    return `- [${f.severity}] ${loc} - ${f.message}`;
-  };
-
-  const sections: string[] = [];
-  sections.push('## Background Code Review Findings');
-  sections.push('');
-  sections.push('An independent reviewer analyzed your recent code changes and flagged the issues below.');
-  sections.push('You wrote this code — you have the full context for why these changes were made.');
-  sections.push('');
-  sections.push('For each finding:');
-  sections.push('- If the issue is valid and applicable to your work, fix it.');
-  sections.push(
-    '- If the finding is incorrect or not relevant given what you are doing, do not explain, just continue on.'
-  );
-  sections.push('');
-
-  if (errors.length > 0) {
-    sections.push('**Errors:**');
-    sections.push(errors.map(formatEntry).join('\n'));
-    sections.push('');
+  const parts: string[] = ['Mesa review — fix valid issues, dismiss the rest.'];
+  for (const f of allFindings) {
+    const short = path.basename(f.file);
+    const loc = f.line ? `${short}:${f.line}` : short;
+    parts.push(`[${f.severity}] ${loc} — ${f.message}`);
   }
-
-  if (warnings.length > 0) {
-    sections.push('**Warnings:**');
-    sections.push(warnings.map(formatEntry).join('\n'));
-    sections.push('');
-  }
-
-  return sections.join('\n');
+  return parts.join('\n\n');
 }
