@@ -211,6 +211,12 @@ export interface HookRunArgv {
 }
 
 export async function runHook(argv: HookRunArgv): Promise<number> {
+  // Loop prevention: never re-trigger reviews from inside a review agent.
+  // The daemon sets MESA_REVIEW_AGENT=1 in the spawned agent's environment.
+  if (process.env.MESA_REVIEW_AGENT) {
+    return 0;
+  }
+
   const input = argv.input ?? readStdinInput();
   // Loop prevention: if Claude is already fixing violations from a previous
   // Stop hook run, let it finish without re-triggering a review.
@@ -308,6 +314,10 @@ export interface PreToolArgv {
 }
 
 export async function runPreTool(argv: PreToolArgv): Promise<number> {
+  if (process.env.MESA_REVIEW_AGENT) {
+    return 0;
+  }
+
   // Read stdin first — session_id is only available in the JSON input from Claude Code
   const input = argv.input ?? readPreToolStdinJson();
 

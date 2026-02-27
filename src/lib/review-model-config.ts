@@ -44,7 +44,7 @@ const HookSchema = z.object({
 
 const DaemonSchema = z.object({
   enabled: z.boolean().default(false),
-  workers: z.number().int().positive().default(2),
+  workers: z.number().int().positive().max(2).default(1),
   idle_timeout: z.number().int().positive().default(1800),
   agent: z.string().default('auto'),
   model: z.string().optional(),

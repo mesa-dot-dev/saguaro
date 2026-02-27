@@ -64,9 +64,9 @@ by shelling out to an installed agent CLI.
  Stop hook fires        │  ┌────────┐    ┌──────────┐             │
  after agent turn       │  │ SQLite │◄───│ Worker 1 │──► claude -p│
         │               │  │        │    └──────────┘   (review)  │
-        ▼               │  │ 2 tbls │    ┌──────────┐             │
- POST /review ─────────►│  │        │◄───│ Worker 2 │──► claude -p│
- (queue job,            │  └────────┘    └──────────┘   (review)  │
+        ▼               │  │ 2 tbls │                              │
+ POST /review ─────────►│  │        │                              │
+ (queue job,            │  └────────┘                              │
   return immediately)   │       ▲                                  │
                         │       │                                  │
                         └───────│──────────────────────────────────┘

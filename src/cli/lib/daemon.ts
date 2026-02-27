@@ -10,7 +10,7 @@ export async function daemonStart(): Promise<number> {
 
   const config = loadValidatedConfig();
   const daemon = new MesaDaemon({
-    workers: config.daemon?.workers ?? 2,
+    workers: config.daemon?.workers ?? 1,
     idleTimeout: config.daemon?.idle_timeout ?? 1800,
     agent: config.daemon?.agent ?? 'auto',
     model: config.daemon?.model ?? 'sonnet',

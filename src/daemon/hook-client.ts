@@ -1,5 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
+import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import { findRepoRoot } from '../lib/rule-resolution.js';
 import { MesaDaemon } from './server.js';
@@ -46,45 +48,86 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const LOCK_FILE_PATH = path.join(os.homedir(), '.mesa', 'daemon.lock');
+
+function pollForPidFile(maxWaitMs: number, intervalMs: number): Promise<{ port: number } | null> {
+  return new Promise((resolve) => {
+    let waited = 0;
+    const check = () => {
+      const pf = MesaDaemon.readPidFile();
+      if (pf) {
+        resolve({ port: pf.port });
+        return;
+      }
+      waited += intervalMs;
+      if (waited >= maxWaitMs) {
+        resolve(null);
+        return;
+      }
+      setTimeout(check, intervalMs);
+    };
+    setTimeout(check, intervalMs);
+  });
+}
+
 async function ensureDaemonRunning(): Promise<{ port: number } | null> {
   const pidFile = MesaDaemon.readPidFile();
   if (pidFile) {
     return { port: pidFile.port };
   }
 
-  let command: string;
-  let args: string[];
+  // Use an exclusive lock file to prevent multiple processes from spawning
+  // concurrent daemons. O_EXCL fails if the file already exists.
+  fs.mkdirSync(path.dirname(LOCK_FILE_PATH), { recursive: true });
+
+  // Clean up stale lock files from crashed processes (older than 10s).
   try {
-    execFileSync('which', ['mesa'], { stdio: 'ignore' });
-    command = 'mesa';
-    args = ['daemon', 'start'];
+    const stat = fs.statSync(LOCK_FILE_PATH);
+    if (Date.now() - stat.mtimeMs > 10_000) {
+      fs.unlinkSync(LOCK_FILE_PATH);
+    }
   } catch {
-    const distBin = path.resolve(findRepoRoot(), 'packages', 'code-review', 'dist', 'cli', 'bin', 'index.js');
-    command = 'node';
-    args = [distBin, 'daemon', 'start'];
+    // File doesn't exist — that's fine.
   }
 
-  const child = spawn(command, args, {
-    detached: true,
-    stdio: 'ignore',
-  });
-  child.unref();
+  let lockFd: number;
+  try {
+    lockFd = fs.openSync(LOCK_FILE_PATH, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY);
+    fs.writeSync(lockFd, String(process.pid));
+    fs.closeSync(lockFd);
+  } catch {
+    // Another process is already spawning the daemon — just wait for it.
+    return pollForPidFile(6000, 200);
+  }
 
-  const pollInterval = 200;
-  const maxWait = 6000;
-  let waited = 0;
+  try {
+    let command: string;
+    let args: string[];
+    try {
+      execFileSync('which', ['mesa'], { stdio: 'ignore' });
+      command = 'mesa';
+      args = ['daemon', 'start'];
+    } catch {
+      const distBin = path.resolve(findRepoRoot(), 'packages', 'code-review', 'dist', 'cli', 'bin', 'index.js');
+      command = 'node';
+      args = [distBin, 'daemon', 'start'];
+    }
 
-  while (waited < maxWait) {
-    await sleep(pollInterval);
-    waited += pollInterval;
+    const child = spawn(command, args, {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
 
-    const pf = MesaDaemon.readPidFile();
-    if (pf) {
-      return { port: pf.port };
+    return await pollForPidFile(6000, 200);
+  } finally {
+    // Clean up the lock file so future invocations can spawn if needed.
+    try {
+      fs.unlinkSync(LOCK_FILE_PATH);
+    } catch {
+      // Already removed
     }
   }
-
-  return null;
 }
 
 export async function postReviewToDaemon(payload: QueueJobInput): Promise<boolean> {

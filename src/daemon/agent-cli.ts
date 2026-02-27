@@ -53,6 +53,7 @@ function buildClaudeEnv(): NodeJS.ProcessEnv {
     }
   }
   env.CLAUDE_NO_SOUND = '1';
+  env.MESA_REVIEW_AGENT = '1';
   return env;
 }
 
