@@ -1,5 +1,3 @@
-import path from 'node:path';
-import { getCodebaseContext } from '../indexer/index.js';
 import { getDiffsForFiles } from '../lib/git.js';
 import type { AgentName } from './agent-cli.js';
 import { invokeAgent } from './agent-cli.js';
@@ -8,9 +6,10 @@ import type { ChangedFile, DaemonStore, Finding } from './store.js';
 export interface WorkerConfig {
   agent: AgentName;
   model?: string;
-  blastRadiusDepth: number;
-  contextTokenBudget: number;
 }
+
+const MAX_PROMPT_CHARS = 125 * 1024;
+const MAX_AGENT_SUMMARY_CHARS = 1000;
 
 /**
  * Attempt to claim and process one review job.
@@ -40,25 +39,23 @@ export async function runWorker(store: DaemonStore, workerId: number, config: Wo
     const filePaths = filesToReview.map((f) => f.path);
     const diffs = getDiffsForFiles(filePaths, job.repoPath);
 
-    // Blast radius context (best-effort, never blocks)
-    let codebaseContext = '';
-    try {
-      codebaseContext = await getCodebaseContext({
-        rootDir: job.repoPath,
-        cacheDir: path.join(job.repoPath, '.mesa', 'cache'),
-        changedFiles: filePaths,
-        blastRadiusDepth: config.blastRadiusDepth,
-        tokenBudget: config.contextTokenBudget,
-      });
-    } catch {
-      // Indexing failure never blocks review
+    const compactDiffs = new Map<string, string>();
+    for (const [file, diff] of diffs) {
+      compactDiffs.set(file, stripDiffContext(diff));
     }
 
-    const prompt = buildStaffEngineerPrompt({
-      diffs,
-      agentSummary: job.agentSummary,
-      codebaseContext,
-    });
+    const agentSummary = job.agentSummary ? job.agentSummary.slice(0, MAX_AGENT_SUMMARY_CHARS) : null;
+
+    const prompt = buildStaffEngineerPrompt({ diffs: compactDiffs, agentSummary });
+
+    if (prompt.length > MAX_PROMPT_CHARS) {
+      console.warn(
+        `[mesa-daemon] Worker ${workerId} skipping job ${job.id}: prompt too large (${(prompt.length / 1024).toFixed(0)}KB > ${MAX_PROMPT_CHARS / 1024}KB)`
+      );
+      store.completeJob(job.id, 'done', config.model ?? config.agent);
+      store.insertReview({ jobId: job.id, verdict: 'pass', findings: null });
+      return true;
+    }
 
     const output = await invokeAgent(config.agent, prompt, job.repoPath, config.model);
     const findings = parseFindings(output);
@@ -75,16 +72,13 @@ export async function runWorker(store: DaemonStore, workerId: number, config: Wo
   }
 }
 
-function buildStaffEngineerPrompt(opts: {
-  diffs: Map<string, string>;
-  agentSummary: string | null;
-  codebaseContext: string;
-}): string {
+function buildStaffEngineerPrompt(opts: { diffs: Map<string, string>; agentSummary: string | null }): string {
   const sections: string[] = [];
 
   sections.push('You are a senior staff engineer performing an independent code review.');
-  sections.push('You only see code diffs, not the full codebase. Do not question imports,');
-  sections.push('variable declarations, or patterns that may be defined elsewhere.');
+  sections.push('You see only the changed lines (additions and removals) from each file.');
+  sections.push('Use your file reading capabilities to inspect full file context when needed');
+  sections.push('to understand surrounding code, imports, or patterns referenced by the changes.');
   sections.push('');
 
   if (opts.agentSummary) {
@@ -128,12 +122,6 @@ function buildStaffEngineerPrompt(opts: {
   sections.push('If no issues found, output exactly: No issues found');
   sections.push('');
 
-  if (opts.codebaseContext) {
-    sections.push('## Codebase Context');
-    sections.push(opts.codebaseContext);
-    sections.push('');
-  }
-
   sections.push('## Diffs to Review');
   sections.push('');
   for (const [file, diff] of opts.diffs) {
@@ -145,6 +133,33 @@ function buildStaffEngineerPrompt(opts: {
   }
 
   return sections.join('\n');
+}
+
+/**
+ * Strip unchanged context lines from a unified diff, keeping only
+ * hunk headers (for line numbers), additions, and removals.
+ */
+function stripDiffContext(diff: string): string {
+  const lines = diff.split('\n');
+  const kept: string[] = [];
+
+  for (const line of lines) {
+    if (
+      line.startsWith('diff --git') ||
+      line.startsWith('--- ') ||
+      line.startsWith('+++ ') ||
+      line.startsWith('@@') ||
+      line.startsWith('+') ||
+      line.startsWith('-') ||
+      line.startsWith('new file') ||
+      line.startsWith('deleted file') ||
+      line.startsWith('rename')
+    ) {
+      kept.push(line);
+    }
+  }
+
+  return kept.join('\n');
 }
 
 const FINDING_REGEX = /^\[(\w+)\]\s+(\S+?)(?::(\d+))?\s+-\s+(.+)/;

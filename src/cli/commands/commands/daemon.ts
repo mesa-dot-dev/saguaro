@@ -13,8 +13,6 @@ export async function daemonStart(): Promise<number> {
     idleTimeout: config.daemon?.idle_timeout ?? 1800,
     agent: config.daemon?.agent ?? 'auto',
     model: config.daemon?.model ?? 'sonnet',
-    blastRadiusDepth: config.index.blast_radius_depth,
-    contextTokenBudget: config.index.context_token_budget,
   });
 
   const port = await daemon.start();

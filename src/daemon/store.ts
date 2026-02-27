@@ -154,10 +154,11 @@ export class DaemonStore {
 
   /**
    * Queue a review job, skipping if an identical job (same session + same file hashes)
-   * is already queued or running. Returns the job ID, or null if deduplicated.
+   * is already queued, running, or completed successfully. Failed jobs are excluded
+   * so the same diff can be retried. Returns the job ID, or null if deduplicated.
    */
   queueJob(input: QueueJobInput): number | null {
-    if (this.hasActiveJobForFiles(input.sessionId, input.changedFiles)) {
+    if (this.hasJobForFiles(input.sessionId, input.changedFiles)) {
       return null;
     }
 
@@ -171,14 +172,15 @@ export class DaemonStore {
   }
 
   /**
-   * Check whether there's already a queued or running job for this session
-   * with the same set of changed files and diff hashes.
+   * Check whether there's already a job for this session with the same set of
+   * changed files and diff hashes — whether it's still active or already done.
+   * This prevents re-queueing reviews when the diff hasn't changed between turns.
    */
-  private hasActiveJobForFiles(sessionId: string, changedFiles: ChangedFile[]): boolean {
+  private hasJobForFiles(sessionId: string, changedFiles: ChangedFile[]): boolean {
     const rows = this.db
       .prepare(`
       SELECT changed_files FROM review_jobs
-      WHERE session_id = ? AND status IN ('queued', 'running')
+      WHERE session_id = ? AND status IN ('queued', 'running', 'done')
     `)
       .all(sessionId) as { changed_files: string }[];
 

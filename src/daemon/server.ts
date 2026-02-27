@@ -14,8 +14,6 @@ export interface DaemonConfig {
   idleTimeout: number;
   agent: string;
   model?: string;
-  blastRadiusDepth: number;
-  contextTokenBudget: number;
 }
 
 interface PidFile {
@@ -194,8 +192,6 @@ export class MesaDaemon {
     const workerConfig: WorkerConfig = {
       agent: this.detectedAgent!,
       model: this.config.model,
-      blastRadiusDepth: this.config.blastRadiusDepth,
-      contextTokenBudget: this.config.contextTokenBudget,
     };
 
     for (let i = 0; i < this.config.workers; i++) {

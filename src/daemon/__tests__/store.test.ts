@@ -192,7 +192,7 @@ describe('job lifecycle', () => {
     expect(id5).not.toBeNull();
   });
 
-  test('allows re-queueing after previous job completes', () => {
+  test('skips re-queueing when completed job has same hashes', () => {
     dbPath = makeDbPath();
     store = new DaemonStore(dbPath);
 
@@ -202,7 +202,38 @@ describe('job lifecycle', () => {
     store.claimNextJob(1);
     store.completeJob(id1, 'done');
 
-    // After completion, same files can be queued again
+    // Same files + same hashes → deduplicated
+    const id2 = store.queueJob(makeJobInput({ changedFiles: files }));
+    expect(id2).toBeNull();
+  });
+
+  test('allows re-queueing when diff hash changes', () => {
+    dbPath = makeDbPath();
+    store = new DaemonStore(dbPath);
+
+    const files = [{ path: 'src/a.ts', diff_hash: 'hash-a' }];
+
+    const id1 = store.queueJob(makeJobInput({ changedFiles: files }))!;
+    store.claimNextJob(1);
+    store.completeJob(id1, 'done');
+
+    // Same file but different hash → new review needed
+    const updatedFiles = [{ path: 'src/a.ts', diff_hash: 'hash-b' }];
+    const id2 = store.queueJob(makeJobInput({ changedFiles: updatedFiles }));
+    expect(id2).not.toBeNull();
+  });
+
+  test('allows re-queueing after a failed job', () => {
+    dbPath = makeDbPath();
+    store = new DaemonStore(dbPath);
+
+    const files = [{ path: 'src/a.ts', diff_hash: 'hash-a' }];
+
+    const id1 = store.queueJob(makeJobInput({ changedFiles: files }))!;
+    store.claimNextJob(1);
+    store.completeJob(id1, 'failed');
+
+    // Failed jobs should allow retry
     const id2 = store.queueJob(makeJobInput({ changedFiles: files }));
     expect(id2).not.toBeNull();
   });

@@ -346,9 +346,16 @@ export async function runPreTool(argv: PreToolArgv): Promise<number> {
 /** Files that should never be sent for review (tool configs, secrets, etc.). */
 const REVIEW_NOISE_PATTERNS = ['.mcp.json', '.env', '.env.local', '.DS_Store', 'package-lock.json', 'bun.lockb'];
 
+/** Directory segments that should never be sent for review. */
+const REVIEW_NOISE_DIRS = ['.claude', '.mesa'];
+
 function isReviewNoise(filePath: string): boolean {
   const basename = path.basename(filePath);
-  return REVIEW_NOISE_PATTERNS.some((p) => basename === p || basename.startsWith('.env.'));
+  if (REVIEW_NOISE_PATTERNS.some((p) => basename === p || basename.startsWith('.env.'))) {
+    return true;
+  }
+  const segments = filePath.split('/');
+  return segments.some((seg) => REVIEW_NOISE_DIRS.includes(seg));
 }
 
 function readPreToolStdinJson(): PreToolHookInput | null {
