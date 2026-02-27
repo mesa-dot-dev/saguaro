@@ -17,6 +17,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "tsc:build": "tsc -p tsconfig.json",
     "build:binary": "bash scripts/build-binary.sh",
     "prepack": "bun run build",
     "review": "bun run build && node dist/cli/bin/index.js review",
