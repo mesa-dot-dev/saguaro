@@ -2,9 +2,8 @@
 
 ## Architecture Design Document
 
-**Version:** 4.0
-**Date:** February 19,2026
-**Status:** Current
+**Version:** 5.0
+**Date:** February 27,2026
 
 ---
 
@@ -19,13 +18,14 @@
 7. [Rule Generation](#rule-generation)
 8. [MCP Server](#mcp-server)
 9. [Claude Code Stop Hook](#claude-code-stop-hook)
-10. [Data Flow](#data-flow)
-11. [Agent Design](#agent-design)
-12. [Codebase Indexing](#codebase-indexing)
-13. [Output Model](#output-model)
-14. [Key Interfaces](#key-interfaces)
-15. [Configuration](#configuration)
-16. [Dependencies](#dependencies)
+10. [Background Review Daemon](#background-review-daemon)
+11. [Data Flow](#data-flow)
+12. [Agent Design](#agent-design)
+13. [Codebase Indexing](#codebase-indexing)
+14. [Output Model](#output-model)
+15. [Key Interfaces](#key-interfaces)
+16. [Configuration](#configuration)
+17. [Dependencies](#dependencies)
 
 ---
 
@@ -70,78 +70,67 @@
 
 ## System Architecture
 
-The system has two parallel entry points — **CLI** and **MCP server** — that share the same adapter layer, generator pipeline, and core engine. This ensures identical behavior regardless of how the tool is invoked.
+The system has three entry points — **CLI**, **MCP server**, and **Background Daemon** — that serve different purposes. The CLI and MCP server share the same adapter layer, generator pipeline, and core engine. The daemon is an independent system that shells out to an installed agent CLI (claude, codex, gemini, etc.) for full code review — it does **not** share the adapter/core code path.
 
 ```
-+-----------------------------------------------------------------------------------+
-|                           MESA CODE REVIEW                                        |
-+-----------------------------------------------------------------------------------+
-|                                                                                   |
-|  +-------------------------------+   +-------------------------------+            |
-|  |         CLI (yargs)           |   |      MCP SERVER (stdio)      |            |
-|  |  $ mesa review --base main   |   |  Claude Code / AI agents     |            |
-|  |  $ mesa rules generate       |   |  mesa_review                 |            |
-|  |  $ mesa rules create         |   |  mesa_generate_rules         |            |
-|  |  $ mesa init | index         |   |  mesa_generate_rule          |            |
-|  +-------------------------------+   |  mesa_create_rule            |            |
-|        |                             |  mesa_write_accepted_rules   |            |
-|        |                             |  mesa_sync_rules             |            |
-|        |                             +-------------------------------+            |
-|        |                                      |                                   |
-|        +------------------+-------------------+                                   |
-|                           |                                                       |
-|                           v                                                       |
-|  +---------------------------------------------------------------------------+    |
-|  |                      ADAPTER LAYER                                        |    |
-|  |                                                                           |    |
-|  |   +--------------------+   +---------------------+                        |    |
-|  |   | review adapter     |   | rules adapter       |                        |    |
-|  |   | - runReview()      |   | - createRule()      |                        |    |
-|  |   | - wires runtime    |   | - listRules()       |                        |    |
-|  |   |   to core          |   | - writeGenerated()  |                        |    |
-|  |   |                    |   | - generateRule()    |                        |    |
-|  |   +--------+-----------+   +--------+------------+                        |    |
-|  +------------|-------------------------|---------+--------------------------+    |
-|               |                         |                                         |
-|               v                         v                                         |
-|  +---------------------------------------------------------------------------+    |
-|  |                      CORE + LIB + GENERATOR                               |    |
-|  |                                                                           |    |
-|  |   +---------------+   +------------------+   +---------------------+      |    |
-|  |   | review core   |   | generator        |   | Codebase Index      |      |    |
-|  |   | - pure engine |   | - orchestrator   |   | - SWC parser        |      |    |
-|  |   | - injected    |   | - zone analysis  |   | - oxc-resolver      |      |    |
-|  |   |   deps only   |   | - synthesis      |   | - tree-sitter       |      |    |
-|  |   +-------+-------+   +--------+---------+   | - Import graph      |      |    |
-|  |           |                     |              | - Blast radius      |      |    |
-|  |           |   +-----------------+              +-----------+---------+      |    |
-|  |           |   |                                            |               |    |
-|  |   +-------+---+---+  +------------------+  +--------------+-------+       |    |
-|  |   | rule-         |  | rule-generator   |  | starter-rule-skills  |       |    |
-|  |   | resolution    |  | - single rule    |  | - few-shot examples  |       |    |
-|  |   | - load from   |  | - LLM + YAML     |  | - 25 curated rules   |       |    |
-|  |   |   .mesa/rules |  | - few-shot       |  | - used by both       |       |    |
-|  |   +---------------+  +------------------+  |   pipelines           |       |    |
-|  |                                            +----------------------+       |    |
-|  +---------------------------------------------------------------------------+    |
-|                                    |                                              |
-|                                    v                                              |
-|  +---------------------------------------------------------------------------+    |
-|  |                      AGENT (Vercel AI SDK)                                |    |
-|  |                                                                           |    |
-|  |   Split files into workers (configurable per worker)                      |    |
-|  |                                                                           |    |
-|  |   +-------------------+  +-------------------+  +-------------------+     |    |
-|  |   | Worker 1          |  | Worker 2          |  | Worker N          |     |    |
-|  |   | generateText()    |  | generateText()    |  | generateText()    |     |    |
-|  |   | Tool: read_file   |  | Tool: read_file   |  | Tool: read_file   |     |    |
-|  |   +-------------------+  +-------------------+  +-------------------+     |    |
-|  |            |                      |                      |                |    |
-|  |            +---------- Promise.all() --------------------+                |    |
-|  +---------------------------------------------------------------------------+    |
-|                                                                                   |
-+-----------------------------------------------------------------------------------+
++-----------------------------------------------------------------------+
+|                        MESA CODE REVIEW                               |
++-----------------------------------------------------------------------+
+|                                                                       |
+|  +---------------------+   +----------------------+                   |
+|  |    CLI (yargs)       |   |  MCP SERVER (stdio)  |                  |
+|  |  mesa review         |   |  mesa_review         |                  |
+|  |  mesa rules *        |   |  mesa_generate_*     |                  |
+|  |  mesa daemon *       |   |  mesa_create_rule    |                  |
+|  |  mesa init | index   |   |  mesa_sync_rules     |                  |
+|  +----------+-----------+   +----------+-----------+                  |
+|             |                          |                              |
+|             +----------+---------------+                              |
+|             |          |                                              |
+|             v          v                                              |
+|  +-------------------+   +----------------------------------------+   |
+|  |  ADAPTER LAYER    |   |  BACKGROUND REVIEW DAEMON              |   |
+|  |  review / rules   |   |  (independent — no API key needed)     |   |
+|  +--------+----------+   |                                        |   |
+|           |               |  HTTP server → SQLite → Worker pool   |   |
+|           v               |  Spawns: claude -p / codex / gemini   |   |
+|  +-------------------+   |  Read-only tools, diff-hash dedup      |   |
+|  | CORE + LIB +      |   +----------------------------------------+   |
+|  | GENERATOR          |                                               |
+|  +--------+----------+                                                |
+|           |                                                           |
+|           v                                                           |
+|  +-------------------+                                                |
+|  | AGENT (Vercel AI) |                                                |
+|  | Parallel workers  |                                                |
+|  | generateText()    |                                                |
+|  +-------------------+                                                |
+|                                                                       |
++-----------------------------------------------------------------------+
 ```
+
+### Two Independent Systems
+
+The rules engine and background daemon share the CLI entry point but **never share a code path at runtime**. The gate is a single early-return in `runHook()`:
+
+```typescript
+if (config.daemon?.enabled) {
+  // daemon path — HTTP client talks to daemon process
+  return postReviewToDaemon(...);
+}
+
+// rules engine path — adapter → core → Vercel AI SDK
+return runReview(...);
+```
+
+| Aspect | Rules Engine | Background Daemon |
+|--------|-------------|-------------------|
+| **Runtime** | In-process (same CLI) | Separate HTTP server process |
+| **AI provider** | Vercel AI SDK (API key required) | Agent CLI subscription (no API key) |
+| **Review style** | Injects matched rules as context | Full code review by staff-engineer prompt |
+| **Hook behavior** | Synchronous, blocks on violations | Async: queues job, polls for findings |
+| **Persistence** | `.mesa/history/reviews.jsonl` | SQLite (`~/.mesa/reviews.db`) |
+| **Finding delivery** | Exit code 2 + stderr (blocking) | Soft guidance (non-blocking recommendations) |
 
 ---
 
@@ -164,6 +153,7 @@ packages/code-review/
 │   │   ├── lib/
 │   │   │   ├── check.ts           # mesa check (stub)
 │   │   │   ├── generate.ts        # mesa rules generate — bulk rule generation + interactive review
+│   │   │   ├── daemon.ts           # mesa daemon start/stop/status
 │   │   │   ├── hook.ts            # Claude Code Stop hook: install, uninstall, run
 │   │   │   ├── index-cmd.ts       # mesa index
 │   │   │   ├── init.ts            # mesa init
@@ -188,6 +178,16 @@ packages/code-review/
 │   │   ├── server.ts              # Tool registration (McpServer + zod schemas)
 │   │   └── tools/
 │   │       └── handler.ts         # Tool handlers, session state for generate → write flow
+│   │
+│   ├── daemon/                     # Background review daemon (independent system)
+│   │   ├── server.ts              # HTTP server + daemon lifecycle (MesaDaemon class)
+│   │   ├── store.ts               # SQLite database: review_jobs + reviews tables
+│   │   ├── worker.ts              # Review job worker: claims jobs, runs agent, parses findings
+│   │   ├── agent-cli.ts           # Agent detection + invocation (claude, codex, gemini, etc.)
+│   │   ├── hook-client.ts         # HTTP client for daemon communication from stop hook
+│   │   ├── db.ts                  # Database adapter (bun:sqlite or better-sqlite3)
+│   │   ├── ARCHITECTURE.md        # Daemon-specific architecture documentation
+│   │   └── __tests__/             # Integration tests
 │   │
 │   ├── indexer/                    # Codebase indexing + import graph
 │   │   ├── build.ts               # File discovery + incremental index building
@@ -665,6 +665,45 @@ The hook is installed automatically during `mesa init`. It writes a Stop hook en
 | **Loop prevention via `stop_hook_active`** | Proactive guard. When Claude is fixing violations from a previous hook run, the hook exits immediately to prevent an infinite review → fix → review cycle. |
 | **Exit code 2 for violations** | Claude Code convention: exit 2 blocks the agent and feeds stderr back as feedback. Claude sees the formatted violations and fixes them before continuing. |
 
+### Daemon Mode in the Stop Hook
+
+When `daemon.enabled: true` in `.mesa/config.yaml`, the stop hook delegates to the daemon instead of running the rules engine:
+
+1. **Loop prevention** — Same `stop_hook_active` check as rules engine
+2. **Ensure daemon is running** — Read `~/.mesa/daemon.pid`; if stale or missing, auto-start in background
+3. **Check for previous findings** — `GET /check?session={id}`, poll up to 30s for results from the previous review
+4. **Queue new review** — `POST /review` with session_id, changed_files, diff_hashes (returns immediately)
+5. **Decision** — Previous findings exist → exit 2 (block with soft guidance); no findings → exit 0
+
+The key difference: the daemon reviews the **previous** turn's changes while queueing the **current** turn's changes for background processing. The first turn always passes, and findings arrive one turn later as non-blocking soft guidance.
+
+---
+
+## Background Review Daemon
+
+The daemon is a **completely independent system** from the rules engine. It requires no API key — it shells out to an installed agent CLI (claude, codex, gemini, etc.) that uses its own subscription. The daemon performs full code review using a staff-engineer prompt rather than matching user-defined rules.
+
+For detailed architecture, data model, known issues, and future considerations, see [`src/daemon/ARCHITECTURE.md`](../src/daemon/ARCHITECTURE.md).
+
+### Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| **MesaDaemon** | `daemon/server.ts` | HTTP server on `127.0.0.1:7474`, endpoint routing, idle timeout, PID/lock file management |
+| **DaemonStore** | `daemon/store.ts` | SQLite (`~/.mesa/reviews.db`): job queue, review storage, diff-hash deduplication |
+| **Worker** | `daemon/worker.ts` | Polls queue every 2s, claims FIFO jobs, invokes agent, parses findings |
+| **Agent CLI** | `daemon/agent-cli.ts` | Detects installed agent (claude > codex > gemini > opencode > copilot > cursor), read-only tools, 5min timeout |
+| **Hook Client** | `daemon/hook-client.ts` | HTTP client for stop hook → daemon communication |
+
+### Key Mechanisms
+
+- **Diff-hash deduplication** — Each file's diff is hashed (`sha256`). Files with unchanged hashes since the last review in the same session are skipped.
+- **Atomic job claiming** — Workers claim via `UPDATE ... WHERE id = (SELECT ... WHERE status = 'queued' LIMIT 1) RETURNING *`. SQLite's write lock prevents double-claiming.
+- **Agent invocation** — Spawns `claude -p` (or codex, gemini, etc.) with `--allowedTools Read,Glob,Grep` (read-only). Environment stripped of `CLAUDECODE*` vars, `MESA_REVIEW_AGENT=1` set to prevent loops.
+- **Soft guidance** — Findings injected as recommendations, not blocking rules.
+- **Prompt size limits** — Jobs exceeding 125KB diff+context are skipped.
+- **Idle timeout** — Auto-shuts down after 30 minutes of inactivity (configurable).
+
 ---
 
 ## Data Flow
@@ -1091,9 +1130,17 @@ index:
 review:
   max_steps: 10                # Maximum tool-calling steps per worker
   files_per_batch: 3           # Number of files per parallel worker batch
+
+# Background Review Daemon (independent of rules engine)
+daemon:
+  enabled: false               # Enable daemon mode instead of direct review
+  workers: 1                   # Number of parallel review workers (1-2 max)
+  idle_timeout: 1800           # Seconds before daemon auto-shuts down (default 30 min)
+  agent: auto                  # Detect agent or specify: claude|codex|gemini|copilot|opencode|cursor
+  model: sonnet                # Optional: model name to pass to agent CLI
 ```
 
-API keys are loaded from environment variables (`.env.local`, `.env`, or shell export). The config file does **not** contain API keys.
+API keys are loaded from environment variables (`.env.local`, `.env`, or shell export). The config file does **not** contain API keys. The daemon does **not** require API keys — it uses the agent CLI's own subscription.
 
 ### `.mesa/rules/`
 
@@ -1106,6 +1153,16 @@ Single agent-facing skill synced by `mesa rules sync`. Contains `SKILL.md` that 
 ### `.mesa/cache/`
 
 Auto-generated, gitignored. Contains `index.json` (persisted codebase index).
+
+### `~/.mesa/` (daemon state)
+
+Global daemon state (not per-repo):
+
+| File | Purpose |
+|------|---------|
+| `reviews.db` | SQLite database (WAL mode) with `review_jobs` and `reviews` tables |
+| `daemon.pid` | PID, port, and start timestamp for detecting stale processes |
+| `daemon.lock` | Lock file to prevent concurrent daemon spawns |
 
 ---
 
@@ -1128,6 +1185,7 @@ Auto-generated, gitignored. Contains `index.json` (persisted codebase index).
 | **Core** | `minimatch` | Glob pattern matching for rule selection |
 | | `js-yaml` | YAML rule/config parsing |
 | | `zod` | Schema validation (tool inputs, rule proposals) |
+| **Daemon** | `better-sqlite3` / `bun:sqlite` | SQLite database for daemon job queue and reviews |
 
 ### Why These Dependencies
 
@@ -1136,6 +1194,7 @@ The computationally expensive operations are already native:
 - **Module resolution:** `oxc-resolver` (Rust)
 - **Git operations:** `git` binary (C)
 - **File I/O:** `libuv` (C)
+- **Database:** SQLite (C, via `better-sqlite3` or `bun:sqlite`)
 
 The TypeScript orchestration layer runs in microseconds. The bottleneck is the LLM API call by orders of magnitude.
 
@@ -1158,5 +1217,8 @@ The TypeScript orchestration layer runs in microseconds. The bottleneck is the L
 | `mesa rules locate` | Print the path to the `.mesa/rules/` directory |
 | `mesa hook install` | Add the Claude Code Stop hook to `.claude/settings.json` |
 | `mesa hook uninstall` | Remove the Stop hook entry |
+| `mesa daemon start` | Start the background review daemon (also auto-started by stop hook when `daemon.enabled`) |
+| `mesa daemon stop` | Stop the daemon (sends SIGTERM) |
+| `mesa daemon status` | Check if daemon is running, show port/PID |
 | `mesa index` | Build/rebuild the codebase index |
 | `mesa serve` | Start MCP server in stdio mode for AI agent integration |
