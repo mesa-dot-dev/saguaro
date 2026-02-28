@@ -2,8 +2,8 @@ import { useKeyboard } from '@opentui/react';
 import { useState } from 'react';
 import { InputBar } from './components/input-bar.js';
 import { exitTui } from './lib/exit.js';
+import { InputBarProvider, useInputBarContext } from './lib/input-bar-context.js';
 import { RouterProvider, useRouter } from './lib/router.js';
-import { theme } from './lib/theme.js';
 import { ConfigureScreen } from './screens/configure.js';
 import { HelpScreen } from './screens/help.js';
 import { HomeScreen } from './screens/home.js';
@@ -69,8 +69,12 @@ function ScreenRouter() {
 function AppShell() {
   const { route, navigate, goHome } = useRouter();
   const [inputFocused, setInputFocused] = useState(false);
+  const { screenInput } = useInputBarContext();
 
   useKeyboard((e) => {
+    // When a screen owns the input, suppress all global shortcuts
+    if (screenInput) return;
+
     if (inputFocused) {
       if (e.name === 'escape') {
         setInputFocused(false);
@@ -95,20 +99,24 @@ function AppShell() {
     }
   });
 
+  const isInputFocused = screenInput ? true : inputFocused;
+
   return (
     <box flexDirection="column" width="100%" height="100%">
       <box flexGrow={1}>
         <ScreenRouter />
       </box>
-      <InputBar focused={inputFocused} />
+      <InputBar focused={isInputFocused} />
     </box>
   );
 }
 
 export function App() {
   return (
-    <RouterProvider>
-      <AppShell />
-    </RouterProvider>
+    <InputBarProvider>
+      <RouterProvider>
+        <AppShell />
+      </RouterProvider>
+    </InputBarProvider>
   );
 }

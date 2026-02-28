@@ -120,6 +120,37 @@ describe('parseGeneratedPolicy', () => {
     const result = parseGeneratedPolicy('just a plain string');
     expect(result.success).toBe(false);
   });
+
+  test('handles !! YAML type tags in code snippets', () => {
+    const yamlWithTags = [
+      'id: no-double-negation',
+      'title: No Double Negation',
+      'severity: warning',
+      'globs:',
+      '  - "**/*.ts"',
+      'instructions: |',
+      '  ## What to Look For',
+      '  Avoid !!value coercion.',
+      '  ## Why This Matters',
+      '  Hard to read.',
+      '  ## Correct Patterns',
+      '  Use Boolean(value).',
+      '  ## Exceptions',
+      '  None.',
+      'examples:',
+      '  violations:',
+      '    - bug({ hasPassword: !!password })',
+      '  compliant:',
+      '    - bug({ hasPassword: Boolean(password) })',
+      'tags:',
+      '  - best-practices',
+    ].join('\n');
+    const result = parseGeneratedPolicy(yamlWithTags);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.policy.examples?.violations?.[0]).toContain('!!password');
+    }
+  });
 });
 
 // --- buildRuleGenerationPrompt ---

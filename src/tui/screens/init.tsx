@@ -2,8 +2,9 @@ import type { InitProjectResult, ModelOptions } from '@mesa/code-review';
 import { getModelOptions, initProject } from '@mesa/code-review';
 import type { SelectOption } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Spinner } from '../components/spinner.js';
+import { useScreenInput } from '../lib/input-bar-context.js';
 import { useRouter } from '../lib/router.js';
 import { selectColors, theme } from '../lib/theme.js';
 
@@ -22,7 +23,6 @@ type InitStep =
 export function InitScreen() {
   const { goHome } = useRouter();
   const [state, setState] = useState<InitStep>({ step: 'loading' });
-  const [inputValue, setInputValue] = useState('');
 
   useKeyboard((e) => {
     if (e.name === 'escape') goHome();
@@ -37,6 +37,31 @@ export function InitScreen() {
         setState({ step: 'error', message: err instanceof Error ? err.message : String(err) });
       });
   }, []);
+
+  const handleApiKeySubmit = useMemo(
+    () => (value: string) => {
+      setState((prev) => {
+        if (prev.step !== 'api-key') return prev;
+        const { provider, model } = prev;
+        const needsModelName = model === '';
+        const val = value.trim();
+        if (needsModelName) {
+          if (!val) return prev;
+          return { step: 'api-key', provider, model: val };
+        }
+        const apiKey = val.toLowerCase() === 'n' || val === '' ? undefined : val;
+        return { step: 'rule-strategy', provider, model, apiKey };
+      });
+    },
+    []
+  );
+
+  const screenInputConfig = useMemo(() => {
+    if (state.step !== 'api-key') return null;
+    return { placeholder: '', onSubmit: handleApiKeySubmit };
+  }, [state.step, handleApiKeySubmit]);
+
+  useScreenInput(screenInputConfig);
 
   if (state.step === 'loading') {
     return (
@@ -99,7 +124,6 @@ export function InitScreen() {
     const handleSelect = (_index: number, option: SelectOption | null) => {
       if (!option) return;
       if (option.value === 'custom') {
-        setInputValue('');
         setState({ step: 'api-key', provider, model: '' });
         return;
       }
@@ -132,19 +156,6 @@ export function InitScreen() {
     const { provider, model } = state;
     const needsModelName = model === '';
 
-    const handleSubmit = () => {
-      const val = inputValue.trim();
-      if (needsModelName) {
-        if (!val) return;
-        setInputValue('');
-        setState({ step: 'api-key', provider, model: val });
-        return;
-      }
-      const apiKey = val.toLowerCase() === 'n' || val === '' ? undefined : val;
-      setInputValue('');
-      setState({ step: 'rule-strategy', provider, model, apiKey });
-    };
-
     const label = needsModelName
       ? 'Enter custom model name:'
       : `Paste your ${provider.envKey} (or press Enter to skip):`;
@@ -159,17 +170,6 @@ export function InitScreen() {
         )}
         <box paddingTop={1}>
           <text fg={theme.text}>{label}</text>
-        </box>
-        <box paddingTop={1}>
-          <input
-            focused
-            value={inputValue}
-            textColor={theme.text}
-            placeholderColor={theme.textDim}
-            cursorColor={theme.accent}
-            onInput={setInputValue}
-            onSubmit={handleSubmit}
-          />
         </box>
         <box paddingTop={1}>
           <text fg={theme.textDim}>Enter to submit · ESC cancel</text>

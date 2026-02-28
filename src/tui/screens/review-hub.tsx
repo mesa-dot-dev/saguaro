@@ -2,6 +2,7 @@ import { getCurrentBranch, getDefaultBranch } from '@mesa/code-review';
 import type { SelectOption } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useMemo, useState } from 'react';
+import { useScreenInput } from '../lib/input-bar-context.js';
 import { useRouter } from '../lib/router.js';
 import { selectColors, theme } from '../lib/theme.js';
 
@@ -10,7 +11,6 @@ type HubStep = { step: 'menu' } | { step: 'branch-input' };
 export function ReviewHubScreen() {
   const { navigate, goHome } = useRouter();
   const [state, setState] = useState<HubStep>({ step: 'menu' });
-  const [inputValue, setInputValue] = useState('');
 
   const currentBranch = useMemo(() => {
     try {
@@ -38,31 +38,28 @@ export function ReviewHubScreen() {
     }
   });
 
-  if (state.step === 'branch-input') {
-    const handleSubmit = () => {
-      const base = inputValue.trim();
-      if (!base) return;
+  const handleBranchSubmit = useMemo(
+    () => (value: string) => {
+      const base = value.trim() || defaultBranch;
       navigate({ screen: 'review', baseRef: base, headRef: currentBranch });
-    };
+    },
+    [currentBranch, defaultBranch, navigate]
+  );
 
+  const screenInputConfig = useMemo(() => {
+    if (state.step !== 'branch-input') return null;
+    return { placeholder: defaultBranch, onSubmit: handleBranchSubmit };
+  }, [state.step, defaultBranch, handleBranchSubmit]);
+
+  useScreenInput(screenInputConfig);
+
+  if (state.step === 'branch-input') {
     return (
       <box flexDirection="column" paddingLeft={2} paddingTop={1}>
         <text fg={theme.accent}>Review Branch</text>
         <text fg={theme.textDim}>Head: {currentBranch}</text>
         <box paddingTop={1}>
           <text fg={theme.text}>Base branch to diff against:</text>
-        </box>
-        <box paddingTop={1}>
-          <input
-            focused
-            value={inputValue}
-            placeholder={defaultBranch}
-            textColor={theme.text}
-            placeholderColor={theme.textDim}
-            cursorColor={theme.accent}
-            onInput={setInputValue}
-            onSubmit={handleSubmit}
-          />
         </box>
         <box paddingTop={1}>
           <text fg={theme.textDim}>Enter to submit · ESC back</text>
@@ -84,7 +81,6 @@ export function ReviewHubScreen() {
         navigate({ screen: 'review' });
         break;
       case 'Branch':
-        setInputValue(defaultBranch);
         setState({ step: 'branch-input' });
         break;
       case 'Index':

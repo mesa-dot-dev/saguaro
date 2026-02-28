@@ -2,8 +2,9 @@ import type { ModelOptions } from '@mesa/code-review';
 import { getModelOptions, hasApiKey, switchModel } from '@mesa/code-review';
 import type { SelectOption } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Spinner } from '../components/spinner.js';
+import { useScreenInput } from '../lib/input-bar-context.js';
 import { useRouter } from '../lib/router.js';
 import { selectColors, theme } from '../lib/theme.js';
 
@@ -21,7 +22,6 @@ type ModelStep =
 export function ModelScreen() {
   const { goHome } = useRouter();
   const [state, setState] = useState<ModelStep>({ step: 'loading' });
-  const [inputValue, setInputValue] = useState('');
 
   useKeyboard((e) => {
     if (e.name === 'escape') goHome();
@@ -36,6 +36,41 @@ export function ModelScreen() {
         setState({ step: 'error', message: err instanceof Error ? err.message : String(err) });
       });
   }, []);
+
+  const handleApiKeySubmit = useMemo(
+    () => (value: string) => {
+      if (state.step !== 'api-key') return;
+      const { currentModel, provider, model } = state;
+      const needsModelName = model === '';
+      const val = value.trim();
+      if (needsModelName) {
+        if (!val) return;
+        if (hasApiKey(provider.id)) {
+          const result = switchModel({ provider: provider.id, model: val });
+          setState({ step: 'done', previous: result.previousModel, current: result.newModel, keyUpdated: false });
+        } else {
+          setState({ step: 'api-key', currentModel, provider, model: val });
+        }
+        return;
+      }
+      const apiKey = val.toLowerCase() === 'n' || val === '' ? undefined : val;
+      const result = switchModel({ provider: provider.id, model, apiKey });
+      setState({
+        step: 'done',
+        previous: result.previousModel,
+        current: result.newModel,
+        keyUpdated: result.keyUpdated,
+      });
+    },
+    [state]
+  );
+
+  const screenInputConfig = useMemo(() => {
+    if (state.step !== 'api-key') return null;
+    return { placeholder: '', onSubmit: handleApiKeySubmit };
+  }, [state.step, handleApiKeySubmit]);
+
+  useScreenInput(screenInputConfig);
 
   if (state.step === 'loading') {
     return (
@@ -112,7 +147,6 @@ export function ModelScreen() {
     const handleSelect = (_index: number, option: SelectOption | null) => {
       if (!option) return;
       if (option.value === 'custom') {
-        setInputValue('');
         setState({ step: 'api-key', currentModel, provider, model: '' });
         return;
       }
@@ -154,33 +188,8 @@ export function ModelScreen() {
   }
 
   if (state.step === 'api-key') {
-    const { currentModel, provider, model } = state;
+    const { provider, model } = state;
     const needsModelName = model === '';
-
-    const handleSubmit = () => {
-      const val = inputValue.trim();
-      if (needsModelName) {
-        if (!val) return;
-        // Now we have the custom model name, check api key
-        if (hasApiKey(provider.id)) {
-          const result = switchModel({ provider: provider.id, model: val });
-          setState({ step: 'done', previous: result.previousModel, current: result.newModel, keyUpdated: false });
-        } else {
-          setInputValue('');
-          setState({ step: 'api-key', currentModel, provider, model: val });
-        }
-        return;
-      }
-      // val is the API key (or empty to skip)
-      const apiKey = val.toLowerCase() === 'n' || val === '' ? undefined : val;
-      const result = switchModel({ provider: provider.id, model, apiKey });
-      setState({
-        step: 'done',
-        previous: result.previousModel,
-        current: result.newModel,
-        keyUpdated: result.keyUpdated,
-      });
-    };
 
     const label = needsModelName
       ? 'Enter custom model name:'
@@ -192,17 +201,6 @@ export function ModelScreen() {
         {!needsModelName && <text fg={theme.textDim}>Model: {model}</text>}
         <box paddingTop={1}>
           <text fg={theme.text}>{label}</text>
-        </box>
-        <box paddingTop={1}>
-          <input
-            focused
-            value={inputValue}
-            textColor={theme.text}
-            placeholderColor={theme.textDim}
-            cursorColor={theme.accent}
-            onInput={setInputValue}
-            onSubmit={handleSubmit}
-          />
         </box>
         <box paddingTop={1}>
           <text fg={theme.textDim}>Enter to submit · ESC back</text>

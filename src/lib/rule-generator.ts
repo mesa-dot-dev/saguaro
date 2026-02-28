@@ -340,10 +340,21 @@ function stripCodeFences(text: string): string {
 }
 
 /**
- * Quote YAML list-item values that start with `!` (e.g. negation globs like
- * `!**\/*.test.*`).  In YAML, a bare `!` prefix is tag syntax and will cause a
- * parse error unless the value is quoted.
+ * Quote unquoted YAML list-item values that contain characters which are
+ * special in YAML plain scalars. LLM-generated code snippets commonly include
+ * `{`, `}`, `!`, `!!`, `:`, `#`, `[`, `]` etc. that break YAML parsing.
  */
 function quoteYamlTagValues(text: string): string {
-  return text.replace(/^(\s*-\s+)(!.+)$/gm, '$1"$2"');
+  return text.replace(/^(\s*-\s+)(.+)$/gm, (match, prefix: string, value: string) => {
+    const trimmed = value.trim();
+    // Skip already-quoted values
+    if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+      return match;
+    }
+    // Quote if value contains any YAML-special characters
+    if (/[!{}[\]#]/.test(trimmed)) {
+      return `${prefix}"${trimmed.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    }
+    return match;
+  });
 }

@@ -43,11 +43,123 @@ const EXTENSION_TO_LANGUAGE: Record<string, string> = {
   rb: 'ruby',
 };
 
+// ---------------------------------------------------------------------------
+// Path resolution with fuzzy matching
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolves a user-provided target path to an actual directory in the repo.
+ * If the exact path doesn't exist, searches for directories with matching
+ * names and picks the best match, handling typos and partial paths.
+ */
+export function resolveTargetDirectory(targetPath: string, repoRoot: string): string {
+  // Special case: "." always means repo root
+  if (targetPath === '.') {
+    return repoRoot;
+  }
+
+  // Fast path: exact match
+  const resolved = path.resolve(repoRoot, targetPath);
+  try {
+    const stat = fs.statSync(resolved);
+    if (stat.isDirectory()) return resolved;
+    if (stat.isFile()) return path.dirname(resolved);
+  } catch {
+    // Path doesn't exist, try fuzzy matching
+  }
+
+  const allDirs = collectAllDirectories(repoRoot, 0);
+  const segments = targetPath.split(/[/\\]/).filter(Boolean);
+  const targetBasename = segments[segments.length - 1];
+
+  if (!targetBasename) {
+    throw new Error(`Could not find directory matching "${targetPath}" in the repository.`);
+  }
+
+  // Strategy 1: exact basename match
+  const exactMatches = allDirs.filter((d) => path.basename(d) === targetBasename);
+
+  if (exactMatches.length === 1) {
+    return exactMatches[0]!;
+  }
+  if (exactMatches.length > 1) {
+    return pickClosestMatch(exactMatches, targetPath, repoRoot);
+  }
+
+  // Strategy 2: fuzzy basename match (handles typos like "pacakges" → "packages")
+  const maxDist = Math.max(1, Math.floor(targetBasename.length / 3));
+  const fuzzyMatches = allDirs
+    .map((d) => ({ dir: d, dist: levenshtein(path.basename(d), targetBasename) }))
+    .filter((d) => d.dist > 0 && d.dist <= maxDist)
+    .sort((a, b) => a.dist - b.dist);
+
+  if (fuzzyMatches.length > 0) {
+    const bestDist = fuzzyMatches[0]!.dist;
+    const tied = fuzzyMatches.filter((m) => m.dist === bestDist).map((m) => m.dir);
+    return pickClosestMatch(tied, targetPath, repoRoot);
+  }
+
+  throw new Error(`Could not find directory matching "${targetPath}" in the repository. Check the path and try again.`);
+}
+
+function pickClosestMatch(candidates: string[], targetPath: string, repoRoot: string): string {
+  if (candidates.length === 1) return candidates[0]!;
+
+  return candidates
+    .map((c) => ({ dir: c, dist: levenshtein(path.relative(repoRoot, c), targetPath) }))
+    .sort((a, b) => a.dist - b.dist)[0]!.dir;
+}
+
+function collectAllDirectories(dir: string, depth: number): string[] {
+  if (depth > MAX_WALK_DEPTH) return [];
+
+  const results: string[] = [];
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
+
+    const fullPath = path.join(dir, entry.name);
+    results.push(fullPath);
+    results.push(...collectAllDirectories(fullPath, depth + 1));
+  }
+
+  return results;
+}
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array<number>(n + 1).fill(0));
+
+  for (let i = 0; i <= m; i++) dp[i]![0] = i;
+  for (let j = 0; j <= n; j++) dp[0]![j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i]![j] = Math.min(dp[i - 1]![j]! + 1, dp[i]![j - 1]! + 1, dp[i - 1]![j - 1]! + cost);
+    }
+  }
+
+  return dp[m]![n]!;
+}
+
+// ---------------------------------------------------------------------------
+// analyzeTarget
+// ---------------------------------------------------------------------------
+
 export function analyzeTarget(request: AnalyzeTargetRequest): TargetAnalysis {
   const { targetPath, repoRoot } = request;
 
-  // Resolve paths
-  const resolvedPath = path.resolve(repoRoot, targetPath);
+  // Resolve paths — fuzzy-match when the exact path doesn't exist
+  const resolvedPath = resolveTargetDirectory(targetPath, repoRoot);
   const relativePath = path.relative(repoRoot, resolvedPath) || '.';
 
   // Sample files from target directory

@@ -4,7 +4,7 @@ import { describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { analyzeTarget } from './target-analysis.js';
+import { analyzeTarget, resolveTargetDirectory } from './target-analysis.js';
 
 function withTempRepo(run: (root: string) => void): void {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-target-'));
@@ -286,17 +286,14 @@ describe('analyzeTarget', () => {
     });
   });
 
-  test('handles nonexistent target path', () => {
+  test('throws for completely nonexistent target path', () => {
     withTempRepo((root) => {
-      const result = analyzeTarget({
-        targetPath: 'nonexistent/path',
-        repoRoot: root,
-      });
-
-      expect(result.files).toEqual([]);
-      expect(result.boundaryFiles).toEqual([]);
-      expect(result.suggestedGlobs.length).toBeGreaterThan(0); // Should still suggest globs
-      expect(result.placements.length).toBeGreaterThan(0); // Should still compute placements
+      expect(() =>
+        analyzeTarget({
+          targetPath: 'nonexistent/path',
+          repoRoot: root,
+        })
+      ).toThrow('Could not find directory matching');
     });
   });
 
@@ -438,6 +435,111 @@ describe('analyzeTarget', () => {
       expect(result.directoryTree).toBe('.  ← target');
       // Globs should NOT have ./ prefix
       expect(result.suggestedGlobs.every((g) => !g.startsWith('./'))).toBe(true);
+    });
+  });
+});
+
+// --- resolveTargetDirectory ---
+
+describe('resolveTargetDirectory', () => {
+  test('resolves exact basename match when path does not exist', () => {
+    withTempRepo((root) => {
+      // Create packages/cli/src/tui
+      const tuiPath = path.join(root, 'packages', 'cli', 'src', 'tui');
+      fs.mkdirSync(tuiPath, { recursive: true });
+      fs.writeFileSync(path.join(tuiPath, 'app.tsx'), 'code');
+
+      // User types "tui" — should find packages/cli/src/tui
+      const resolved = resolveTargetDirectory('tui', root);
+      expect(resolved).toBe(tuiPath);
+    });
+  });
+
+  test('resolves typo in path segments via fuzzy matching', () => {
+    withTempRepo((root) => {
+      // Create packages/cli/src/tui
+      const tuiPath = path.join(root, 'packages', 'cli', 'src', 'tui');
+      fs.mkdirSync(tuiPath, { recursive: true });
+      fs.writeFileSync(path.join(tuiPath, 'app.tsx'), 'code');
+
+      // User types "pacakges/tui" — basename "tui" matches exactly
+      const resolved = resolveTargetDirectory('pacakges/tui', root);
+      expect(resolved).toBe(tuiPath);
+    });
+  });
+
+  test('resolves typo in basename via levenshtein', () => {
+    withTempRepo((root) => {
+      // Create src/components
+      const compPath = path.join(root, 'src', 'components');
+      fs.mkdirSync(compPath, { recursive: true });
+
+      // User types "src/compnents" (typo) — fuzzy match finds "components"
+      const resolved = resolveTargetDirectory('src/compnents', root);
+      expect(resolved).toBe(compPath);
+    });
+  });
+
+  test('picks closest path when multiple dirs share same basename', () => {
+    withTempRepo((root) => {
+      // Create two "lib" directories at different paths
+      const cliLib = path.join(root, 'packages', 'cli', 'src', 'lib');
+      const coreLib = path.join(root, 'packages', 'core', 'src', 'lib');
+      fs.mkdirSync(cliLib, { recursive: true });
+      fs.mkdirSync(coreLib, { recursive: true });
+
+      // User types "packages/core/src/lib" — should match the core one
+      const resolved = resolveTargetDirectory('packages/core/src/lib', root);
+      expect(resolved).toBe(coreLib);
+
+      // User types "packages/cli/src/lib" — should match the cli one
+      const resolved2 = resolveTargetDirectory('packages/cli/src/lib', root);
+      expect(resolved2).toBe(cliLib);
+    });
+  });
+
+  test('returns exact path when it exists', () => {
+    withTempRepo((root) => {
+      const srcPath = path.join(root, 'src');
+      fs.mkdirSync(srcPath, { recursive: true });
+
+      const resolved = resolveTargetDirectory('src', root);
+      expect(resolved).toBe(srcPath);
+    });
+  });
+
+  test('resolves file path to parent directory', () => {
+    withTempRepo((root) => {
+      const srcPath = path.join(root, 'src');
+      fs.mkdirSync(srcPath, { recursive: true });
+      fs.writeFileSync(path.join(srcPath, 'app.ts'), 'code');
+
+      const resolved = resolveTargetDirectory('src/app.ts', root);
+      expect(resolved).toBe(srcPath);
+    });
+  });
+
+  test('throws for completely unresolvable path', () => {
+    withTempRepo((root) => {
+      fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+
+      expect(() => resolveTargetDirectory('zzzznotreal', root)).toThrow('Could not find directory matching');
+    });
+  });
+
+  test('analyzeTarget uses resolved path for globs', () => {
+    withTempRepo((root) => {
+      // Create packages/cli/src/tui with a TS file
+      const tuiPath = path.join(root, 'packages', 'cli', 'src', 'tui');
+      fs.mkdirSync(tuiPath, { recursive: true });
+      fs.writeFileSync(path.join(tuiPath, 'app.tsx'), 'code');
+
+      // User types "pacakges/tui" (typo) — globs should use correct resolved path
+      const result = analyzeTarget({ targetPath: 'pacakges/tui', repoRoot: root });
+
+      expect(result.relativePath).toBe(path.join('packages', 'cli', 'src', 'tui'));
+      expect(result.suggestedGlobs.some((g) => g.includes('packages/cli/src/tui'))).toBe(true);
+      expect(result.files.length).toBeGreaterThan(0);
     });
   });
 });
