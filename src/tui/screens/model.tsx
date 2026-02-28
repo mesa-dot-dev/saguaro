@@ -87,11 +87,11 @@ export function ModelScreen() {
           <text fg={theme.text}>Select provider:</text>
         </box>
 
-        <box flexDirection="column" paddingLeft={2} flexGrow={1}>
+        <box flexDirection="column" paddingLeft={2} flexGrow={1} flexShrink={0} minHeight={5}>
           <select focused flexGrow={1} options={options} {...selectColors} onSelect={handleSelect} />
         </box>
 
-        <box paddingLeft={2} paddingBottom={1}>
+        <box paddingLeft={2} paddingBottom={1} flexShrink={0}>
           <text fg={theme.textDim}>↑↓ navigate · enter select · ESC back</text>
         </box>
       </box>
@@ -135,7 +135,7 @@ export function ModelScreen() {
           <text fg={theme.text}>Select model:</text>
         </box>
 
-        <box flexDirection="column" paddingLeft={2} flexGrow={1}>
+        <box flexDirection="column" paddingLeft={2} flexGrow={1} flexShrink={0} minHeight={5}>
           <select
             focused
             flexGrow={1}
@@ -146,7 +146,7 @@ export function ModelScreen() {
           />
         </box>
 
-        <box paddingLeft={2} paddingBottom={1}>
+        <box paddingLeft={2} paddingBottom={1} flexShrink={0}>
           <text fg={theme.textDim}>↑↓ navigate · enter select · ESC back</text>
         </box>
       </box>

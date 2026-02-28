@@ -75,10 +75,10 @@ export function InitScreen() {
         <box paddingLeft={2} paddingTop={1}>
           <text fg={theme.accent}>Init — Select Provider</text>
         </box>
-        <box flexDirection="column" paddingLeft={2} paddingTop={1} flexGrow={1}>
+        <box flexDirection="column" paddingLeft={2} paddingTop={1} flexGrow={1} flexShrink={0} minHeight={5}>
           <select focused flexGrow={1} options={options} {...selectColors} onSelect={handleSelect} />
         </box>
-        <box paddingLeft={2} paddingBottom={1}>
+        <box paddingLeft={2} paddingBottom={1} flexShrink={0}>
           <text fg={theme.textDim}>↑↓ navigate · enter select · ESC cancel</text>
         </box>
       </box>
@@ -111,7 +111,7 @@ export function InitScreen() {
         <box paddingLeft={2} paddingTop={1}>
           <text fg={theme.accent}>Init — Select Model ({provider.label})</text>
         </box>
-        <box flexDirection="column" paddingLeft={2} paddingTop={1} flexGrow={1}>
+        <box flexDirection="column" paddingLeft={2} paddingTop={1} flexGrow={1} flexShrink={0} minHeight={5}>
           <select
             focused
             flexGrow={1}
@@ -121,7 +121,7 @@ export function InitScreen() {
             onSelect={handleSelect}
           />
         </box>
-        <box paddingLeft={2} paddingBottom={1}>
+        <box paddingLeft={2} paddingBottom={1} flexShrink={0}>
           <text fg={theme.textDim}>↑↓ navigate · enter select · ESC cancel</text>
         </box>
       </box>
@@ -205,10 +205,10 @@ export function InitScreen() {
         <box paddingLeft={2} paddingTop={1}>
           <text fg={theme.accent}>Init — Rule Setup</text>
         </box>
-        <box flexDirection="column" paddingLeft={2} paddingTop={1} flexGrow={1}>
+        <box flexDirection="column" paddingLeft={2} paddingTop={1} flexGrow={1} flexShrink={0} minHeight={7}>
           <select focused flexGrow={1} options={options} {...selectColors} onSelect={handleSelect} />
         </box>
-        <box paddingLeft={2} paddingBottom={1}>
+        <box paddingLeft={2} paddingBottom={1} flexShrink={0}>
           <text fg={theme.textDim}>↑↓ navigate · enter select · ESC cancel</text>
         </box>
       </box>

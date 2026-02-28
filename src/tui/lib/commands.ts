@@ -42,9 +42,18 @@ function parseReviewArgs(args: string[]): Route {
 export const commands: Command[] = [
   {
     name: 'review',
-    description: 'Run a code review against your rules',
+    description: 'Run reviews and build index',
     category: 'review',
-    route: (args) => parseReviewArgs(args),
+    subcommands: ['local', 'branch', 'index'],
+    route: (args) => {
+      const sub = args[0];
+      if (!sub) return { screen: 'review-hub' };
+      if (sub === 'local') return parseReviewArgs(args.slice(1));
+      if (sub === 'branch') return parseReviewArgs(args.slice(1));
+      if (sub === 'index') return { screen: 'index' };
+      // Treat unrecognized args as review flags (e.g. /review --base X)
+      return parseReviewArgs(args);
+    },
   },
   {
     name: 'rules',
@@ -85,6 +94,26 @@ export const commands: Command[] = [
     route: { screen: 'stats' },
   },
   {
+    name: 'configure',
+    aliases: ['config'],
+    description: 'Index, hooks, and project setup',
+    category: 'config',
+    subcommands: ['index', 'hook', 'init'],
+    route: (args) => {
+      const sub = args[0];
+      if (sub === 'index') return { screen: 'index' };
+      if (sub === 'init') return { screen: 'init' };
+      if (sub === 'hook') {
+        const action = args[1];
+        if (action === 'install' || action === 'uninstall') {
+          return { screen: 'hook', action };
+        }
+        return { screen: 'hook' };
+      }
+      return { screen: 'configure' };
+    },
+  },
+  {
     name: 'init',
     description: 'Set up Mesa in your repo',
     category: 'config',
@@ -93,7 +122,7 @@ export const commands: Command[] = [
   {
     name: 'index',
     description: 'Build the codebase import graph',
-    category: 'review',
+    category: 'config',
     route: { screen: 'index' },
   },
   {

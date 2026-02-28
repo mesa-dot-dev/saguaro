@@ -121,11 +121,11 @@ export function RulesGenerateScreen() {
           </text>
         </box>
 
-        <box flexDirection="column" paddingLeft={2} flexGrow={1}>
+        <box flexDirection="column" paddingLeft={2} flexGrow={1} flexShrink={0} minHeight={5}>
           <select focused flexGrow={1} options={options} {...selectColors} onSelect={handleToggle} />
         </box>
 
-        <box paddingLeft={2} paddingBottom={1} flexDirection="column">
+        <box paddingLeft={2} paddingBottom={1} flexDirection="column" flexShrink={0}>
           <box>
             <text fg={theme.textDim}>enter toggle · s save accepted · ESC cancel</text>
           </box>

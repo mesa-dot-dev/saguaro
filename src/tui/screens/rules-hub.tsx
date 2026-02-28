@@ -41,11 +41,11 @@ export function RulesHubScreen() {
         <text fg={theme.accent}>Rules</text>
       </box>
 
-      <box flexDirection="column" paddingLeft={2} flexGrow={1}>
+      <box flexDirection="column" paddingLeft={2} flexGrow={1} flexShrink={0} minHeight={9}>
         <select focused flexGrow={1} options={menuOptions} {...selectColors} onSelect={handleSelect} />
       </box>
 
-      <box paddingLeft={2} paddingBottom={1}>
+      <box paddingLeft={2} paddingBottom={1} flexShrink={0}>
         <text fg={theme.textDim}>↑↓ navigate · enter select · ESC back</text>
       </box>
     </box>

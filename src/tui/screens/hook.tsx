@@ -93,10 +93,10 @@ export function HookScreen({ action }: HookScreenProps) {
       <box paddingLeft={2} paddingTop={1}>
         <text fg={theme.accent}>Hooks</text>
       </box>
-      <box flexDirection="column" paddingLeft={2} paddingTop={1} flexGrow={1}>
+      <box flexDirection="column" paddingLeft={2} paddingTop={1} flexGrow={1} flexShrink={0} minHeight={5}>
         <select focused flexGrow={1} options={options} {...selectColors} onSelect={handleSelect} />
       </box>
-      <box paddingLeft={2} paddingBottom={1}>
+      <box paddingLeft={2} paddingBottom={1} flexShrink={0}>
         <text fg={theme.textDim}>↑↓ navigate · enter select · ESC cancel</text>
       </box>
     </box>

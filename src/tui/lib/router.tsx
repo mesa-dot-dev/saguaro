@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useState } from 'react';
 
 export type Route =
   | { screen: 'home' }
+  | { screen: 'review-hub' }
   | { screen: 'review'; baseRef?: string; headRef?: string }
   | { screen: 'review-results'; result: ReviewResult }
   | { screen: 'rules' }
@@ -14,6 +15,7 @@ export type Route =
   | { screen: 'rules-delete'; ruleId: string }
   | { screen: 'model' }
   | { screen: 'stats' }
+  | { screen: 'configure' }
   | { screen: 'init' }
   | { screen: 'index' }
   | { screen: 'hook'; action?: 'install' | 'uninstall' }

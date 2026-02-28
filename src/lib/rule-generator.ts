@@ -232,7 +232,7 @@ export function buildRuleGenerationPrompt(input: BuildPromptInput): string {
  * RulePolicySchema.
  */
 export function parseGeneratedPolicy(text: string): ParseResult {
-  const cleaned = stripCodeFences(text).trim();
+  const cleaned = quoteYamlTagValues(stripCodeFences(text).trim());
 
   let parsed: unknown;
   try {
@@ -337,4 +337,13 @@ function stripCodeFences(text: string): string {
   // Remove closing fence
   cleaned = cleaned.replace(/\n```\s*$/m, '');
   return cleaned;
+}
+
+/**
+ * Quote YAML list-item values that start with `!` (e.g. negation globs like
+ * `!**\/*.test.*`).  In YAML, a bare `!` prefix is tag syntax and will cause a
+ * parse error unless the value is quoted.
+ */
+function quoteYamlTagValues(text: string): string {
+  return text.replace(/^(\s*-\s+)(!.+)$/gm, '$1"$2"');
 }

@@ -78,18 +78,23 @@ export function RulesDeleteScreen({ ruleId }: { ruleId: string }) {
   };
 
   return (
-    <box flexDirection="column" paddingLeft={2} paddingTop={1}>
-      <text fg={theme.accent}>Delete Rule</text>
-      <box paddingTop={1}>
-        <text fg={theme.text}>
-          {rule.id} — {rule.title}
-        </text>
+    <box flexDirection="column" width="100%" height="100%">
+      <box flexDirection="column" paddingLeft={2} paddingTop={1} flexGrow={1} flexShrink={1}>
+        <text fg={theme.accent}>Delete Rule</text>
+        <box paddingTop={1}>
+          <text fg={theme.text}>
+            {rule.id} — {rule.title}
+          </text>
+        </box>
+        <box paddingTop={1}>
+          <text fg={theme.warning}>Are you sure you want to delete this rule?</text>
+        </box>
       </box>
-      <box paddingTop={1}>
-        <text fg={theme.warning}>Are you sure you want to delete this rule?</text>
-      </box>
-      <box paddingTop={1}>
+      <box flexDirection="column" paddingLeft={2} flexShrink={0} minHeight={5}>
         <select focused flexGrow={1} options={options} {...selectColors} onSelect={handleSelect} />
+      </box>
+      <box paddingLeft={2} paddingBottom={1} flexShrink={0}>
+        <text fg={theme.textDim}>↑↓ navigate · enter select · ESC back</text>
       </box>
     </box>
   );

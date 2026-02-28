@@ -26,13 +26,11 @@ const CACTUS = `%%%%%%%%%%%%%###********###%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%#-:...::+%%%%%%%%%%%%%%%%`;
 
 const menuOptions: (SelectOption & { route: Route })[] = [
-  { name: 'Review', description: 'Run a code review against your rules', route: { screen: 'review' } },
-  { name: 'Index', description: 'Build the codebase import graph', route: { screen: 'index' } },
+  { name: 'Review', description: 'Run reviews and build index', route: { screen: 'review-hub' } },
   { name: 'Rules', description: 'Manage review rules', route: { screen: 'rules' } },
   { name: 'Stats', description: 'View review analytics', route: { screen: 'stats' } },
   { name: 'Model', description: 'Switch AI model', route: { screen: 'model' } },
-  { name: 'Init', description: 'Set up Mesa in your repo', route: { screen: 'init' } },
-  { name: 'Hooks', description: 'Manage Claude Code hooks', route: { screen: 'hook' } },
+  { name: 'Configure', description: 'Index, hooks, and project setup', route: { screen: 'configure' } },
   { name: 'Help', description: 'Show all commands and keybindings', route: { screen: 'help' } },
 ];
 
@@ -52,11 +50,11 @@ export function HomeScreen() {
         <text fg={theme.textDim}>Infrastructure for the next generation of AI-native software development</text>
       </box>
 
-      <box flexDirection="column" paddingLeft={2} flexGrow={1}>
+      <box flexDirection="column" paddingLeft={2} flexGrow={1} flexShrink={0} minHeight={13}>
         <select focused flexGrow={1} options={menuOptions} {...selectColors} onSelect={handleSelect} />
       </box>
 
-      <box paddingLeft={2} paddingBottom={1}>
+      <box paddingLeft={2} paddingBottom={1} flexShrink={0}>
         <text fg={theme.textDim}>↑↓ navigate · enter select · / commands · q quit</text>
       </box>
     </box>

@@ -138,6 +138,15 @@ function extractInstructions(body: string): string {
   return instructions.trim();
 }
 
+/**
+ * Quote YAML list-item values that start with `!` (e.g. negation globs like
+ * `!**\/*.test.*`).  In YAML, a bare `!` prefix is tag syntax and will cause a
+ * parse error unless the value is quoted.
+ */
+function quoteYamlTagValues(text: string): string {
+  return text.replace(/^(\s*-\s+)(!.+)$/gm, '$1"$2"');
+}
+
 function parseMesaRuleFile(filePath: string, raw: string): MesaRuleFile {
   const stripped = stripLeadingComment(raw);
 
@@ -148,7 +157,8 @@ function parseMesaRuleFile(filePath: string, raw: string): MesaRuleFile {
 
   let rawFrontmatter: unknown;
   try {
-    rawFrontmatter = yaml.load(extracted.yaml, { schema: yaml.DEFAULT_SCHEMA });
+    const sanitized = quoteYamlTagValues(extracted.yaml);
+    rawFrontmatter = yaml.load(sanitized, { schema: yaml.DEFAULT_SCHEMA });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to parse YAML frontmatter: ${message}`);

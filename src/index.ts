@@ -38,7 +38,7 @@ export type { MesaErrorCode } from './lib/errors.js';
 export { MesaError } from './lib/errors.js';
 // Git utilities
 // Git
-export { getDefaultBranch, getRepoRoot, requireGitRepo } from './lib/git.js';
+export { getCurrentBranch, getDefaultBranch, getRepoRoot, requireGitRepo } from './lib/git.js';
 export { appendReviewEntry, getDefaultHistoryPath, readReviewHistory } from './lib/history.js';
 export type { HookDecision, HookRunOptions } from './lib/hook-runner.js';
 // Hook runner

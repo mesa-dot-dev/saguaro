@@ -144,54 +144,44 @@ export function RulesCreateScreen() {
       { name: 'Cancel', description: 'Discard and go back' },
     ];
 
+    const previewSummary = [
+      `ID: ${rule.id}`,
+      `Title: ${rule.title}`,
+      `Severity: ${rule.severity}`,
+      `Globs: ${rule.globs.join(', ')}`,
+    ];
+    if (preview.flaggedCount > 0) {
+      previewSummary.push(`Would flag: ${preview.flaggedCount} file(s)`);
+    }
+    if (preview.passedCount > 0) {
+      previewSummary.push(`Would pass: ${preview.passedCount} file(s)`);
+    }
+    if (preview.flaggedCount === 0 && preview.passedCount === 0) {
+      previewSummary.push('No files matched the target globs.');
+    }
+
     return (
       <box flexDirection="column" width="100%" height="100%">
-        <box paddingLeft={2} paddingTop={1}>
+        <box paddingLeft={2} paddingTop={1} flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
           <text fg={theme.accent}>Rule Preview</text>
-        </box>
-        <scrollbox flexGrow={1} paddingLeft={2} paddingTop={1}>
-          <box flexDirection="column">
-            <text fg={theme.text}>ID: {rule.id}</text>
-            <text fg={theme.text}>Title: {rule.title}</text>
-            <text fg={theme.text}>Severity: {rule.severity}</text>
-            <text fg={theme.text}>Globs: {rule.globs.join(', ')}</text>
-            <box paddingTop={1}>
-              <text fg={theme.textDim}>{rule.instructions}</text>
-            </box>
-            {preview.flaggedCount > 0 && (
-              <box flexDirection="column" paddingTop={1}>
-                <text fg={theme.error}>Would flag ({preview.flaggedCount} files):</text>
-                {preview.flaggedFiles.slice(0, 5).map((f) => (
-                  <text key={f} fg={theme.textDim}>
-                    {' '}
-                    {f}
-                  </text>
-                ))}
-                {preview.flaggedCount > 5 && <text fg={theme.textDim}> ... and {preview.flaggedCount - 5} more</text>}
-              </box>
-            )}
-            {preview.passedCount > 0 && (
-              <box flexDirection="column" paddingTop={1}>
-                <text fg={theme.success}>Would pass ({preview.passedCount} files):</text>
-                {preview.passedFiles.slice(0, 3).map((f) => (
-                  <text key={f} fg={theme.textDim}>
-                    {' '}
-                    {f}
-                  </text>
-                ))}
-                {preview.passedCount > 3 && <text fg={theme.textDim}> ... and {preview.passedCount - 3} more</text>}
-              </box>
-            )}
-            {preview.flaggedCount === 0 && preview.passedCount === 0 && (
-              <box paddingTop={1}>
-                <text fg={theme.warning}>No files matched the target globs.</text>
-              </box>
-            )}
+          <box paddingTop={1} flexDirection="column">
+            {previewSummary.map((line) => (
+              <text key={line} fg={theme.text}>
+                {line}
+              </text>
+            ))}
           </box>
-        </scrollbox>
+          <box paddingTop={1}>
+            <text fg={theme.textDim}>{rule.instructions}</text>
+          </box>
+        </box>
 
-        <box paddingLeft={2} paddingBottom={1}>
+        <box flexDirection="column" paddingLeft={2} flexShrink={0} minHeight={7}>
           <select focused flexGrow={1} options={confirmOptions} {...selectColors} onSelect={handleAccept} />
+        </box>
+
+        <box paddingLeft={2} paddingBottom={1} flexShrink={0}>
+          <text fg={theme.textDim}>↑↓ navigate · enter select · ESC cancel</text>
         </box>
       </box>
     );

@@ -4,6 +4,7 @@ import { InputBar } from './components/input-bar.js';
 import { exitTui } from './lib/exit.js';
 import { RouterProvider, useRouter } from './lib/router.js';
 import { theme } from './lib/theme.js';
+import { ConfigureScreen } from './screens/configure.js';
 import { HelpScreen } from './screens/help.js';
 import { HomeScreen } from './screens/home.js';
 import { HookScreen } from './screens/hook.js';
@@ -11,6 +12,7 @@ import { IndexBuildScreen } from './screens/index-build.js';
 import { InitScreen } from './screens/init.js';
 import { ModelScreen } from './screens/model.js';
 import { ReviewScreen } from './screens/review.js';
+import { ReviewHubScreen } from './screens/review-hub.js';
 import { ReviewResultsScreen } from './screens/review-results.js';
 import { RulesCreateScreen } from './screens/rules-create.js';
 import { RulesDeleteScreen } from './screens/rules-delete.js';
@@ -27,6 +29,8 @@ function ScreenRouter() {
   switch (route.screen) {
     case 'home':
       return <HomeScreen />;
+    case 'review-hub':
+      return <ReviewHubScreen />;
     case 'review':
       return <ReviewScreen baseRef={route.baseRef} headRef={route.headRef} />;
     case 'review-results':
@@ -49,6 +53,8 @@ function ScreenRouter() {
       return <ModelScreen />;
     case 'stats':
       return <StatsScreen />;
+    case 'configure':
+      return <ConfigureScreen />;
     case 'init':
       return <InitScreen />;
     case 'index':
