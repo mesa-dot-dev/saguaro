@@ -1,12 +1,26 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { inspect } from 'node:util';
-import { findRepoRoot, logger, MesaError, requireGitRepo } from '@mesa/code-review';
+import { findRepoRoot, generateRulesCommand, logger, MesaError, requireGitRepo } from '@mesa/code-review';
 import chalk from 'chalk';
 import type { Argv } from 'yargs';
 import yargs from 'yargs';
 import { daemonStart, daemonStatus, daemonStop } from './commands/daemon.js';
+import { installHook, runHook, runPreTool, uninstallHook } from './commands/hook.js';
+import { indexCmdHandler } from './commands/index-cmd.js';
+import { initHandler } from './commands/init.js';
+import { modelHandler } from './commands/model.js';
 import { reviewCommand } from './commands/review.js';
+import {
+  createRule,
+  deleteRule,
+  explainRule,
+  listRules,
+  locateRulesDirectory,
+  validateRules,
+} from './commands/rules.js';
+import { serveHandler } from './commands/serve.js';
+import { statsCommand } from './commands/stats.js';
 
 const secondary = chalk.hex('#be3c00');
 const tertiary = chalk.hex('#ffecba');
@@ -227,12 +241,211 @@ export async function cli(argv: string[]): Promise<boolean> {
       })
     )
 
+    .command(
+      'init',
+      'Set up Mesa in your repo (config, rules, hooks, Claude Code integration)',
+      (y: Argv) => {
+        y.option('force', {
+          describe: 'Overwrite existing configuration',
+          type: 'boolean',
+          default: false,
+        });
+      },
+      wrapHandler(initHandler as (argv: unknown) => Promise<number>)
+    )
+    .command(
+      'model',
+      'Switch the AI model used for code reviews',
+      (y: Argv) => {
+        y.usage(
+          `${secondary('mesa model')}\n\nInteractive prompt to switch the AI provider and model used\nfor code reviews. Updates .mesa/config.yaml.`
+        );
+      },
+      wrapHandler(modelHandler as (argv: unknown) => Promise<number>)
+    )
+
+    .command('rules <command>', 'Create, list, and manage review rules', (y: Argv) => {
+      y.demandCommand(1, 'Please specify a rules subcommand. Run "mesa rules --help" for options.')
+        .command(
+          'list',
+          'List all rules with their IDs, titles, and severity',
+          {},
+          wrapHandler(listRules as (argv: unknown) => void)
+        )
+        .command(
+          'explain <ruleId>',
+          'Show full details for a rule (instructions, globs, examples)',
+          (y: Argv) => {
+            y.positional('ruleId', {
+              describe: 'Rule ID (e.g. n-plus-one-query)',
+              type: 'string',
+            });
+          },
+          wrapHandler(explainRule as (argv: unknown) => void)
+        )
+        .command(
+          'validate',
+          'Check all rule files for correct structure',
+          {},
+          wrapHandler(validateRules as (argv: unknown) => number)
+        )
+        .command(
+          'locate',
+          'Print the path to the rules directory',
+          {},
+          wrapHandler(() => locateRulesDirectory()) as (argv: unknown) => Promise<void>
+        )
+        .command(
+          'delete <ruleId>',
+          'Delete a rule by its ID',
+          (y: Argv) => {
+            y.positional('ruleId', {
+              describe: 'Rule ID to delete (e.g. n-plus-one-query)',
+              type: 'string',
+            });
+          },
+          wrapHandler(deleteRule as (argv: unknown) => void)
+        )
+        .command(
+          'create [target]',
+          'Interactively create a new rule with AI assistance',
+          (y: Argv) => {
+            y.positional('target', {
+              describe: 'Directory the rule targets (e.g. src/api, packages/web)',
+              type: 'string',
+            })
+              .option('intent', {
+                describe: 'What the rule should enforce (e.g. "no direct DB queries in handlers")',
+                type: 'string',
+              })
+              .option('severity', {
+                describe: 'Rule severity: error, warning, or info',
+                type: 'string',
+              })
+              .option('title', {
+                describe: 'Rule title (auto-generated from intent if omitted)',
+                type: 'string',
+              })
+              .option('debug', { describe: 'Write debug log', type: 'boolean', default: false })
+              .option('skip-preview', {
+                describe: 'Skip the file-match preview step',
+                type: 'boolean',
+                default: false,
+              });
+          },
+          wrapHandler(createRule as (argv: unknown) => Promise<number>)
+        )
+        .command(
+          'generate',
+          'Auto-generate rules by analyzing your codebase patterns',
+          (y: Argv) => {
+            y.option('v', {
+              alias: 'verbose',
+              describe: 'Show detailed analysis progress',
+              type: 'boolean',
+              default: false,
+            })
+              .option('debug', {
+                describe: 'Show debug output (prompts, LLM responses)',
+                type: 'boolean',
+                default: false,
+              })
+              .option('c', {
+                alias: 'config',
+                describe: 'Path to Mesa config file',
+                type: 'string',
+              });
+          },
+          wrapHandler(((argv: { verbose?: boolean; debug?: boolean; config?: string }) => {
+            return generateRulesCommand({
+              ...argv,
+              abortSignal: globalAbortController.signal,
+            });
+          }) as (argv: unknown) => Promise<number>)
+        );
+    })
+
+    .command(
+      'serve',
+      false as unknown as string,
+      () => {},
+      wrapHandler(serveHandler as (argv: unknown) => Promise<void>)
+    )
+
+    .command(
+      'index',
+      'Build the import graph for richer review context',
+      (y: Argv) => {
+        y.option('v', {
+          alias: 'verbose',
+          describe: 'Show progress as files are parsed',
+          type: 'boolean',
+          default: false,
+        });
+      },
+      wrapHandler(indexCmdHandler as (argv: unknown) => Promise<void>)
+    )
+
+    .command('hook <command>', 'Enable or disable automatic reviews in Claude Code', (y: Argv) => {
+      y.demandCommand(1, 'Please specify a hook subcommand. Run "mesa hook --help" for options.')
+        .command(
+          'install',
+          'Enable automatic reviews after Claude Code writes code',
+          {},
+          wrapHandler(installHook as (argv: unknown) => Promise<number>)
+        )
+        .command(
+          'uninstall',
+          'Disable automatic reviews in Claude Code',
+          {},
+          wrapHandler(uninstallHook as (argv: unknown) => Promise<number>)
+        )
+        .command(
+          'run',
+          false as unknown as string,
+          (y: Argv) => {
+            y.option('c', {
+              alias: 'config',
+              describe: 'Path to config file',
+              type: 'string',
+            }).option('v', {
+              alias: 'verbose',
+              describe: 'Show detailed progress',
+              type: 'boolean',
+              default: false,
+            });
+          },
+          wrapHandler(runHook as (argv: unknown) => Promise<number>)
+        )
+        .command(
+          'pre-tool',
+          false as unknown as string,
+          {},
+          wrapHandler(runPreTool as (argv: unknown) => Promise<number>)
+        );
+    })
+
     .command('daemon <command>', false as unknown as string, (y: Argv) => {
       y.demandCommand(1, 'Please specify a daemon command.')
         .command('start', 'Start the daemon', {}, wrapHandler(daemonStart))
         .command('stop', 'Stop the daemon', {}, wrapHandler(daemonStop))
         .command('status', 'Check daemon status', {}, wrapHandler(daemonStatus));
     })
+
+    .command(
+      'stats',
+      'Show review history and usage analytics',
+      (y: Argv) => {
+        y.option('days', {
+          alias: 'd',
+          describe: 'Only include reviews from the last N days',
+          type: 'number',
+        });
+      },
+      wrapHandler(((argv: { days?: number }) => {
+        return statsCommand({ days: argv.days });
+      }) as (argv: unknown) => number)
+    )
 
     .middleware((argv: { _: (string | number)[] }) => {
       const command = argv._[0];

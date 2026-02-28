@@ -1,5 +1,27 @@
+export * from './adapter/generate.js';
+export * from './adapter/hook.js';
+export * from './adapter/index-build.js';
+export * from './adapter/init.js';
+export * from './adapter/model.js';
 export * from './adapter/review.js';
 export * from './adapter/rules.js';
+export * from './adapter/stats.js';
+export { generateRulesCommand } from './cli/lib/generate.js';
+export { installHook, runHook, runPreTool, uninstallHook } from './cli/lib/hook.js';
+export { default as indexCmdHandler } from './cli/lib/index-cmd.js';
+// CLI handlers (re-exported for packages/cli to wrap in yargs)
+export { default as initHandler } from './cli/lib/init.js';
+export { default as modelHandler } from './cli/lib/model.js';
+export {
+  createRule,
+  deleteRule,
+  explainRule,
+  listRules,
+  locateRulesDirectory,
+  validateRules,
+} from './cli/lib/rules.js';
+export { default as serveHandler } from './cli/lib/serve.js';
+export { statsCommand } from './cli/lib/stats.js';
 export type { ReviewEngineOutcome } from './core/types.js';
 export { detectInstalledAgent } from './daemon/agent-cli.js';
 export {
@@ -16,7 +38,7 @@ export type { MesaErrorCode } from './lib/errors.js';
 export { MesaError } from './lib/errors.js';
 // Git utilities
 // Git
-export { getRepoRoot, requireGitRepo } from './lib/git.js';
+export { getDefaultBranch, getRepoRoot, requireGitRepo } from './lib/git.js';
 export { appendReviewEntry, getDefaultHistoryPath, readReviewHistory } from './lib/history.js';
 export type { HookDecision, HookRunOptions } from './lib/hook-runner.js';
 // Hook runner
