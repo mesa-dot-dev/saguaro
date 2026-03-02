@@ -13,6 +13,7 @@ import {
 import { loadMesaRules } from './mesa-rules.js';
 import { loadValidatedConfig } from './review-model-config.js';
 import { sortRulesByPriority } from './rule-resolution.js';
+import { filterToSessionFiles } from './transcript.js';
 
 export interface HookDecision {
   decision: 'allow' | 'block';
@@ -23,6 +24,7 @@ export interface HookRunOptions {
   config?: string;
   verbose?: boolean;
   abortSignal?: AbortSignal;
+  transcriptPath?: string;
 }
 
 export async function runHookReview(options: HookRunOptions): Promise<HookDecision> {
@@ -31,7 +33,10 @@ export async function runHookReview(options: HookRunOptions): Promise<HookDecisi
   const untrackedFiles = listUntrackedFiles();
   const allChangedFiles = [...new Set([...localChangedFiles, ...untrackedFiles])];
 
-  if (allChangedFiles.length === 0) {
+  // Filter to only files this session edited (prevents cross-session contamination)
+  const filteredChangedFiles = filterToSessionFiles(allChangedFiles, options.transcriptPath, getRepoRoot());
+
+  if (filteredChangedFiles.length === 0) {
     return { decision: 'allow' };
   }
 
@@ -52,7 +57,7 @@ export async function runHookReview(options: HookRunOptions): Promise<HookDecisi
     codebaseContext = await getCodebaseContext({
       rootDir: repoRoot,
       cacheDir: path.join(repoRoot, '.mesa', 'cache'),
-      changedFiles: allChangedFiles,
+      changedFiles: filteredChangedFiles,
       blastRadiusDepth: indexSettings.blastRadiusDepth,
       tokenBudget: indexSettings.contextTokenBudget,
       verbose: options.verbose,
@@ -62,7 +67,7 @@ export async function runHookReview(options: HookRunOptions): Promise<HookDecisi
   const { outcome } = await runReview({
     baseRef: 'HEAD',
     headRef: 'HEAD',
-    changedFilesOverride: allChangedFiles,
+    changedFilesOverride: filteredChangedFiles,
     verbose: options.verbose,
     configPath: options.config,
     codebaseContext,

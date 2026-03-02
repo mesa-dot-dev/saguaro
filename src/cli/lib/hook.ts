@@ -16,6 +16,7 @@ import { runHookReview, runPreToolHook } from '../../lib/hook-runner.js';
 import { logger } from '../../lib/logger.js';
 import { loadValidatedConfig } from '../../lib/review-model-config.js';
 import { findRepoRoot } from '../../lib/rule-resolution.js';
+import { filterToSessionFiles } from '../../lib/transcript.js';
 
 const CLAUDE_SETTINGS_DIR = '.claude';
 const CLAUDE_SETTINGS_FILE = 'settings.json';
@@ -57,6 +58,7 @@ interface StopHookEntry {
 
 export interface StopHookInput {
   session_id?: string;
+  transcript_path?: string;
   last_assistant_message?: string;
   stop_hook_active?: boolean;
   cwd?: string;
@@ -248,12 +250,16 @@ export async function runHook(argv: HookRunArgv): Promise<number> {
     const untrackedFiles = listUntrackedFiles();
     const allFiles = [...new Set([...localChangedFiles, ...untrackedFiles])].filter((f) => !isReviewNoise(f));
 
-    if (allFiles.length > 0) {
+    // Filter to only files this session edited (prevents cross-session contamination)
+    const transcriptPath = input?.transcript_path as string | undefined;
+    const filesToReview = filterToSessionFiles(allFiles, transcriptPath, repoRoot);
+
+    if (filesToReview.length > 0) {
       const localDiffs = getLocalDiffs();
       const untrackedDiffs = getUntrackedDiffs();
       const mergedDiffs = new Map([...localDiffs, ...untrackedDiffs]);
 
-      const changedFiles = allFiles.map((filePath) => ({
+      const changedFiles = filesToReview.map((filePath) => ({
         path: filePath,
         diff_hash: createHash('sha256')
           .update(mergedDiffs.get(filePath) ?? '')
@@ -292,6 +298,7 @@ export async function runHook(argv: HookRunArgv): Promise<number> {
   const decision = await runHookReview({
     config: argv.config,
     verbose: argv.verbose,
+    transcriptPath: input?.transcript_path as string | undefined,
   });
 
   if (decision.decision === 'block') {
