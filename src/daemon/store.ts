@@ -242,6 +242,24 @@ export class DaemonStore {
     return (row?.count ?? 0) > 0;
   }
 
+  /**
+   * Returns the age in milliseconds of the oldest pending/running job
+   * for this session, or null if no pending jobs exist.
+   */
+  getOldestPendingAge(sessionId: string): number | null {
+    const row = this.db
+      .prepare(`
+      SELECT created_at FROM review_jobs
+      WHERE session_id = ? AND status IN ('queued', 'running')
+      ORDER BY id ASC
+      LIMIT 1
+    `)
+      .get(sessionId) as { created_at: string } | undefined;
+    if (!row) return null;
+    // SQLite datetime('now') stores UTC without Z suffix
+    return Date.now() - new Date(`${row.created_at}Z`).getTime();
+  }
+
   insertReview(input: InsertReviewInput): number {
     const result = this.db
       .prepare(`

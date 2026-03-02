@@ -10,6 +10,7 @@ import type { Finding, QueueJobInput } from './store.js';
 export interface CheckResult {
   status: 'clear' | 'findings';
   pending?: boolean;
+  oldest_pending_age_ms?: number | null;
   findings?: Array<{
     id: number;
     findings: Finding[];
@@ -163,20 +164,22 @@ export async function checkDaemonForViolations(sessionId: string): Promise<Check
 /**
  * Poll the daemon for findings, waiting briefly if reviews are still pending.
  * This gives the background review time to finish before the stop hook gives up.
- *
- * The claude CLI typically takes 30-120s. We poll for up to 30s (within the
- * stop hook's 120s timeout) and return the last known state on timeout rather
- * than fabricating a `clear` result that would hide pending reviews.
  */
 export async function checkDaemonWithPolling(
   sessionId: string,
-  maxWaitMs = 30000,
+  maxWaitMs = 15000,
   pollIntervalMs = 3000
 ): Promise<CheckResult> {
   const first = await checkDaemon(sessionId);
 
   // If we already have findings or nothing is pending, return immediately.
   if (first.status === 'findings' || !first.pending) {
+    return first;
+  }
+
+  // If the oldest pending job is very fresh (< 5s), it won't finish in time.
+  // Return immediately instead of blocking the agent.
+  if (first.oldest_pending_age_ms != null && first.oldest_pending_age_ms < 5000) {
     return first;
   }
 

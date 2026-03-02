@@ -479,6 +479,51 @@ describe('getReviewedDiffHashes', () => {
   });
 });
 
+describe('getOldestPendingAge', () => {
+  test('returns age of oldest pending job', () => {
+    dbPath = makeDbPath();
+    store = new DaemonStore(dbPath);
+
+    store.queueJob(makeJobInput({ sessionId: 'session-age' }));
+
+    const age = store.getOldestPendingAge('session-age');
+    expect(age).not.toBeNull();
+    // Job was just created, age should be very small (< 2s)
+    expect(age!).toBeLessThan(2000);
+    expect(age!).toBeGreaterThanOrEqual(0);
+  });
+
+  test('returns null when no pending jobs', () => {
+    dbPath = makeDbPath();
+    store = new DaemonStore(dbPath);
+
+    const age = store.getOldestPendingAge('nonexistent');
+    expect(age).toBeNull();
+  });
+
+  test('ignores completed jobs', () => {
+    dbPath = makeDbPath();
+    store = new DaemonStore(dbPath);
+
+    const jobId = store.queueJob(makeJobInput({ sessionId: 'session-done' }))!;
+    store.claimNextJob(1);
+    store.completeJob(jobId, 'done');
+
+    const age = store.getOldestPendingAge('session-done');
+    expect(age).toBeNull();
+  });
+
+  test('scoped to session', () => {
+    dbPath = makeDbPath();
+    store = new DaemonStore(dbPath);
+
+    store.queueJob(makeJobInput({ sessionId: 'session-x' }));
+
+    expect(store.getOldestPendingAge('session-x')).not.toBeNull();
+    expect(store.getOldestPendingAge('session-y')).toBeNull();
+  });
+});
+
 describe('resetStaleJobs', () => {
   test('resets running jobs back to queued', () => {
     dbPath = makeDbPath();

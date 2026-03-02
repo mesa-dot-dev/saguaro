@@ -153,6 +153,7 @@ export class MesaDaemon {
 
     const findings = this.store.getUnshownFindings(sessionId);
     const pending = this.store.hasPendingJobs(sessionId);
+    const oldestPendingAgeMs = pending ? this.store.getOldestPendingAge(sessionId) : null;
     // ?peek=true allows debugging without triggering the db as "read"
     const peek = url.searchParams.get('peek') === 'true';
 
@@ -165,6 +166,7 @@ export class MesaDaemon {
         JSON.stringify({
           status: 'findings',
           pending,
+          oldest_pending_age_ms: oldestPendingAgeMs,
           findings: findings.map((f) => ({
             id: f.id,
             findings: f.findings ? JSON.parse(f.findings) : [],
@@ -173,7 +175,7 @@ export class MesaDaemon {
       );
     } else {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'clear', pending }));
+      res.end(JSON.stringify({ status: 'clear', pending, oldest_pending_age_ms: oldestPendingAgeMs }));
     }
   }
 
