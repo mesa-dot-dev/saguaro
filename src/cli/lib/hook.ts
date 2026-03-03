@@ -9,13 +9,13 @@ import { filterToSessionFiles } from '../../adapter/transcript.js';
 import { loadValidatedConfig } from '../../config/model-config.js';
 import { checkDaemonWithPolling, formatFindingsForAgent, postReviewToDaemon } from '../../daemon/hook-client.js';
 import {
+  findRepoRoot,
   getLocalDiffs,
   getRepoRoot,
   getUntrackedDiffs,
   listLocalChangedFilesFromGit,
   listUntrackedFiles,
 } from '../../git/git.js';
-import { findRepoRoot } from '../../git/git.js';
 import { logger } from '../../util/logger.js';
 
 const secondary = chalk.hex('#be3c00');

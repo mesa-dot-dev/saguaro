@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadValidatedConfig, resolveApiKey, resolveModelFromResolvedConfig } from '../config/model-config.js';
+import { findRepoRoot } from '../git/git.js';
 import { generateRule } from '../rules/generator.js';
 import { deleteMesaRuleFile, getMesaRulesDir, loadMesaRules, writeMesaRuleFile } from '../rules/mesa-rules.js';
 import type { PreviewRuleResult } from '../rules/preview.js';
 import { previewRule } from '../rules/preview.js';
-import { findRepoRoot } from '../git/git.js';
 import { analyzeTarget } from '../rules/target-analysis.js';
 import type { RulePolicy, Severity } from '../types/types.js';
 import { toKebabCase } from '../util/constants.js';

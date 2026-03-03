@@ -1,7 +1,7 @@
 import path from 'node:path';
+import { findRepoRoot } from '../git/git.js';
 import { buildIndex } from '../indexer/build.js';
 import { JsonIndexStore } from '../indexer/store.js';
-import { findRepoRoot } from '../git/git.js';
 
 export interface BuildIndexOptions {
   verbose?: boolean;

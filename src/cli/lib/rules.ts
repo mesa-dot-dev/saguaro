@@ -11,9 +11,9 @@ import {
   validateRulesAdapter,
 } from '../../adapter/rules.js';
 import { loadValidatedConfig, resolveApiKey, resolveModelFromResolvedConfig } from '../../config/model-config.js';
+import { findRepoRoot } from '../../git/git.js';
 import { generateRule } from '../../rules/generator.js';
 import { previewRule } from '../../rules/preview.js';
-import { findRepoRoot } from '../../git/git.js';
 import { discoverScopeOptions } from '../../rules/scope-discovery.js';
 import { analyzeTarget } from '../../rules/target-analysis.js';
 import { resolveTargetInput } from '../../rules/target-resolver.js';

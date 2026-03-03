@@ -6,7 +6,6 @@ import { matchesGlobs } from '../util/constants.js';
 import type { MesaRulesResult } from './mesa-rules.js';
 import { loadMesaRules, loadMesaRulesFromDir } from './mesa-rules.js';
 
-
 export interface RuleResolutionResult {
   filesWithRules: Map<string, RulePolicy[]>;
   rulesLoaded: number;

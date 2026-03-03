@@ -1,8 +1,8 @@
 import path from 'node:path';
 import chalk from 'chalk';
+import { findRepoRoot } from '../../git/git.js';
 import { buildIndex } from '../../indexer/build.js';
 import { JsonIndexStore } from '../../indexer/store.js';
-import { findRepoRoot } from '../../git/git.js';
 
 interface IndexArgv {
   verbose?: boolean;
