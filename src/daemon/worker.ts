@@ -1,4 +1,4 @@
-import { getDiffsForFiles } from '../lib/git.js';
+import { getDiffsForFiles } from '../git/git.js';
 import type { AgentName } from './agent-cli.js';
 import { invokeAgent } from './agent-cli.js';
 import type { ChangedFile, DaemonStore, Finding } from './store.js';

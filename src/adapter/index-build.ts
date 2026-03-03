@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { buildIndex } from '../indexer/build.js';
 import { JsonIndexStore } from '../indexer/store.js';
-import { findRepoRoot } from '../lib/rule-resolution.js';
+import { findRepoRoot } from '../git/git.js';
 
 export interface BuildIndexOptions {
   verbose?: boolean;

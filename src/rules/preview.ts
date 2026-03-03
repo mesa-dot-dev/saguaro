@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { IGNORED_DIRS, matchesGlobs } from './constants.js';
+import { IGNORED_DIRS, matchesGlobs } from '../util/constants.js';
 
 interface PreviewMatch {
   line: number;

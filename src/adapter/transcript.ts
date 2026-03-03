@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { logger } from './logger.js';
+import { logger } from '../util/logger.js';
 
 /** Tools that never modify files. Any tool NOT in this set that has a file_path is treated as a write. */
 const READ_ONLY_TOOLS = new Set([

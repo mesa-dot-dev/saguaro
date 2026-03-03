@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import dotenv from 'dotenv';
 import yaml from 'js-yaml';
-import type { ModelProvider } from './review-model-config.js';
-import { findRepoRoot } from './rule-resolution.js';
+import { findRepoRoot } from '../git/git.js';
+import { getEnvKey, upsertEnvValue } from './env.js';
+import type { ModelProvider } from './model-config.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -69,13 +69,6 @@ const MODELS_DEV_API_URL = 'https://models.dev/api.json';
 const FETCH_TIMEOUT_MS = 5_000;
 
 const PROVIDER_IDS: ModelProvider[] = ['anthropic', 'openai', 'google'];
-
-// Our env keys — models.dev uses different names for some providers
-const ENV_KEYS: Record<ModelProvider, string> = {
-  anthropic: 'ANTHROPIC_API_KEY',
-  openai: 'OPENAI_API_KEY',
-  google: 'GOOGLE_API_KEY',
-};
 
 const PROVIDER_LABELS: Record<ModelProvider, string> = {
   anthropic: 'Anthropic',
@@ -162,7 +155,7 @@ async function fetchModelsDevCatalog(): Promise<ProviderEntry[] | null> {
       result.push({
         id: pid,
         label: PROVIDER_LABELS[pid],
-        envKey: ENV_KEYS[pid],
+        envKey: getEnvKey(pid),
         models,
       });
     }
@@ -236,44 +229,9 @@ export function setModel(provider: ModelProvider, modelName: string, options?: {
 
   if (options?.apiKey) {
     const envLocalPath = path.resolve(repoRoot, '.env.local');
-    const envKey = ENV_KEYS[provider];
+    const envKey = getEnvKey(provider);
     if (envKey) {
       upsertEnvValue(envLocalPath, envKey, options.apiKey);
     }
   }
-}
-
-// ---------------------------------------------------------------------------
-// API key check
-// ---------------------------------------------------------------------------
-
-export function checkApiKey(provider: ModelProvider): boolean {
-  const repoRoot = findRepoRoot();
-  dotenv.config({ path: path.resolve(repoRoot, '.env.local'), override: false, quiet: true });
-  dotenv.config({ path: path.resolve(repoRoot, '.env'), override: false, quiet: true });
-  const envKey = ENV_KEYS[provider];
-  return !!process.env[envKey];
-}
-
-// ---------------------------------------------------------------------------
-// Env file helper
-// ---------------------------------------------------------------------------
-
-export function upsertEnvValue(filePath: string, key: string, value: string): void {
-  const escapedValue = value.replace(/\n/g, '');
-  const nextLine = `${key}=${escapedValue}`;
-  const exists = fs.existsSync(filePath);
-  const content = exists ? fs.readFileSync(filePath, 'utf8') : '';
-  const lines = content === '' ? [] : content.split(/\r?\n/);
-  const keyPattern = new RegExp(`^\\s*${key}=`);
-  const matchIndex = lines.findIndex((line) => keyPattern.test(line));
-
-  if (matchIndex >= 0) {
-    lines[matchIndex] = nextLine;
-  } else {
-    lines.push(nextLine);
-  }
-
-  const normalized = `${lines.filter((line) => line.length > 0).join('\n')}\n`;
-  fs.writeFileSync(filePath, normalized);
 }

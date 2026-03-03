@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { findRepoRoot } from '../lib/rule-resolution.js';
+import { findRepoRoot } from '../git/git.js';
 import { MesaDaemon } from './server.js';
 import type { Finding, QueueJobInput } from './store.js';
 

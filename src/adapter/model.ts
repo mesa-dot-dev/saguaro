@@ -1,6 +1,7 @@
-import type { CurrentModel, ProviderEntry } from '../lib/model-catalog.js';
-import { checkApiKey, getCurrentModel, getModelCatalog, setModel } from '../lib/model-catalog.js';
-import type { ModelProvider } from '../lib/review-model-config.js';
+import type { CurrentModel, ProviderEntry } from '../config/catalog.js';
+import { getCurrentModel, getModelCatalog, setModel } from '../config/catalog.js';
+import { checkApiKey } from '../config/env.js';
+import type { ModelProvider } from '../config/model-config.js';
 
 // ---------------------------------------------------------------------------
 // Types

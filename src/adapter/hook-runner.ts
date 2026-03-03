@@ -1,18 +1,18 @@
 import path from 'node:path';
-import { runReview } from '../adapter/review.js';
-import { getCodebaseContext } from '../indexer/index.js';
-import type { RulePolicy, Violation } from '../types/types.js';
-import { matchesGlobs } from './constants.js';
+import { loadValidatedConfig } from '../config/model-config.js';
 import {
   getLocalDiffs,
   getRepoRoot,
   getUntrackedDiffs,
   listLocalChangedFilesFromGit,
   listUntrackedFiles,
-} from './git.js';
-import { loadMesaRules } from './mesa-rules.js';
-import { loadValidatedConfig } from './review-model-config.js';
-import { sortRulesByPriority } from './rule-resolution.js';
+} from '../git/git.js';
+import { getCodebaseContext } from '../indexer/index.js';
+import { loadMesaRules } from '../rules/mesa-rules.js';
+import { sortRulesByPriority } from '../rules/resolution.js';
+import type { RulePolicy, Violation } from '../types/types.js';
+import { matchesGlobs } from '../util/constants.js';
+import { runReview } from './review.js';
 import { filterToSessionFiles } from './transcript.js';
 
 export interface HookDecision {

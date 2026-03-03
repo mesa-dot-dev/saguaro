@@ -188,7 +188,7 @@ output:
 
 # Review tuning
 review:
-  max_steps: 50              # Max tool-calling steps per review batch
+  max_steps: 10              # Max tool-calling steps per review batch
   files_per_batch: 2         # Files reviewed together per batch
 
 # Claude Code stop hook

@@ -1,14 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { toKebabCase } from '../lib/constants.js';
-import { deleteMesaRuleFile, getMesaRulesDir, loadMesaRules, writeMesaRuleFile } from '../lib/mesa-rules.js';
-import { loadValidatedConfig, resolveApiKey, resolveModelFromResolvedConfig } from '../lib/review-model-config.js';
-import { generateRule } from '../lib/rule-generator.js';
-import type { PreviewRuleResult } from '../lib/rule-preview.js';
-import { previewRule } from '../lib/rule-preview.js';
-import { findRepoRoot } from '../lib/rule-resolution.js';
-import { analyzeTarget } from '../lib/target-analysis.js';
+import { loadValidatedConfig, resolveApiKey, resolveModelFromResolvedConfig } from '../config/model-config.js';
+import { generateRule } from '../rules/generator.js';
+import { deleteMesaRuleFile, getMesaRulesDir, loadMesaRules, writeMesaRuleFile } from '../rules/mesa-rules.js';
+import type { PreviewRuleResult } from '../rules/preview.js';
+import { previewRule } from '../rules/preview.js';
+import { findRepoRoot } from '../git/git.js';
+import { analyzeTarget } from '../rules/target-analysis.js';
 import type { RulePolicy, Severity } from '../types/types.js';
+import { toKebabCase } from '../util/constants.js';
 
 export interface ListRulesAdapterResult {
   rules: RulePolicy[];

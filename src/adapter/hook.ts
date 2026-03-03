@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { findRepoRoot } from '../lib/rule-resolution.js';
+import { findRepoRoot } from '../git/git.js';
 
 export type HookAction = 'install' | 'uninstall';
 
@@ -13,7 +13,7 @@ export interface HookResult {
 }
 
 // ---------------------------------------------------------------------------
-// Settings helpers (mirrored from cli/lib/hook.ts – no chalk/logger side-effects)
+// Settings helpers
 // ---------------------------------------------------------------------------
 
 const CLAUDE_SETTINGS_DIR = '.claude';

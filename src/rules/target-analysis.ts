@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { type CodebaseSnippet, IGNORED_DIRS, PACKAGE_MARKERS } from './constants.js';
+import { type CodebaseSnippet, IGNORED_DIRS, PACKAGE_MARKERS } from '../util/constants.js';
 
 interface AnalyzeTargetRequest {
   targetPath: string; // relative to repoRoot (e.g., "src/cli", "packages/web")

@@ -2,8 +2,8 @@ import type { LanguageModel } from 'ai';
 import { generateObject } from 'ai';
 import { Minimatch } from 'minimatch';
 import { z } from 'zod';
-import { logger } from '../lib/logger.js';
 import type { RulePolicy } from '../types/types.js';
+import { logger } from '../util/logger.js';
 import { RuleProposalSchema, TriageDecisionSchema } from './schemas.js';
 
 const TRIAGE_PROMPT = `You are a senior engineering lead reviewing candidate code review rules generated from different zones of a codebase.

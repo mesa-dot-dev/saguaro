@@ -1,5 +1,5 @@
+import { loadValidatedConfig } from '../../config/model-config.js';
 import { MesaDaemon } from '../../daemon/server.js';
-import { loadValidatedConfig } from '../../lib/review-model-config.js';
 
 export async function daemonStart(): Promise<number> {
   const existing = MesaDaemon.readPidFile();

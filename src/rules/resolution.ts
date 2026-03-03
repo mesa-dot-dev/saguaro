@@ -1,31 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { findRepoRoot } from '../git/git.js';
 import type { RulePolicy } from '../types/types.js';
-import { matchesGlobs } from './constants.js';
+import { matchesGlobs } from '../util/constants.js';
 import type { MesaRulesResult } from './mesa-rules.js';
 import { loadMesaRules, loadMesaRulesFromDir } from './mesa-rules.js';
+
 
 export interface RuleResolutionResult {
   filesWithRules: Map<string, RulePolicy[]>;
   rulesLoaded: number;
-}
-
-export function findRepoRoot(startDir = process.cwd()): string {
-  let currentDir = startDir;
-  const root = path.parse(currentDir).root;
-
-  while (currentDir !== root) {
-    if (fs.existsSync(path.join(currentDir, '.git'))) {
-      return currentDir;
-    }
-    const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir) {
-      break;
-    }
-    currentDir = parentDir;
-  }
-
-  return path.resolve(startDir);
 }
 
 export function resolveRulesFromMesaDir(changedFiles: string[], repoRoot: string): RuleResolutionResult {
@@ -96,4 +80,4 @@ export function sortRulesByPriority<T extends Pick<RulePolicy, 'id' | 'priority'
   });
 }
 
-export { matchesGlobs } from './constants.js';
+export { matchesGlobs } from '../util/constants.js';

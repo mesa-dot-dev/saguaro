@@ -4,7 +4,7 @@ import { describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveRulesForFiles } from './rule-resolution.js';
+import { resolveRulesForFiles } from './resolution.js';
 
 function withTempRepo(run: (root: string) => void): void {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-rules-'));

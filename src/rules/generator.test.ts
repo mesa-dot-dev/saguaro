@@ -1,7 +1,7 @@
 /// <reference types="bun-types" />
 
 import { describe, expect, test } from 'bun:test';
-import { buildRuleGenerationPrompt, parseGeneratedPolicy, selectFewShotExamples } from './rule-generator.js';
+import { buildRuleGenerationPrompt, parseGeneratedPolicy, selectFewShotExamples } from './generator.js';
 import type { TargetAnalysis } from './target-analysis.js';
 
 // --- selectFewShotExamples ---

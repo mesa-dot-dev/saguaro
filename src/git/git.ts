@@ -1,7 +1,29 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { GitNotFoundError } from './errors.js';
+import { GitNotFoundError } from '../util/errors.js';
+
+/**
+ * Walk up from `startDir` looking for a `.git` directory.
+ * Falls back to `startDir` if no `.git` is found (no shell required).
+ */
+export function findRepoRoot(startDir = process.cwd()): string {
+  let currentDir = startDir;
+  const root = path.parse(currentDir).root;
+
+  while (currentDir !== root) {
+    if (fs.existsSync(path.join(currentDir, '.git'))) {
+      return currentDir;
+    }
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      break;
+    }
+    currentDir = parentDir;
+  }
+
+  return path.resolve(startDir);
+}
 
 const VALID_GIT_REF = /^[a-zA-Z0-9][a-zA-Z0-9/_.\-^~]*$/;
 

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { IGNORED_DIRS } from './constants.js';
+import { IGNORED_DIRS } from '../util/constants.js';
 
 export type TargetResolution =
   | { type: 'exact'; path: string }

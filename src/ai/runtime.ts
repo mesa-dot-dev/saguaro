@@ -1,12 +1,12 @@
+import type { MesaConfig } from '../config/model-config.js';
+import { loadValidatedConfig, resolveApiKey, resolveModelFromResolvedConfig } from '../config/model-config.js';
 import type { AgentRunner, ModelInfo, Reviewer, ReviewRuntime } from '../core/types.js';
+import { getFileAtRef, getRepoRoot, listChangedFilesFromGit } from '../git/git.js';
+import { resolveRulesForFiles } from '../rules/resolution.js';
+import { AgentExecutionError, ConfigMissingError } from '../util/errors.js';
 import { createCodexCliRunner, createGeminiCliRunner, isCliAuthenticated } from './agent-runner.js';
-import { runCliReview } from './cli-review-runner.js';
-import { AgentExecutionError, ConfigMissingError } from './errors.js';
-import { getFileAtRef, getRepoRoot, listChangedFilesFromGit } from './git.js';
-import type { MesaConfig } from './review-model-config.js';
-import { loadValidatedConfig, resolveApiKey, resolveModelFromResolvedConfig } from './review-model-config.js';
-import { runReviewAgent } from './review-runner.js';
-import { resolveRulesForFiles } from './rule-resolution.js';
+import { runCliReview } from './cli-reviewer.js';
+import { runReviewAgent } from './sdk-reviewer.js';
 
 export function createNodeReviewRuntime(options?: { rulesDir?: string }): ReviewRuntime {
   return {

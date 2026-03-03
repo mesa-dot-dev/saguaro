@@ -4,9 +4,9 @@ import { describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { detectEcosystems } from '../../lib/detect-ecosystems.js';
-import { loadMesaRules, writeMesaRuleFile } from '../../lib/mesa-rules.js';
-import { selectStarterRules } from '../../lib/select-starter-rules.js';
+import { detectEcosystems } from '../../rules/detect-ecosystems.js';
+import { loadMesaRules, writeMesaRuleFile } from '../../rules/mesa-rules.js';
+import { selectStarterRules } from '../../rules/starter.js';
 import { STARTER_RULES } from '../../templates/starter-rules.js';
 
 /**

@@ -10,9 +10,9 @@ import {
   validateRulesAdapter,
   writeGeneratedRules,
 } from '../../adapter/rules.js';
+import { getCurrentModel, getModelCatalog, setModel } from '../../config/catalog.js';
+import { checkApiKey } from '../../config/env.js';
 import { generateRules } from '../../generator/index.js';
-import { checkApiKey, getCurrentModel, getModelCatalog, setModel } from '../../lib/model-catalog.js';
-import { findRepoRoot } from '../../lib/rule-resolution.js';
 import type { RulePolicy, Severity } from '../../types/types.js';
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import { describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { previewRule } from './rule-preview.js';
+import { previewRule } from './preview.js';
 
 function withTempDir(run: (dir: string) => void): void {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-preview-'));

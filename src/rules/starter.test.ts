@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from 'bun:test';
 import type { StarterRule } from '../templates/starter-rules.js';
-import { selectStarterRules } from './select-starter-rules.js';
+import { selectStarterRules } from './starter.js';
 
 const makeRule = (id: string, ecosystems: string[], requires?: { files: string[] }): StarterRule => ({
   id,

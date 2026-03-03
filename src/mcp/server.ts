@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { logger } from '../lib/logger.js';
+import { logger } from '../util/logger.js';
 import { handleToolCall } from './tools/handler.js';
 
 export function createMesaMcpServer(): McpServer {

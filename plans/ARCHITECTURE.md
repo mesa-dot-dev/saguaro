@@ -64,7 +64,7 @@
 | **Codebase-aware** | Import graph analysis + importer blast radius for navigation context |
 | **Parallel execution** | Workers split files for concurrent LLM calls |
 | **Graceful degradation** | Indexing failures never block reviews |
-| **Layered architecture** | CLI → adapter → core/lib separation of concerns |
+| **Layered architecture** | CLI → adapter → domain modules separation of concerns |
 
 ---
 
@@ -95,8 +95,8 @@ The system has three entry points — **CLI**, **MCP server**, and **Background 
 |           |               |  HTTP server → SQLite → Worker pool   |   |
 |           v               |  Spawns: claude -p / codex / gemini   |   |
 |  +-------------------+   |  Read-only tools, diff-hash dedup      |   |
-|  | CORE + LIB +      |   +----------------------------------------+   |
-|  | GENERATOR          |                                               |
+|  | DOMAIN MODULES    |   +----------------------------------------+   |
+|  | + GENERATOR        |                                               |
 |  +--------+----------+                                                |
 |           |                                                           |
 |           v                                                           |
@@ -141,43 +141,50 @@ Single package: `@mesa/code-review`
 ```
 packages/code-review/
 ├── src/
-│   ├── adapter/                    # Boundary between CLI/MCP and core/lib
+│   ├── adapter/                    # Boundary between CLI/MCP and domain modules
+│   │   ├── generate.ts            # Generate adapter
+│   │   ├── hook.ts                # Hook install/uninstall (settings file management)
+│   │   ├── hook-runner.ts         # Stop hook review logic: uncommitted changes, block/allow decision
+│   │   ├── index-build.ts         # Index build adapter
+│   │   ├── init.ts                # Project initialization adapter
+│   │   ├── model.ts               # Model selection adapter
 │   │   ├── review.ts              # Review adapter: wires runtime to core engine
-│   │   ├── review.test.ts
 │   │   ├── rules.ts               # Rules adapter: createRule, listRules, writeGeneratedRules, etc.
-│   │   └── rules.test.ts
+│   │   ├── stats.ts               # Stats adapter
+│   │   └── transcript.ts          # Hook transcript formatting
+│   │
+│   ├── ai/                         # AI execution layer (Vercel AI SDK + CLI agents)
+│   │   ├── agent-runner.ts        # CLI agent detection and invocation (claude, codex, gemini)
+│   │   ├── cli-reviewer.ts        # Review via CLI agent (claude -p, codex, gemini)
+│   │   ├── parser.ts              # Violation parsing and deduplication
+│   │   ├── prompt.ts              # System prompt and prompt construction
+│   │   ├── runtime.ts             # Review runtime: routes to SDK or CLI reviewer
+│   │   └── sdk-reviewer.ts        # Review via Vercel AI SDK (generateText + workers)
 │   │
 │   ├── cli/                        # CLI layer (yargs commands + prompts)
 │   │   ├── bin/
 │   │   │   └── index.ts           # Yargs command router
-│   │   ├── lib/
-│   │   │   ├── check.ts           # mesa check (stub)
-│   │   │   ├── generate.ts        # mesa rules generate — bulk rule generation + interactive review
-│   │   │   ├── daemon.ts           # mesa daemon start/stop/status
-│   │   │   ├── hook.ts            # Claude Code Stop hook: install, uninstall, run
-│   │   │   ├── index-cmd.ts       # mesa index
-│   │   │   ├── init.ts            # mesa init
-│   │   │   ├── prompt.ts          # Readline helpers: ask(), askChoice(), createReadline()
-│   │   │   ├── rules.ts           # mesa rules (list, create, delete, explain, validate, for, sync, locate)
-│   │   │   ├── serve.ts           # mesa serve — starts MCP server in stdio mode
-│   │   │   └── spinner.ts         # TTY-aware progress spinner
-│   │   └── review.ts              # mesa review command orchestrator
+│   │   └── lib/
+│   │       ├── daemon.ts          # mesa daemon start/stop/status
+│   │       ├── generate.ts        # mesa rules generate — bulk rule generation + interactive review
+│   │       ├── hook.ts            # mesa hook run/pre-tool (CLI wrappers)
+│   │       ├── index-cmd.ts       # mesa index
+│   │       ├── init.ts            # mesa init (interactive setup)
+│   │       ├── model.ts           # mesa model
+│   │       ├── prompt.ts          # Readline helpers: ask(), askChoice(), createReadline()
+│   │       ├── rules.ts           # mesa rules (list, create, delete, explain, validate, for, sync, locate)
+│   │       ├── serve.ts           # mesa serve — starts MCP server in stdio mode
+│   │       ├── spinner.ts         # TTY-aware progress spinner
+│   │       └── stats.ts           # mesa stats
+│   │
+│   ├── config/                     # Configuration and model resolution
+│   │   ├── catalog.ts             # Model catalog: live provider/model fetching
+│   │   ├── env.ts                 # API key checking, env file helpers
+│   │   └── model-config.ts        # .mesa/config.yaml loading, Zod schema, model resolution
 │   │
 │   ├── core/                       # Pure business logic, injected deps only
-│   │   └── review.ts              # createReviewCore() — pure review engine
-│   │
-│   ├── generator/                  # Bulk rule generation pipeline
-│   │   ├── index.ts               # Public entry: generateRules()
-│   │   ├── orchestrator.ts        # Multi-stage pipeline: scan → zone analysis → synthesis
-│   │   ├── scanner.ts             # Codebase scanning: zone discovery, file selection
-│   │   ├── architecture.ts        # Compute architectural context from import graph
-│   │   ├── synthesis.ts           # LLM-powered dedup/merge of candidate rules
-│   │   └── types.ts               # RuleProposalSchema, ZoneConfig, GeneratorResult, etc.
-│   │
-│   ├── mcp/                        # MCP server for AI agent integration
-│   │   ├── server.ts              # Tool registration (McpServer + zod schemas)
-│   │   └── tools/
-│   │       └── handler.ts         # Tool handlers, session state for generate → write flow
+│   │   ├── review.ts              # createReviewCore() — pure review engine
+│   │   └── types.ts               # Core type definitions
 │   │
 │   ├── daemon/                     # Background review daemon (independent system)
 │   │   ├── server.ts              # HTTP server + daemon lifecycle (MesaDaemon class)
@@ -189,19 +196,32 @@ packages/code-review/
 │   │   ├── ARCHITECTURE.md        # Daemon-specific architecture documentation
 │   │   └── __tests__/             # Integration tests
 │   │
+│   ├── generator/                  # Bulk rule generation pipeline
+│   │   ├── index.ts               # Public entry: generateRules()
+│   │   ├── orchestrator.ts        # Multi-stage pipeline: scan → zone analysis → synthesis
+│   │   ├── scanner.ts             # Codebase scanning: zone discovery, file selection
+│   │   ├── architecture.ts        # Compute architectural context from import graph
+│   │   ├── synthesis.ts           # LLM-powered dedup/merge of candidate rules
+│   │   ├── schemas.ts             # Zod schemas for generator
+│   │   └── types.ts               # RuleProposalSchema, ZoneConfig, GeneratorResult, etc.
+│   │
+│   ├── git/                        # Git operations
+│   │   └── git.ts                 # git diff, changed files, repo root, branch detection
+│   │
 │   ├── indexer/                    # Codebase indexing + import graph
 │   │   ├── build.ts               # File discovery + incremental index building
 │   │   ├── index.ts               # Context builder (symbol filtering, token budget)
 │   │   ├── resolver.ts            # oxc-resolver wrapper for module resolution
 │   │   ├── store.ts               # JSON persistence + blast radius BFS
 │   │   ├── types.ts               # CodebaseIndex, FileEntry, ImportRef, ExportRef
+│   │   ├── README.md              # Indexer-specific documentation
 │   │   └── parsers/
 │   │       ├── index.ts           # Parser dispatch + file support check
 │   │       ├── swc-parser.ts      # SWC-based TS/JS/TSX/JSX parser
 │   │       └── tree-sitter/       # Multi-language parsing
 │   │           ├── init.ts        # Tree-sitter initialization
 │   │           ├── parser.ts      # Generic tree-sitter parser
-│   │           ├── types.ts       # Tree-sitter type definitions
+│   │           ├── common.ts      # Shared tree-sitter types + helpers
 │   │           └── languages/     # Language-specific extractors
 │   │               ├── go.ts
 │   │               ├── java.ts
@@ -209,30 +229,40 @@ packages/code-review/
 │   │               ├── python.ts
 │   │               └── rust.ts
 │   │
-│   ├── lib/                        # Shared library code
-│   │   ├── constants.ts           # IGNORED_DIRS, PACKAGE_MARKERS, CodebaseSnippet, toKebabCase
-│   │   ├── errors.ts              # Custom error types
-│   │   ├── git.ts                 # git diff, changed files, repo root
-│   │   ├── hook-runner.ts         # Stop hook review logic: uncommitted changes, block/allow decision
-│   │   ├── logger.ts              # Debug logging
+│   ├── mcp/                        # MCP server for AI agent integration
+│   │   ├── config.ts              # MCP JSON config generation
+│   │   ├── server.ts              # Tool registration (McpServer + zod schemas)
+│   │   └── tools/
+│   │       └── handler.ts         # Tool handlers, session state for generate → write flow
+│   │
+│   ├── rules/                      # Rule loading, resolution, generation, and analysis
+│   │   ├── detect-ecosystems.ts   # Detect project ecosystems (react, python, go, etc.)
+│   │   ├── generator.ts           # LLM-powered single rule generation from target analysis
 │   │   ├── mesa-rules.ts          # Load + parse .mesa/rules/*.md (frontmatter + body)
-│   │   ├── review-model-config.ts # .mesa/config.yaml loading, model resolution
-│   │   ├── review-runner.ts       # Vercel AI SDK generateText + workers
-│   │   ├── review-runtime.ts      # Node.js runtime: file I/O, git, rule loading
-│   │   ├── rule-generator.ts      # LLM-powered single rule generation from target analysis
-│   │   ├── rule-preview.ts        # Dry-run rules against target files
-│   │   ├── rule-resolution.ts     # Rule loading, glob matching, priority sorting
+│   │   ├── preview.ts             # Dry-run rules against target files
+│   │   ├── resolution.ts          # Rule loading, glob matching, priority sorting, repo root
 │   │   ├── scope-discovery.ts     # Discover package boundaries for rule generation
-│   │   ├── skill-sync.ts          # Syncs .claude/skills/mesa-rules/SKILL.md from .mesa/rules/
+│   │   ├── starter.ts             # Starter rule selection by ecosystem
 │   │   ├── target-analysis.ts     # Analyze target: file sampling, globs, placements
 │   │   └── target-resolver.ts     # Smart text input: path/keyword → resolved target
 │   │
+│   ├── stats/                      # Review history and analytics
+│   │   ├── aggregate.ts           # Stats aggregation from review history
+│   │   └── history.ts             # Review history persistence (JSONL)
+│   │
 │   ├── templates/                  # Built-in starter content + MCP skill definitions
-│   │   ├── starter-rule-skills.ts # 25 curated starter rule policies (few-shot examples)
+│   │   ├── ecosystems.ts          # Ecosystem registry for init display
+│   │   ├── starter-rules.ts       # 25 curated starter rule policies (few-shot examples)
 │   │   └── mcp-skills.ts          # MCP workflow skill definitions (review, create, generate)
 │   │
 │   ├── types/
 │   │   └── types.ts               # Rule, Violation, ReviewResult, Severity, RulePolicy
+│   │
+│   ├── util/                       # Shared utilities
+│   │   ├── constants.ts           # IGNORED_DIRS, PACKAGE_MARKERS, CodebaseSnippet, toKebabCase
+│   │   ├── errors.ts              # Custom error types (MesaError, MesaErrorCode)
+│   │   ├── logger.ts              # Debug logging
+│   │   └── review-utils.ts        # Shared review helpers
 │   │
 │   └── index.ts                    # Public exports (programmatic API)
 │
@@ -246,7 +276,7 @@ packages/code-review/
 
 ## Adapter Layer
 
-The adapter layer (`src/adapter/`) provides a clean boundary between the entry points (CLI and MCP) and the core/lib modules. Neither CLI nor MCP handler code should import directly from `core/` or `lib/` — they go through adapters.
+The adapter layer (`src/adapter/`) provides a clean boundary between the entry points (CLI and MCP) and the domain modules (`ai/`, `config/`, `git/`, `rules/`, `stats/`). Neither CLI nor MCP handler code should import directly from domain modules — they go through adapters.
 
 ```
 CLI (generate.ts, rules.ts, review.ts)       MCP (handler.ts)
@@ -259,7 +289,7 @@ CLI (generate.ts, rules.ts, review.ts)       MCP (handler.ts)
               └── adapter/rules.ts     — createRuleAdapter(), listRulesAdapter(), writeGeneratedRules(), etc.
                        │
                        v
-              CORE + LIB + GENERATOR
+              DOMAIN MODULES + GENERATOR
 ```
 
 ### Review Adapter (`adapter/review.ts`)
@@ -444,10 +474,10 @@ User provides: target directory + intent
 
 | Module | Responsibility |
 |--------|---------------|
-| `lib/rule-generator.ts` | LLM generation with few-shot examples, prompt building, YAML parsing |
-| `lib/target-analysis.ts` | Analyze target directory: file sampling, globs, placements |
-| `lib/rule-preview.ts` | Substring-match violation patterns against target files |
-| `lib/scope-discovery.ts` | Discover package boundaries for rule scoping |
+| `rules/generator.ts` | LLM generation with few-shot examples, prompt building, YAML parsing |
+| `rules/target-analysis.ts` | Analyze target directory: file sampling, globs, placements |
+| `rules/preview.ts` | Substring-match violation patterns against target files |
+| `rules/scope-discovery.ts` | Discover package boundaries for rule scoping |
 
 ### Pipeline 2: Bulk Rule Generation (`mesa rules generate` / `mesa_generate_rules`)
 
@@ -544,7 +574,7 @@ The MCP server (`src/mcp/`) exposes Mesa's capabilities to AI agents (Claude Cod
 | `mesa_explain_rule` | Show rule details | `adapter/rules.explainRuleAdapter()` |
 | `mesa_delete_rule` | Delete a rule | `adapter/rules.deleteRuleAdapter()` |
 | `mesa_validate_rules` | Validate rule structure | `adapter/rules.validateRulesAdapter()` |
-| `mesa_sync_rules` | Regenerate `.claude/skills/` from rules | `lib/skill-sync.syncSkillsFromRules()` |
+| `mesa_sync_rules` | Regenerate `.claude/skills/` from rules | `adapter/rules.syncSkillsFromRules()` |
 
 ### Session State
 
@@ -1144,7 +1174,7 @@ API keys are loaded from environment variables (`.env.local`, `.env`, or shell e
 
 ### `.mesa/rules/`
 
-Centralized directory at the repo root. Each rule is a self-contained `.md` file with YAML frontmatter. Loaded by `loadMesaRules()` in `lib/mesa-rules.ts`.
+Centralized directory at the repo root. Each rule is a self-contained `.md` file with YAML frontmatter. Loaded by `loadMesaRules()` in `rules/mesa-rules.ts`.
 
 ### `.claude/skills/mesa-rules/`
 

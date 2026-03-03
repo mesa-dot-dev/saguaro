@@ -4,9 +4,12 @@ import type { LanguageModel } from 'ai';
 import { generateText, stepCountIs, tool } from 'ai';
 import chalk from 'chalk';
 import { z } from 'zod';
-import type { ReviewProgressCallback, ReviewResult, RulePolicy, Violation } from '../types/types.js';
-import { logger } from './logger.js';
-import { countRules, splitFilesForWorkers } from './review-utils.js';
+import type { ReviewProgressCallback, ReviewResult, RulePolicy } from '../types/types.js';
+import { logger } from '../util/logger.js';
+import { countRules, splitFilesForWorkers } from '../util/review-utils.js';
+import type { ParseViolationsResult } from './parser.js';
+import { deduplicateViolations, parseViolationsDetailed } from './parser.js';
+import { buildPrompt, SYSTEM_PROMPT } from './prompt.js';
 
 interface ModelPricing {
   inputPerMillion: number;
@@ -29,7 +32,7 @@ export interface RunReviewOptions {
   diffs: Map<string, string>;
   model: LanguageModel;
   filesPerWorker?: number;
-  maxSteps?: number;
+  maxSteps: number;
   verbose?: boolean;
   onProgress?: ReviewProgressCallback;
   /** Markdown section with import graph + blast radius context from the codebase indexer */
@@ -43,68 +46,6 @@ export interface RunReviewOptions {
 }
 
 const DEFAULT_FILES_PER_WORKER = 3;
-const MAX_DIFF_CHARS = 30000;
-
-export const SYSTEM_PROMPT = `You are a code review enforcement agent. Your ONLY job is to check whether new code changes violate the defined rules. You do not make suggestions, observations, or compliments. Silence means approval.
-
-## Workflow
-
-You will receive two sections of context in order:
-
-1. **Codebase Map** — A lightweight map showing which files import from the changed files. Use this to know WHERE to look if a rule requires cross-file context, then use read_file to inspect.
-2. **Files to Review** — For each changed file: its git diff followed by the rules to check against it. Use read_file when a rule requires understanding code beyond the diff.
-
-Follow this process:
-
-### Phase 1: Orient
-Read the Codebase Map. Understand which files are changed and which files import from them. This tells you who consumes the changed code.
-
-### Phase 2: Review
-For each file, carefully check every added line (lines prefixed with "+") against each rule listed below that file's diff. Evaluate each rule independently — do not skip rules. Do not apply rules from other file sections. Most violations can be identified from the diff alone.
-
-### Phase 3: Investigate (only when needed)
-Some rules require understanding cross-file behavior. The Codebase Map shows which files import from the changed code. When a rule requires cross-file context, use read_file to inspect the relevant file. If you need to understand a dependency (something the changed file imports from), the import path is visible in the diff — use read_file on it directly.
-
-**When to use read_file:**
-- The rule's instructions explicitly or implicitly require understanding code in another file
-- The Codebase Map shows a file that imports from the changed code and you need to verify compatibility
-- You need to see the implementation of an imported function to determine if a rule is violated
-
-**When NOT to use read_file:**
-- The diff alone is sufficient to check the rule
-- The Codebase Map shows no relevant connections for the rule being checked
-- You are curious but the rule doesn't require cross-file context
-
-If no Codebase Map is provided, review using only the diffs. Do not speculatively search the codebase.
-
-## Output
-
-After reviewing ALL files, output violations in this exact format, one per line:
-
-[rule-id] file:line - description | \`snippet\`
-
-where \`snippet\` is a short (10-40 char) unique substring copied verbatim from the offending line.
-
-If no violations are found across all files, respond with exactly: No violations found.
-
-## Constraints
-
-- ONLY flag code on "+" lines (added code). NEVER flag removed or unchanged lines.
-- Every violation MUST cite a rule ID from the provided rules. Do not invent rules.
-- Be certain before flagging. False positives waste developer time. If uncertain, skip.
-- Be concise. No preamble, no summary, no explanation beyond the violation format.
-- When a file's diff says "No diff available", skip that file entirely.`;
-
-export function deduplicateViolations(violations: Violation[]): Violation[] {
-  const seen = new Map<string, Violation>();
-  for (const v of violations) {
-    const key = `${v.ruleId}::${v.file}::${v.line ?? ''}`;
-    if (!seen.has(key)) {
-      seen.set(key, v);
-    }
-  }
-  return Array.from(seen.values());
-}
 
 export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewResult> {
   const runStartedAtMs = Date.now();
@@ -117,7 +58,7 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
     }
   };
   const filesPerWorker = ensurePositiveInteger(options.filesPerWorker, DEFAULT_FILES_PER_WORKER, 'files_per_batch');
-  const maxSteps = options.maxSteps ?? 10;
+  const maxSteps = options.maxSteps;
   const fileGroups = splitFilesForWorkers(options.filesWithRules, filesPerWorker);
 
   logger.debug(chalk.gray(`[debug] Review config: filesPerWorker=${filesPerWorker}, maxSteps=${maxSteps}`));
@@ -295,14 +236,6 @@ function ensurePositiveInteger(value: number | undefined, fallback: number, fiel
   return value;
 }
 
-interface ParseViolationsResult {
-  violations: Violation[];
-  totalLines: number;
-  matchedLines: number;
-  ignoredLines: number;
-  shortCircuitedNoViolations: boolean;
-}
-
 interface WorkerParseViolationsResult extends ParseViolationsResult {
   toolCalls: number;
   inputTokens: number;
@@ -393,183 +326,4 @@ function createDefaultFileResolver(): (filePath: string) => string | null {
       return null;
     }
   };
-}
-
-function snapLine(
-  resolveFile: (path: string) => string | null,
-  filePath: string,
-  reportedLine: number,
-  snippet: string,
-  window = 10
-): number {
-  const content = resolveFile(filePath);
-  if (!content) return reportedLine;
-
-  const lines = content.split('\n');
-  const start = Math.max(0, reportedLine - window - 1);
-  const end = Math.min(lines.length, reportedLine + window);
-
-  for (let i = start; i < end; i++) {
-    if (lines[i].includes(snippet.trim())) return i + 1;
-  }
-  return reportedLine;
-}
-
-export function parseViolationsDetailed(
-  text: string,
-  filesWithRules: Map<string, RulePolicy[]>,
-  resolveFile: (path: string) => string | null
-): ParseViolationsResult {
-  const violations: Violation[] = [];
-  if (!text) {
-    return {
-      violations,
-      totalLines: 0,
-      matchedLines: 0,
-      ignoredLines: 0,
-      shortCircuitedNoViolations: false,
-    };
-  }
-
-  const rulesById = new Map<string, RulePolicy>();
-  for (const rules of filesWithRules.values()) {
-    for (const rule of rules) {
-      if (!rulesById.has(rule.id)) {
-        rulesById.set(rule.id, rule);
-      }
-    }
-  }
-
-  const SNIPPET_REGEX = /\[([^\]]+)\]\s+(\S+):(\d+)?\s*-\s*(.+?)\s*\|\s*`([^`]+)`/;
-  const FALLBACK_REGEX = /\[([^\]]+)\]\s+(\S+):(\d+)?\s*-\s*(.+)/;
-
-  const lines = text.split('\n');
-  let matchedLines = 0;
-  for (const line of lines) {
-    const match = line.match(SNIPPET_REGEX) ?? line.match(FALLBACK_REGEX);
-    if (match) {
-      matchedLines++;
-      const ruleId = match[1];
-      const rule = rulesById.get(ruleId);
-      const reportedLine = match[3] ? parseInt(match[3], 10) : undefined;
-      const snippet = match[5]; // undefined if FALLBACK_REGEX matched
-      const message = snippet ? match[4] : match[4].replace(/\s*\|\s*`[^`]*`\s*$/, '');
-
-      violations.push({
-        ruleId,
-        ruleTitle: rule?.title ?? ruleId,
-        severity: rule?.severity ?? 'error',
-        file: match[2],
-        line:
-          reportedLine !== undefined && snippet ? snapLine(resolveFile, match[2], reportedLine, snippet) : reportedLine,
-        message,
-      });
-    }
-  }
-
-  const shortCircuitedNoViolations = violations.length === 0 && isNoViolationsSentinel(text);
-
-  return {
-    violations,
-    totalLines: lines.length,
-    matchedLines,
-    ignoredLines: shortCircuitedNoViolations ? lines.length : Math.max(0, lines.length - matchedLines),
-    shortCircuitedNoViolations,
-  };
-}
-
-function isNoViolationsSentinel(text: string): boolean {
-  const normalized = text.trim().toLowerCase();
-  return normalized === 'no violations found' || normalized === 'no violations found.';
-}
-
-function truncateDiff(diff: string): string {
-  if (diff.length <= MAX_DIFF_CHARS) {
-    return diff;
-  }
-
-  return `${diff.slice(0, MAX_DIFF_CHARS)}\n[diff truncated]`;
-}
-
-export function buildPrompt(options: {
-  diffs: Map<string, string>;
-  filesWithRules: Map<string, RulePolicy[]>;
-  codebaseContext?: string;
-}): string {
-  const lines: string[] = [];
-
-  if (options.codebaseContext) {
-    lines.push(options.codebaseContext);
-    lines.push('');
-    lines.push('---');
-    lines.push('');
-  }
-
-  lines.push('## Files to Review');
-  lines.push('');
-
-  const entries = Array.from(options.filesWithRules.entries());
-  for (let i = 0; i < entries.length; i++) {
-    const [file, rules] = entries[i];
-
-    lines.push(`### ${file}`);
-
-    const diff = options.diffs.get(file);
-    if (diff) {
-      lines.push('```diff');
-      lines.push(truncateDiff(diff));
-      lines.push('```');
-    } else {
-      lines.push('No diff available for this file.');
-    }
-
-    lines.push('');
-    lines.push('#### Applicable rules');
-    lines.push('');
-
-    for (const rule of rules) {
-      lines.push(formatRule(rule));
-      lines.push('');
-    }
-
-    if (i < entries.length - 1) {
-      lines.push('---');
-      lines.push('');
-    }
-  }
-
-  return lines.join('\n');
-}
-
-export function formatRule(rule: RulePolicy): string {
-  const lines: string[] = [
-    `##### ${rule.id}`,
-    `**Severity:** ${rule.severity}`,
-    `**Applies to:** ${rule.globs.join(', ')}`,
-    '',
-    rule.instructions,
-  ];
-
-  if (rule.examples) {
-    if (rule.examples.violations?.length) {
-      lines.push('');
-      lines.push('**Violations:**');
-      for (const v of rule.examples.violations) {
-        lines.push('```');
-        lines.push(v);
-        lines.push('```');
-      }
-    }
-    if (rule.examples.compliant?.length) {
-      lines.push('');
-      lines.push('**Compliant:**');
-      for (const c of rule.examples.compliant) {
-        lines.push('```');
-        lines.push(c);
-        lines.push('```');
-      }
-    }
-  }
-
-  return lines.join('\n');
 }

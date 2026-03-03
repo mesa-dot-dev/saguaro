@@ -7,9 +7,9 @@ import type { LanguageModel } from 'ai';
 import dotenv from 'dotenv';
 import yaml from 'js-yaml';
 import { z } from 'zod';
-import { ApiKeyMissingError, ConfigInvalidError, ConfigMissingError } from './errors.js';
-import { logger } from './logger.js';
-import { findRepoRoot } from './rule-resolution.js';
+import { findRepoRoot } from '../git/git.js';
+import { ApiKeyMissingError, ConfigInvalidError, ConfigMissingError } from '../util/errors.js';
+import { logger } from '../util/logger.js';
 
 // ---------------------------------------------------------------------------
 // Zod config schema
@@ -80,8 +80,8 @@ export interface ResolvedModelConfig {
 
 export interface LoadedReviewAdapterConfig {
   modelConfig: ResolvedModelConfig;
-  maxSteps?: number;
-  filesPerWorker?: number;
+  maxSteps: number;
+  filesPerWorker: number;
 }
 
 export function loadValidatedConfig(configPath?: string): MesaConfig {

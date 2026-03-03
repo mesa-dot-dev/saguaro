@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import yaml from 'js-yaml';
-import { getCurrentModel, getModelCatalog, getProviderCatalog, setModel, upsertEnvValue } from './model-catalog.js';
+import { getCurrentModel, getModelCatalog, getProviderCatalog, setModel } from './catalog.js';
+import { upsertEnvValue } from './env.js';
 
 function withTempRepo(run: (root: string) => void | Promise<void>) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-catalog-'));
@@ -104,7 +105,7 @@ describe('getCurrentModel', () => {
         path.join(mesaDir, 'config.yaml'),
         yaml.dump({
           model: { provider: 'openai', name: 'gpt-5.2-codex' },
-          review: { max_steps: 50, files_per_batch: 2 },
+          review: { max_steps: 10, files_per_batch: 2 },
         })
       );
 
@@ -152,7 +153,7 @@ describe('setModel', () => {
         path.join(mesaDir, 'config.yaml'),
         yaml.dump({
           model: { provider: 'anthropic', name: 'claude-opus-4-6' },
-          review: { max_steps: 50, files_per_batch: 2 },
+          review: { max_steps: 10, files_per_batch: 2 },
         })
       );
 
@@ -166,7 +167,7 @@ describe('setModel', () => {
 
       // review settings should be preserved
       const review = parsed.review as { max_steps: number; files_per_batch: number };
-      expect(review.max_steps).toBe(50);
+      expect(review.max_steps).toBe(10);
       expect(review.files_per_batch).toBe(2);
     });
   });

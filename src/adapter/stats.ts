@@ -1,6 +1,6 @@
-import type { StatsAggregation } from '../cli/lib/stats.js';
-import { aggregateStats, filterByDays } from '../cli/lib/stats.js';
-import { readReviewHistory } from '../lib/history.js';
+import type { StatsAggregation } from '../stats/aggregate.js';
+import { aggregateStats, filterByDays } from '../stats/aggregate.js';
+import { readReviewHistory } from '../stats/history.js';
 
 // ---------------------------------------------------------------------------
 // Types

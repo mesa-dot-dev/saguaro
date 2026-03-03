@@ -1,7 +1,7 @@
 import chalk from 'chalk';
-import { getCurrentModel, getModelCatalog, setModel } from '../../lib/model-catalog.js';
-import type { ModelProvider } from '../../lib/review-model-config.js';
-import { loadValidatedConfig, resolveApiKey } from '../../lib/review-model-config.js';
+import { getCurrentModel, getModelCatalog, setModel } from '../../config/catalog.js';
+import type { ModelProvider } from '../../config/model-config.js';
+import { loadValidatedConfig, resolveApiKey } from '../../config/model-config.js';
 import { ask, askChoice, createReadline } from './prompt.js';
 
 const secondary = chalk.hex('#be3c00');

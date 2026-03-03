@@ -5,12 +5,12 @@ import path from 'node:path';
 import chalk from 'chalk';
 import yaml from 'js-yaml';
 import { writeGeneratedRules } from '../../adapter/rules.js';
+import { estimateCost } from '../../ai/sdk-reviewer.js';
+import { loadValidatedConfig } from '../../config/model-config.js';
 import type { GeneratorProgressEvent } from '../../generator/index.js';
 import { generateRules } from '../../generator/index.js';
-import { logger } from '../../lib/logger.js';
-import { loadValidatedConfig } from '../../lib/review-model-config.js';
-import { estimateCost } from '../../lib/review-runner.js';
 import type { RulePolicy } from '../../types/types.js';
+import { logger } from '../../util/logger.js';
 import { createReadline } from './prompt.js';
 import { CliSpinner } from './spinner.js';
 

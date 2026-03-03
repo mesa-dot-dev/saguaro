@@ -3,7 +3,7 @@
 import { describe, expect, mock, test } from 'bun:test';
 import type { AgentRunner, AgentRunnerOptions, AgentRunnerResult } from '../../core/types.js';
 import type { ReviewProgressEvent, RulePolicy } from '../../types/types.js';
-import { runCliReview } from '../cli-review-runner.js';
+import { runCliReview } from '../cli-reviewer.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

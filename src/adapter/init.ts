@@ -1,15 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { installHook } from '../cli/lib/hook.js';
-import { anyFileMatchesGlob, detectEcosystems } from '../lib/detect-ecosystems.js';
-import { writeMesaRuleFile } from '../lib/mesa-rules.js';
-import { upsertEnvValue } from '../lib/model-catalog.js';
-import type { ModelProvider } from '../lib/review-model-config.js';
-import { findRepoRoot } from '../lib/rule-resolution.js';
-import { selectStarterRules } from '../lib/select-starter-rules.js';
+import { upsertEnvValue } from '../config/env.js';
+import type { ModelProvider } from '../config/model-config.js';
 import { getMcpJsonConfig } from '../mcp/config.js';
+import { anyFileMatchesGlob, detectEcosystems } from '../rules/detect-ecosystems.js';
+import { writeMesaRuleFile } from '../rules/mesa-rules.js';
+import { findRepoRoot } from '../git/git.js';
+import { selectStarterRules } from '../rules/starter.js';
 import { getMcpSkillFiles } from '../templates/mcp-skills.js';
 import { STARTER_RULES } from '../templates/starter-rules.js';
+import { runInstallHook } from './hook.js';
 
 const MESA_DIR = '.mesa';
 const SKILLS_DIR = '.claude/skills';
@@ -70,7 +70,7 @@ output:
 
 review:
   # Maximum tool-calling steps per review batch
-  max_steps: 50
+  max_steps: 10
 
 # =============================================================================
 # Hook Settings
@@ -153,7 +153,7 @@ export async function initProject(options: InitProjectOptions): Promise<InitProj
   // Write API key if provided
   const envUpdated = !!apiKey;
   if (apiKey) {
-    const { getProviderCatalog } = await import('../lib/model-catalog.js');
+    const { getProviderCatalog } = await import('../config/catalog.js');
     const providerEntry = await getProviderCatalog(provider);
     if (providerEntry) {
       upsertEnvValue(path.join(repoRoot, ENV_LOCAL_PATH), providerEntry.envKey, apiKey);
@@ -180,7 +180,7 @@ export async function initProject(options: InitProjectOptions): Promise<InitProj
   // 'skip' does nothing
 
   // Install hooks
-  await installHook();
+  await runInstallHook();
 
   return {
     configPath: path.join(repoRoot, CONFIG_PATH),

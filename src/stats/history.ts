@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { findRepoRoot } from '../git/git.js';
 import type { ReviewHistoryEntry } from '../types/types.js';
-import { findRepoRoot } from './rule-resolution.js';
 
 export function getDefaultHistoryPath(): string {
   return path.join(findRepoRoot(), '.mesa', 'history', 'reviews.jsonl');

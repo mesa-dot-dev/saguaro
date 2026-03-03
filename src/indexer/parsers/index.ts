@@ -1,4 +1,4 @@
-import { logger } from '../../lib/logger.js';
+import { logger } from '../../util/logger.js';
 import type { Language, ParseResult } from '../types.js';
 import { SwcParser } from './swc-parser.js';
 import { TreeSitterParser } from './tree-sitter/parser.js';

@@ -3,7 +3,7 @@ import { generateText } from 'ai';
 import yaml from 'js-yaml';
 import { STARTER_RULES } from '../templates/starter-rules.js';
 import type { RulePolicy, Severity } from '../types/types.js';
-import { type CodebaseSnippet, toKebabCase } from './constants.js';
+import { type CodebaseSnippet, toKebabCase } from '../util/constants.js';
 import { RulePolicySchema } from './mesa-rules.js';
 import type { TargetAnalysis } from './target-analysis.js';
 

@@ -1,9 +1,10 @@
 import type { AgentRunner } from '../core/types.js';
 import type { ReviewProgressCallback, ReviewResult, RulePolicy } from '../types/types.js';
+import { logger } from '../util/logger.js';
+import { countRules, splitFilesForWorkers } from '../util/review-utils.js';
 import { createClaudeCliRunner } from './agent-runner.js';
-import { logger } from './logger.js';
-import { buildPrompt, deduplicateViolations, parseViolationsDetailed, SYSTEM_PROMPT } from './review-runner.js';
-import { countRules, splitFilesForWorkers } from './review-utils.js';
+import { deduplicateViolations, parseViolationsDetailed } from './parser.js';
+import { buildPrompt, SYSTEM_PROMPT } from './prompt.js';
 
 export interface CliReviewOptions {
   filesWithRules: Map<string, RulePolicy[]>;
