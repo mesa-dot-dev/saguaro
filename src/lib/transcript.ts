@@ -76,7 +76,7 @@ export function extractEditedFiles(transcriptPath: string, repoRoot: string): Se
 export function filterToSessionFiles(
   allFiles: string[],
   transcriptPath: string | undefined,
-  repoRoot: string,
+  repoRoot: string
 ): string[] {
   if (!transcriptPath) return allFiles;
   const sessionFiles = extractEditedFiles(transcriptPath, repoRoot);
@@ -84,7 +84,7 @@ export function filterToSessionFiles(
   const filtered = allFiles.filter((f) => sessionFiles.has(f));
   if (!filtered.length) {
     logger.error(
-      `[transcript-filter] Session transcript lists ${sessionFiles.size} edited files but none overlap with git changes — falling back to all files. Possible path normalization bug.`,
+      `[transcript-filter] Session transcript lists ${sessionFiles.size} edited files but none overlap with git changes — falling back to all files. Possible path normalization bug.`
     );
     return allFiles;
   }
@@ -92,9 +92,7 @@ export function filterToSessionFiles(
 }
 
 function addFile(files: Set<string>, filePath: string, repoRoot: string): void {
-  const relative = path.normalize(
-    path.isAbsolute(filePath) ? path.relative(repoRoot, filePath) : filePath,
-  );
+  const relative = path.normalize(path.isAbsolute(filePath) ? path.relative(repoRoot, filePath) : filePath);
   if (relative && !relative.startsWith('..')) {
     files.add(relative);
   }

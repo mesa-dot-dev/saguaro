@@ -90,13 +90,15 @@ describe('mesa_create_rule', () => {
         globs: ['**/*.ts'],
         instructions: 'Do not use the any type',
       });
-      const data = parseContent(result) as { id: string; title: string; path: string };
+      const text = textContent(result);
 
       expect(result.isError).toBeFalsy();
-      expect(data.id).toBe('no-any-type');
-      expect(data.title).toBe('No Any Type');
-      expect(typeof data.path).toBe('string');
-      expect(fs.existsSync(data.path)).toBe(true);
+      expect(text).toContain('Rule created: no-any-type');
+      expect(text).toContain('File: ');
+      // Extract the file path from "File: /path/to/rule.md"
+      const filePath = text.split('File: ')[1]?.trim();
+      expect(filePath).toBeDefined();
+      expect(fs.existsSync(filePath!)).toBe(true);
     });
   });
 

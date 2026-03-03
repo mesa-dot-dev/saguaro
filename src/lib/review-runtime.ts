@@ -1,10 +1,12 @@
 import type { Reviewer } from '../core/types.js';
 import type { RulePolicy } from '../types/types.js';
-import { AgentExecutionError } from './errors.js';
-import { getFileAtRef, listChangedFilesFromGit } from './git.js';
+import { runCliReview } from './cli-review-runner.js';
+import { AgentExecutionError, ConfigMissingError } from './errors.js';
+import { getFileAtRef, getRepoRoot, listChangedFilesFromGit } from './git.js';
 import {
-  loadReviewAdapterConfig,
-  type ResolvedModelConfig,
+  loadValidatedConfig,
+  type MesaConfig,
+  resolveApiKey,
   resolveModelFromResolvedConfig,
 } from './review-model-config.js';
 import { runReviewAgent } from './review-runner.js';
@@ -29,6 +31,36 @@ export interface ReviewRuntime {
   createReviewer(configPath?: string): { reviewer: Reviewer; modelInfo: ModelInfo };
 }
 
+export function createNodeReviewRuntime(options?: { rulesDir?: string }): ReviewRuntime {
+  return {
+    listChangedFiles(baseRef, headRef) {
+      return listChangedFilesFromGit(baseRef, headRef);
+    },
+    loadRules(changedFiles) {
+      return resolveRulesForFiles(changedFiles, { explicitRulesDir: options?.rulesDir });
+    },
+    createReviewer(configPath) {
+      // Try loading config. If missing, default to CLI runner.
+      let config: MesaConfig | undefined;
+      try {
+        config = loadValidatedConfig(configPath);
+      } catch (error) {
+        if (error instanceof ConfigMissingError) {
+          return createCliReviewer();
+        }
+        throw error;
+      }
+
+      // Route by provider: anthropic → CLI, others → SDK
+      if (config.model.provider === 'anthropic') {
+        return createCliReviewer(config);
+      }
+
+      return createSdkReviewer(config);
+    },
+  };
+}
+
 function createGitFileResolver(ref: string): (filePath: string) => string | null {
   const cache = new Map<string, string | null>();
   return (filePath: string) => {
@@ -39,44 +71,59 @@ function createGitFileResolver(ref: string): (filePath: string) => string | null
   };
 }
 
-export function createNodeReviewRuntime(options?: { rulesDir?: string }): ReviewRuntime {
+function createCliReviewer(config?: MesaConfig): { reviewer: Reviewer; modelInfo: ModelInfo } {
   return {
-    listChangedFiles(baseRef, headRef) {
-      return listChangedFilesFromGit(baseRef, headRef);
+    modelInfo: {
+      provider: config?.model.provider ?? 'anthropic',
+      model: config?.model.name ?? 'default',
     },
-    loadRules(changedFiles) {
-      return resolveRulesForFiles(changedFiles, { explicitRulesDir: options?.rulesDir });
+    reviewer: {
+      async review(input) {
+        return await runCliReview({
+          filesWithRules: input.filesWithRules,
+          diffs: input.diffs ?? new Map(),
+          cwd: getRepoRoot(),
+          filesPerWorker: config?.review.files_per_batch,
+          maxTurns: config?.review.max_steps,
+          codebaseContext: input.codebaseContext,
+          onProgress: input.onProgress,
+          abortSignal: input.abortSignal,
+          model: config?.model.name,
+          resolveFile: createGitFileResolver(input.headRef),
+        });
+      },
     },
-    createReviewer(configPath) {
-      const resolvedConfig = loadReviewAdapterConfig(configPath);
-      const modelConfig: ResolvedModelConfig = resolvedConfig.modelConfig;
-      const model = resolveModelFromResolvedConfig(modelConfig);
+  };
+}
 
-      return {
-        modelInfo: { provider: modelConfig.provider, model: modelConfig.model },
-        reviewer: {
-          async review(input) {
-            try {
-              return await runReviewAgent({
-                filesWithRules: input.filesWithRules,
-                diffs: input.diffs ?? new Map(),
-                model,
-                filesPerWorker: resolvedConfig.filesPerWorker,
-                maxSteps: resolvedConfig.maxSteps,
-                verbose: input.verbose,
-                codebaseContext: input.codebaseContext,
-                onProgress: input.onProgress,
-                resolveFile: createGitFileResolver(input.headRef),
-                abortSignal: input.abortSignal,
-                modelId: modelConfig.model,
-              });
-            } catch (error) {
-              const message = error instanceof Error ? error.message : String(error);
-              throw new AgentExecutionError(message, error);
-            }
-          },
-        },
-      };
+function createSdkReviewer(config: MesaConfig): { reviewer: Reviewer; modelInfo: ModelInfo } {
+  const apiKey = resolveApiKey(config);
+  const modelConfig = { provider: config.model.provider, model: config.model.name, apiKey };
+  const model = resolveModelFromResolvedConfig(modelConfig);
+
+  return {
+    modelInfo: { provider: modelConfig.provider, model: modelConfig.model },
+    reviewer: {
+      async review(input) {
+        try {
+          return await runReviewAgent({
+            filesWithRules: input.filesWithRules,
+            diffs: input.diffs ?? new Map(),
+            model,
+            filesPerWorker: config.review.files_per_batch,
+            maxSteps: config.review.max_steps,
+            verbose: input.verbose,
+            codebaseContext: input.codebaseContext,
+            onProgress: input.onProgress,
+            resolveFile: createGitFileResolver(input.headRef),
+            abortSignal: input.abortSignal,
+            modelId: modelConfig.model,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          throw new AgentExecutionError(message, error);
+        }
+      },
     },
   };
 }

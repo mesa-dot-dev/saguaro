@@ -19,6 +19,7 @@ export interface ReviewResult {
     errors: number;
     warnings: number;
     infos: number;
+    failedFiles?: number;
     durationMs?: number;
     inputTokens?: number;
     outputTokens?: number;

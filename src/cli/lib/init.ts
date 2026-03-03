@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
@@ -23,6 +24,20 @@ const secondary = chalk.hex('#be3c00');
 const tertiary = chalk.hex('#ffecba');
 
 type SkillSetupChoice = 'default' | 'generate' | 'skip';
+
+function isClaudeCliAuthenticated(): boolean {
+  try {
+    const output = execFileSync('claude', ['auth', 'status', '--json'], {
+      encoding: 'utf-8',
+      timeout: 5_000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const status = JSON.parse(output) as { loggedIn?: boolean };
+    return status.loggedIn === true;
+  } catch {
+    return false;
+  }
+}
 
 function buildConfigContent(provider: ModelProvider, modelName: string): string {
   return `# Mesa Configuration
@@ -109,77 +124,85 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   fs.mkdirSync(rootMesaDir, { recursive: true });
   fs.mkdirSync(rootSkillsDir, { recursive: true });
 
-  const catalog = await getModelCatalog();
-
-  const rl1 = createReadline();
   let selectedProvider: ModelProvider;
-  try {
-    const providerChoice = await askChoice(
-      rl1,
-      secondary('Which AI provider would you like to use?'),
-      catalog.map((p) => ({ id: p.id, label: p.label }))
-    );
-    selectedProvider = providerChoice.id;
-  } finally {
-    rl1.close();
-  }
-
-  const providerConfig = catalog.find((p) => p.id === selectedProvider)!;
-
-  const rl2 = createReadline();
   let selectedModel: string;
-  try {
-    const modelOptions = [
-      ...providerConfig.models.map((m) => ({
-        id: m.id,
-        label: m.recommended ? `${m.label} (recommended)` : m.label,
-      })),
-      { id: 'custom' as const, label: 'Custom model name' },
-    ];
-    const modelChoice = await askChoice(
-      rl2,
-      secondary('Which model?') + chalk.gray('  (you can change this anytime in .mesa/config.yaml)'),
-      modelOptions
-    );
-    if (modelChoice.id === 'custom') {
-      selectedModel = await ask(rl2, secondary('Enter model name'));
-      if (!selectedModel) {
-        console.log(chalk.red('Model name cannot be empty.'));
-        return 1;
-      }
-    } else {
-      selectedModel = modelChoice.id;
+  let wroteApiKey = false;
+
+  if (isClaudeCliAuthenticated()) {
+    // Zero-config path: Claude Code handles authentication
+    console.log(secondary('  Detected Claude Code — no API key needed\n'));
+    selectedProvider = 'anthropic';
+    selectedModel = 'default';
+  } else {
+    // Manual path: ask for provider, model, and API key
+    const catalog = await getModelCatalog();
+
+    const rl1 = createReadline();
+    try {
+      const providerChoice = await askChoice(
+        rl1,
+        secondary('Which AI provider would you like to use?'),
+        catalog.map((p) => ({ id: p.id, label: p.label }))
+      );
+      selectedProvider = providerChoice.id;
+    } finally {
+      rl1.close();
     }
-  } finally {
-    rl2.close();
+
+    const providerConfig = catalog.find((p) => p.id === selectedProvider)!;
+
+    const rl2 = createReadline();
+    try {
+      const modelOptions = [
+        ...providerConfig.models.map((m) => ({
+          id: m.id,
+          label: m.recommended ? `${m.label} (recommended)` : m.label,
+        })),
+        { id: 'custom' as const, label: 'Custom model name' },
+      ];
+      const modelChoice = await askChoice(
+        rl2,
+        secondary('Which model?') + chalk.gray('  (you can change this anytime in .mesa/config.yaml)'),
+        modelOptions
+      );
+      if (modelChoice.id === 'custom') {
+        selectedModel = await ask(rl2, secondary('Enter model name'));
+        if (!selectedModel) {
+          console.log(chalk.red('Model name cannot be empty.'));
+          return 1;
+        }
+      } else {
+        selectedModel = modelChoice.id;
+      }
+    } finally {
+      rl2.close();
+    }
+
+    const rl3 = createReadline();
+    try {
+      const keyInput = await ask(
+        rl3,
+        secondary(
+          `Paste your ${providerConfig.envKey} (or type "n" to skip and set ${providerConfig.envKey} in .env.local, .env)`
+        )
+      );
+      const normalizedInput = keyInput.trim();
+      const skippedWithN = normalizedInput.toLowerCase() === 'n';
+      const apiKey = skippedWithN ? '' : normalizedInput;
+      wroteApiKey = apiKey.length > 0;
+      if (wroteApiKey) {
+        upsertEnvValue(path.join(repoRoot, envLocalPath), providerConfig.envKey, apiKey);
+      }
+    } finally {
+      rl3.close();
+    }
   }
 
-  const rl3 = createReadline();
-  let apiKey = '';
-  try {
-    const keyInput = await ask(
-      rl3,
-      secondary(
-        `Paste your ${providerConfig.envKey} (or type "n" to skip and set ${providerConfig.envKey} in .env.local, .env)`
-      )
-    );
-    const normalizedInput = keyInput.trim();
-    const skippedWithN = normalizedInput.toLowerCase() === 'n';
-    apiKey = skippedWithN ? '' : normalizedInput;
-  } finally {
-    rl3.close();
-  }
-
-  const wroteApiKey = apiKey.length > 0;
-
-  // Write config and env before rule generation (config must exist for other commands)
+  // Write config before rule generation (config must exist for other commands)
   fs.writeFileSync(path.join(repoRoot, configPath), buildConfigContent(selectedProvider, selectedModel));
 
   // Ensure .mesa/history/ is gitignored
   ensureMesaGitignore(repoRoot);
-  if (wroteApiKey) {
-    upsertEnvValue(path.join(repoRoot, envLocalPath), providerConfig.envKey, apiKey);
-  }
 
   // Write .mcp.json for Claude Code auto-discovery
   writeMcpJson();
@@ -245,9 +268,7 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-model/`));
   console.log(chalk.gray(`  Updated: .claude/settings.json (PreToolUse + Stop hooks)`));
   if (wroteApiKey) {
-    console.log(chalk.gray(`  Updated: ${relEnvPath} (${providerConfig.envKey})`));
-  } else {
-    console.log(chalk.gray(`  Add ${providerConfig.envKey} in your environment (.env.local, .env).`));
+    console.log(chalk.gray(`  Updated: ${relEnvPath}`));
   }
   console.log(secondary(`\nRun ${tertiary('mesa review')} to review your changes.`));
 

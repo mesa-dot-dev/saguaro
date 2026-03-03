@@ -6,6 +6,7 @@ import chalk from 'chalk';
 import { z } from 'zod';
 import type { ReviewProgressCallback, ReviewResult, RulePolicy, Violation } from '../types/types.js';
 import { logger } from './logger.js';
+import { countRules, splitFilesForWorkers } from './review-utils.js';
 
 interface ModelPricing {
   inputPerMillion: number;
@@ -282,28 +283,6 @@ export async function runReviewAgent(options: RunReviewOptions): Promise<ReviewR
   };
 }
 
-function splitFilesForWorkers(
-  filesWithRules: Map<string, RulePolicy[]>,
-  filesPerWorker: number
-): Map<string, RulePolicy[]>[] {
-  const entries = Array.from(filesWithRules.entries());
-  const groups: Map<string, RulePolicy[]>[] = [];
-  for (let i = 0; i < entries.length; i += filesPerWorker) {
-    groups.push(new Map(entries.slice(i, i + filesPerWorker)));
-  }
-  return groups;
-}
-
-function countRules(filesWithRules: Map<string, RulePolicy[]>): number {
-  const uniqueRules = new Set<string>();
-  for (const rules of filesWithRules.values()) {
-    for (const rule of rules) {
-      uniqueRules.add(rule.id);
-    }
-  }
-  return uniqueRules.size;
-}
-
 function ensurePositiveInteger(value: number | undefined, fallback: number, field: string): number {
   if (value === undefined) {
     return fallback;
@@ -436,7 +415,7 @@ function snapLine(
   return reportedLine;
 }
 
-function parseViolationsDetailed(
+export function parseViolationsDetailed(
   text: string,
   filesWithRules: Map<string, RulePolicy[]>,
   resolveFile: (path: string) => string | null

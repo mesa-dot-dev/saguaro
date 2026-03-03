@@ -67,9 +67,9 @@ describe('Daemon integration', () => {
       ],
     });
 
-    expect(formatted).toContain('expert independently reviewed');
-    expect(formatted).toContain('[error] src/auth.ts:47');
-    expect(formatted).toContain('[warning] src/routes.ts:12');
+    expect(formatted).toContain('Mesa review');
+    expect(formatted).toContain('[error] auth.ts:47');
+    expect(formatted).toContain('[warning] routes.ts:12');
   });
 
   it('should return empty string for clear results', () => {
