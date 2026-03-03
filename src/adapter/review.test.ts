@@ -1,8 +1,7 @@
 /// <reference types="bun-types" />
 
 import { describe, expect, test } from 'bun:test';
-import type { ReviewEngineOutcome } from '../core/types.js';
-import type { ReviewRuntime } from '../lib/review-runtime.js';
+import type { ReviewEngineOutcome, ReviewRuntime } from '../core/types.js';
 import { runReview } from './review.js';
 
 describe('runReview adapter translation', () => {

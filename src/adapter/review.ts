@@ -1,11 +1,11 @@
 import path from 'node:path';
 import { createReviewCore } from '../core/review.js';
-import type { ReviewEngineOutcome } from '../core/types.js';
+import type { ReviewEngineOutcome, ReviewRuntime } from '../core/types.js';
 import { getCodebaseContext } from '../indexer/index.js';
 import { getDiffs, getRepoRoot, listChangedFilesFromGit } from '../lib/git.js';
 import { appendReviewEntry } from '../lib/history.js';
 import { loadValidatedConfig } from '../lib/review-model-config.js';
-import { createNodeReviewRuntime, type ReviewRuntime } from '../lib/review-runtime.js';
+import { createNodeReviewRuntime } from '../lib/review-runtime.js';
 import type { ReviewProgressCallback } from '../types/types.js';
 
 export interface ReviewAdapterRequest {

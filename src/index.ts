@@ -22,7 +22,7 @@ export {
 } from './cli/lib/rules.js';
 export { default as serveHandler } from './cli/lib/serve.js';
 export { statsCommand } from './cli/lib/stats.js';
-export type { ReviewEngineOutcome } from './core/types.js';
+export type { ModelInfo, ReviewEngineOutcome, ReviewRuntime } from './core/types.js';
 export { detectInstalledAgent } from './daemon/agent-cli.js';
 export {
   checkDaemonForViolations,

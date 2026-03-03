@@ -219,12 +219,13 @@ function runRubric(rubric: EvalRubric): EvalResult {
 
   // Score against rubric
   const scored = scoreEval(rubric, reviewResult, argv.lineTolerance);
+  const modelLabel = [reviewResult.summary.provider, reviewResult.summary.model].filter(Boolean).join('/') || 'unknown';
 
   return {
     rubricId: rubric.id,
     category: rubric.category,
     timestamp,
-    config: { model: 'unknown' },
+    config: { model: modelLabel },
     metrics: scored.metrics,
     cost: {
       durationMs,
@@ -387,6 +388,7 @@ function main() {
     results.push(result);
 
     const resultPath = writeResult(result);
+    console.log(chalk.gray(`  Model: ${result.config.model}`));
     console.log(chalk.gray(`  Result written to ${resultPath}`));
     console.log(
       chalk.gray(

@@ -1,7 +1,15 @@
 /// <reference types="bun-types" />
 
 import { describe, expect, test } from 'bun:test';
-import { buildClaudeArgs, buildClaudeEnv } from '../agent-runner.js';
+import {
+  buildClaudeArgs,
+  buildClaudeEnv,
+  buildCodexArgs,
+  buildCodexEnv,
+  buildGeminiArgs,
+  buildGeminiEnv,
+  isCliAvailable,
+} from '../agent-runner.js';
 
 // ---------------------------------------------------------------------------
 // buildClaudeArgs
@@ -20,7 +28,7 @@ describe('buildClaudeArgs', () => {
     expect(args).toContain('--setting-sources');
     expect(args).toContain('--max-turns');
     expect(args).toContain('--effort');
-    expect(args).toContain('medium');
+    expect(args).toContain('low');
   });
 
   test('includes --model when model is provided', () => {
@@ -114,5 +122,111 @@ describe('buildClaudeEnv', () => {
     expect(env.HOME).toBe('/home/test');
     expect(env.ANTHROPIC_API_KEY).toBe('sk-ant-xxx');
     expect(env.CLAUDE_NO_SOUND).toBe('1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildCodexArgs
+// ---------------------------------------------------------------------------
+
+describe('buildCodexArgs', () => {
+  test('returns base flags with cwd', () => {
+    const args = buildCodexArgs({ cwd: '/tmp/repo' });
+    expect(args).toContain('exec');
+    expect(args).toContain('--full-auto');
+    expect(args).toContain('--color');
+    expect(args).toContain('never');
+    expect(args).toContain('--ephemeral');
+    expect(args).toContain('-C');
+    expect(args).toContain('/tmp/repo');
+    // stdin marker must be last arg
+    expect(args[args.length - 1]).toBe('-');
+  });
+
+  test('includes -m when model is provided', () => {
+    const args = buildCodexArgs({ cwd: '/tmp/repo', model: 'o3' });
+    expect(args).toContain('-m');
+    const mIdx = args.indexOf('-m');
+    expect(args[mIdx + 1]).toBe('o3');
+  });
+
+  test('omits -m when model is undefined', () => {
+    const args = buildCodexArgs({ cwd: '/tmp/repo' });
+    expect(args).not.toContain('-m');
+  });
+
+  test('-C is followed by cwd value', () => {
+    const args = buildCodexArgs({ cwd: '/my/project' });
+    const cIdx = args.indexOf('-C');
+    expect(cIdx).toBeGreaterThan(-1);
+    expect(args[cIdx + 1]).toBe('/my/project');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildCodexEnv
+// ---------------------------------------------------------------------------
+
+describe('buildCodexEnv', () => {
+  test('preserves base env variables', () => {
+    const env = buildCodexEnv({ PATH: '/usr/bin', HOME: '/home/test' });
+    expect(env.PATH).toBe('/usr/bin');
+    expect(env.HOME).toBe('/home/test');
+  });
+
+  test('sets MESA_REVIEW_AGENT=1', () => {
+    const env = buildCodexEnv({ PATH: '/usr/bin' });
+    expect(env.MESA_REVIEW_AGENT).toBe('1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildGeminiArgs
+// ---------------------------------------------------------------------------
+
+describe('buildGeminiArgs', () => {
+  test('returns base flags', () => {
+    const args = buildGeminiArgs({});
+    expect(args).toContain('--approval-mode');
+    expect(args).toContain('yolo');
+  });
+
+  test('includes -m when model is provided', () => {
+    const args = buildGeminiArgs({ model: 'gemini-2.5-pro' });
+    expect(args).toContain('-m');
+    const mIdx = args.indexOf('-m');
+    expect(args[mIdx + 1]).toBe('gemini-2.5-pro');
+  });
+
+  test('omits -m when model is undefined', () => {
+    const args = buildGeminiArgs({});
+    expect(args).not.toContain('-m');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildGeminiEnv
+// ---------------------------------------------------------------------------
+
+describe('buildGeminiEnv', () => {
+  test('preserves base env variables', () => {
+    const env = buildGeminiEnv({ PATH: '/usr/bin', HOME: '/home/test' });
+    expect(env.PATH).toBe('/usr/bin');
+    expect(env.HOME).toBe('/home/test');
+  });
+
+  test('sets MESA_REVIEW_AGENT=1', () => {
+    const env = buildGeminiEnv({ PATH: '/usr/bin' });
+    expect(env.MESA_REVIEW_AGENT).toBe('1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isCliAvailable
+// ---------------------------------------------------------------------------
+
+describe('isCliAvailable', () => {
+  test('returns false for a nonexistent command', () => {
+    expect(isCliAvailable('__mesa_nonexistent_cli_test__')).toBe(false);
   });
 });

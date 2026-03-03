@@ -1,5 +1,5 @@
+import type { AgentRunner } from '../core/types.js';
 import type { ReviewProgressCallback, ReviewResult, RulePolicy } from '../types/types.js';
-import type { AgentRunner } from './agent-runner.js';
 import { createClaudeCliRunner } from './agent-runner.js';
 import { logger } from './logger.js';
 import { buildPrompt, deduplicateViolations, parseViolationsDetailed, SYSTEM_PROMPT } from './review-runner.js';
@@ -50,10 +50,10 @@ export async function runCliReview(options: CliReviewOptions): Promise<ReviewRes
   });
 
   const resolveFile = options.resolveFile ?? ((_path: string): string | null => null);
-  const maxConcurrency = Math.max(1, options.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY);
 
   let failedFiles = 0;
 
+  const maxConcurrency = Math.max(1, options.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY);
   const workerResults = await mapWithConcurrency(fileGroups, maxConcurrency, async (group, index) => {
     const workerIndex = index + 1;
     const workerStartedAtMs = Date.now();
@@ -156,7 +156,7 @@ export async function runCliReview(options: CliReviewOptions): Promise<ReviewRes
 async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
-  fn: (item: T, index: number) => Promise<R>,
+  fn: (item: T, index: number) => Promise<R>
 ): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let nextIndex = 0;

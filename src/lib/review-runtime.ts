@@ -1,35 +1,12 @@
-import type { Reviewer } from '../core/types.js';
-import type { RulePolicy } from '../types/types.js';
+import type { AgentRunner, ModelInfo, Reviewer, ReviewRuntime } from '../core/types.js';
+import { createCodexCliRunner, createGeminiCliRunner, isCliAuthenticated } from './agent-runner.js';
 import { runCliReview } from './cli-review-runner.js';
 import { AgentExecutionError, ConfigMissingError } from './errors.js';
 import { getFileAtRef, getRepoRoot, listChangedFilesFromGit } from './git.js';
-import {
-  loadValidatedConfig,
-  type MesaConfig,
-  resolveApiKey,
-  resolveModelFromResolvedConfig,
-} from './review-model-config.js';
+import type { MesaConfig } from './review-model-config.js';
+import { loadValidatedConfig, resolveApiKey, resolveModelFromResolvedConfig } from './review-model-config.js';
 import { runReviewAgent } from './review-runner.js';
 import { resolveRulesForFiles } from './rule-resolution.js';
-
-export interface ModelInfo {
-  provider: string;
-  model: string;
-}
-
-export interface ReviewRuntime {
-  listChangedFiles(baseRef: string, headRef: string): Promise<string[]> | string[];
-  loadRules(changedFiles: string[]):
-    | Promise<{
-        filesWithRules: Map<string, RulePolicy[]>;
-        rulesLoaded: number;
-      }>
-    | {
-        filesWithRules: Map<string, RulePolicy[]>;
-        rulesLoaded: number;
-      };
-  createReviewer(configPath?: string): { reviewer: Reviewer; modelInfo: ModelInfo };
-}
 
 export function createNodeReviewRuntime(options?: { rulesDir?: string }): ReviewRuntime {
   return {
@@ -51,9 +28,17 @@ export function createNodeReviewRuntime(options?: { rulesDir?: string }): Review
         throw error;
       }
 
-      // Route by provider: anthropic → CLI, others → SDK
+      // Route by provider: prefer CLI runners, fall back to SDK
       if (config.model.provider === 'anthropic') {
         return createCliReviewer(config);
+      }
+
+      if (config.model.provider === 'openai' && isCliAuthenticated('codex')) {
+        return createCliReviewer(config, createCodexCliRunner());
+      }
+
+      if (config.model.provider === 'google' && isCliAuthenticated('gemini')) {
+        return createCliReviewer(config, createGeminiCliRunner());
       }
 
       return createSdkReviewer(config);
@@ -71,15 +56,15 @@ function createGitFileResolver(ref: string): (filePath: string) => string | null
   };
 }
 
-function createCliReviewer(config?: MesaConfig): { reviewer: Reviewer; modelInfo: ModelInfo } {
+function createCliReviewer(config?: MesaConfig, runner?: AgentRunner): { reviewer: Reviewer; modelInfo: ModelInfo } {
+  const provider = config?.model.provider ?? 'anthropic';
+  const modelName = config?.model.name ?? 'default';
+  const model = modelName === 'default' ? undefined : modelName;
   return {
-    modelInfo: {
-      provider: config?.model.provider ?? 'anthropic',
-      model: config?.model.name ?? 'default',
-    },
+    modelInfo: { provider, model: modelName },
     reviewer: {
       async review(input) {
-        return await runCliReview({
+        const result = await runCliReview({
           filesWithRules: input.filesWithRules,
           diffs: input.diffs ?? new Map(),
           cwd: getRepoRoot(),
@@ -88,9 +73,14 @@ function createCliReviewer(config?: MesaConfig): { reviewer: Reviewer; modelInfo
           codebaseContext: input.codebaseContext,
           onProgress: input.onProgress,
           abortSignal: input.abortSignal,
-          model: config?.model.name,
+          model,
+          runner,
           resolveFile: createGitFileResolver(input.headRef),
         });
+        return {
+          violations: result.violations,
+          summary: { ...result.summary, provider, model: modelName },
+        };
       },
     },
   };
@@ -106,7 +96,7 @@ function createSdkReviewer(config: MesaConfig): { reviewer: Reviewer; modelInfo:
     reviewer: {
       async review(input) {
         try {
-          return await runReviewAgent({
+          const result = await runReviewAgent({
             filesWithRules: input.filesWithRules,
             diffs: input.diffs ?? new Map(),
             model,
@@ -119,6 +109,10 @@ function createSdkReviewer(config: MesaConfig): { reviewer: Reviewer; modelInfo:
             abortSignal: input.abortSignal,
             modelId: modelConfig.model,
           });
+          return {
+            violations: result.violations,
+            summary: { ...result.summary, provider: modelConfig.provider, model: modelConfig.model },
+          };
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           throw new AgentExecutionError(message, error);

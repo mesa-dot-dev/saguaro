@@ -1,7 +1,7 @@
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
+import { isCliAuthenticated } from '../../lib/agent-runner.js';
 import { anyFileMatchesGlob, detectEcosystems } from '../../lib/detect-ecosystems.js';
 import { writeMesaRuleFile } from '../../lib/mesa-rules.js';
 import { getModelCatalog, upsertEnvValue } from '../../lib/model-catalog.js';
@@ -24,20 +24,6 @@ const secondary = chalk.hex('#be3c00');
 const tertiary = chalk.hex('#ffecba');
 
 type SkillSetupChoice = 'default' | 'generate' | 'skip';
-
-function isClaudeCliAuthenticated(): boolean {
-  try {
-    const output = execFileSync('claude', ['auth', 'status', '--json'], {
-      encoding: 'utf-8',
-      timeout: 5_000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    const status = JSON.parse(output) as { loggedIn?: boolean };
-    return status.loggedIn === true;
-  } catch {
-    return false;
-  }
-}
 
 function buildConfigContent(provider: ModelProvider, modelName: string): string {
   return `# Mesa Configuration
@@ -65,7 +51,7 @@ output:
 
 review:
   # Maximum tool-calling steps per review batch
-  max_steps: 50
+  max_steps: 10
 
 # =============================================================================
 # Hook Settings
@@ -128,10 +114,20 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   let selectedModel: string;
   let wroteApiKey = false;
 
-  if (isClaudeCliAuthenticated()) {
+  if (isCliAuthenticated('claude')) {
     // Zero-config path: Claude Code handles authentication
-    console.log(secondary('  Detected Claude Code — no API key needed\n'));
+    console.log(secondary('  Detected Claude Code: no API key needed\n'));
     selectedProvider = 'anthropic';
+    selectedModel = 'default';
+  } else if (isCliAuthenticated('codex')) {
+    // Zero-config path: Codex CLI handles authentication
+    console.log(secondary('  Detected Codex CLI: no API key needed\n'));
+    selectedProvider = 'openai';
+    selectedModel = 'default';
+  } else if (isCliAuthenticated('gemini')) {
+    // Zero-config path: Gemini CLI handles authentication
+    console.log(secondary('  Detected Gemini CLI: no API key needed\n'));
+    selectedProvider = 'google';
     selectedModel = 'default';
   } else {
     // Manual path: ask for provider, model, and API key

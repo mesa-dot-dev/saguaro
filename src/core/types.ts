@@ -75,3 +75,42 @@ export interface ReviewCoreDeps {
 export interface ReviewCore {
   review(request: ReviewRequest): Promise<ReviewEngineOutcome>;
 }
+
+export interface AgentRunnerResult {
+  output: string;
+  durationMs: number;
+}
+
+export interface AgentRunnerOptions {
+  systemPrompt: string;
+  prompt: string;
+  cwd: string;
+  allowedTools?: string[];
+  model?: string;
+  maxTurns?: number;
+  timeout?: number;
+  abortSignal?: AbortSignal;
+}
+
+export interface AgentRunner {
+  execute(options: AgentRunnerOptions): Promise<AgentRunnerResult>;
+}
+
+export interface ModelInfo {
+  provider: string;
+  model: string;
+}
+
+export interface ReviewRuntime {
+  listChangedFiles(baseRef: string, headRef: string): Promise<string[]> | string[];
+  loadRules(changedFiles: string[]):
+    | Promise<{
+        filesWithRules: Map<string, RulePolicy[]>;
+        rulesLoaded: number;
+      }>
+    | {
+        filesWithRules: Map<string, RulePolicy[]>;
+        rulesLoaded: number;
+      };
+  createReviewer(configPath?: string): { reviewer: Reviewer; modelInfo: ModelInfo };
+}

@@ -24,6 +24,8 @@ export interface ReviewResult {
     inputTokens?: number;
     outputTokens?: number;
     cost?: number;
+    provider?: string;
+    model?: string;
   };
 }
 
