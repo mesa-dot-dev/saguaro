@@ -142,6 +142,7 @@ export function buildClaudeArgs(options: {
   model?: string;
   allowedTools?: string[];
   maxTurns?: number;
+  effort?: 'low' | 'medium' | 'high';
 }): string[] {
   const args: string[] = [
     '-p',
@@ -157,7 +158,7 @@ export function buildClaudeArgs(options: {
     '--max-turns',
     String(options.maxTurns ?? DEFAULT_MAX_TURNS),
     '--effort',
-    'low',
+    options.effort ?? 'low',
   ];
 
   if (options.systemPrompt) {
@@ -225,11 +226,19 @@ function combineStdinPrompt(systemPrompt: string, userPrompt: string): string {
 // Codex CLI (OpenAI)
 // ---------------------------------------------------------------------------
 
-export function buildCodexArgs(options: { cwd: string; model?: string }): string[] {
+export function buildCodexArgs(options: {
+  cwd: string;
+  model?: string;
+  reasoningEffort?: 'low' | 'medium' | 'high';
+}): string[] {
   const args: string[] = ['exec', '--full-auto', '--color', 'never', '--ephemeral', '-C', options.cwd];
 
   if (options.model) {
     args.push('-m', options.model);
+  }
+
+  if (options.reasoningEffort) {
+    args.push('--config', `model_reasoning_effort=${options.reasoningEffort}`);
   }
 
   args.push('-');

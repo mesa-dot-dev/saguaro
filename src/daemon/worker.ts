@@ -82,7 +82,7 @@ function buildStaffEngineerPrompt(opts: { diffs: Map<string, string>; agentSumma
   sections.push('');
 
   if (opts.agentSummary) {
-    sections.push('The developer described their work as:');
+    sections.push('The developer of this code described their work as:');
     sections.push(`"${opts.agentSummary}"`);
     sections.push('');
   }

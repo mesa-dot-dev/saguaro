@@ -46,8 +46,8 @@ const SUPPORTED_PROVIDERS: ProviderEntry[] = [
     label: 'OpenAI',
     envKey: 'OPENAI_API_KEY',
     models: [
-      { id: 'gpt-5.2-codex', label: 'GPT-5.2 Codex', recommended: true },
-      { id: 'gpt-5.1-codex', label: 'GPT-5.1 Codex' },
+      { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex', recommended: true },
+      { id: 'gpt-5.2-codex', label: 'GPT-5.2 Codex' },
     ],
   },
   {

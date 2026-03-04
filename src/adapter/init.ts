@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { buildConfigContent } from '../config/config-template.js';
 import { upsertEnvValue } from '../config/env.js';
 import type { ModelProvider } from '../config/model-config.js';
 import { findRepoRoot } from '../git/git.js';
@@ -26,6 +27,7 @@ export interface InitProjectOptions {
   model: string;
   apiKey?: string;
   ruleStrategy: 'default' | 'generate' | 'skip';
+  daemon?: boolean;
   force?: boolean;
 }
 
@@ -43,49 +45,6 @@ export interface InitProjectResult {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function buildConfigContent(provider: ModelProvider, modelName: string): string {
-  return `# Mesa Configuration
-# =============================================================================
-# Model Configuration
-# =============================================================================
-# The AI model to use for reviews. Set API keys in your environment
-# (.env.local, .env, or shell export).
-
-model:
-  provider: ${provider}
-  name: ${modelName}
-
-# =============================================================================
-# Output Configuration
-# =============================================================================
-
-output:
-  # Print Cursor deeplink when violations are found
-  cursor_deeplink: true
-
-# =============================================================================
-# Review Settings
-# =============================================================================
-
-review:
-  # Maximum tool-calling steps per review batch
-  max_steps: 10
-
-# =============================================================================
-# Hook Settings
-# =============================================================================
-
-hook:
-  # Master switch for all Mesa hooks
-  enabled: true
-
-  # Stop hook: full LLM review after Claude finishes writing code
-  # The PreToolUse hook injects rules proactively, so this is opt-in
-  stop:
-    enabled: false
-`;
-}
 
 function writeMcpJson(repoRoot: string): void {
   const fullPath = path.resolve(repoRoot, MCP_JSON_PATH);
@@ -121,7 +80,7 @@ function ensureMesaGitignore(repoRoot: string): void {
 // ---------------------------------------------------------------------------
 
 export async function initProject(options: InitProjectOptions): Promise<InitProjectResult> {
-  const { provider, model, apiKey, ruleStrategy, force } = options;
+  const { provider, model, apiKey, ruleStrategy, daemon, force } = options;
   const repoRoot = findRepoRoot();
   const rootMesaDir = path.join(repoRoot, MESA_DIR);
   const rootSkillsDir = path.join(repoRoot, SKILLS_DIR);
@@ -145,7 +104,7 @@ export async function initProject(options: InitProjectOptions): Promise<InitProj
   fs.mkdirSync(rootSkillsDir, { recursive: true });
 
   // Write config
-  fs.writeFileSync(path.join(repoRoot, CONFIG_PATH), buildConfigContent(provider, model));
+  fs.writeFileSync(path.join(repoRoot, CONFIG_PATH), buildConfigContent({ provider, model, daemon: daemon ?? false }));
 
   // Ensure .mesa/history/ is gitignored
   ensureMesaGitignore(repoRoot);

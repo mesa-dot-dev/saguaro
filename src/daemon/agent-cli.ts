@@ -1,5 +1,13 @@
 import { execFile, spawn, spawnSync } from 'node:child_process';
-// logic inspired from Roborev
+import {
+  buildClaudeArgs,
+  buildClaudeEnv,
+  buildCodexArgs,
+  buildCodexEnv,
+  buildGeminiArgs,
+  buildGeminiEnv,
+} from '../ai/agent-runner.js';
+
 export type AgentName = 'claude' | 'codex' | 'gemini' | 'copilot' | 'opencode' | 'cursor';
 
 const AGENT_COMMANDS: Record<AgentName, string> = {
@@ -45,48 +53,32 @@ export function detectInstalledAgent(preference?: string): AgentName | null {
   return null;
 }
 
-function buildClaudeEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (!key.startsWith('CLAUDECODE')) {
-      env[key] = value;
-    }
-  }
-  env.CLAUDE_NO_SOUND = '1';
-  env.MESA_REVIEW_AGENT = '1';
-  return env;
-}
-
 /**
  * Invokes the given agent CLI with a review prompt and returns the raw text output.
  * Async — does not block the Node.js event loop, allowing the HTTP server to stay responsive.
  *
- * - claude: uses -p with restricted tool access
- * - codex: uses stdin-based invocation with --full-auto
- * - others: generic -p fallback
+ * Uses the same arg builders as the non-daemon reviewer to ensure consistent
+ * flags (--no-session-persistence, etc.).
+ *
+ * Effort is set to 'medium' (vs 'low' for inline reviews) because the daemon
+ * runs in the background with no user waiting on it, so it can afford deeper
+ * reasoning without impacting perceived latency.
  */
 export async function invokeAgent(agent: AgentName, prompt: string, cwd: string, model?: string): Promise<string> {
   const command = AGENT_COMMANDS[agent];
 
   switch (agent) {
     case 'claude': {
-      const args = [
-        '-p',
-        '-',
-        '--verbose',
-        '--output-format',
-        'text',
-        '--dangerously-skip-permissions',
-        '--allowedTools',
-        'Read,Glob,Grep',
-      ];
-      if (model) {
-        args.push('--model', model);
-      }
+      const args = buildClaudeArgs({
+        model,
+        allowedTools: ['Read', 'Glob', 'Grep'],
+        maxTurns: 15,
+        effort: 'medium',
+      });
       return spawnAsync(command, args, {
         cwd,
         input: prompt,
-        env: buildClaudeEnv(),
+        env: buildClaudeEnv(process.env),
         encoding: 'utf8',
         maxBuffer: TEN_MB,
         timeout: FIVE_MINUTES_MS,
@@ -94,10 +86,23 @@ export async function invokeAgent(agent: AgentName, prompt: string, cwd: string,
     }
 
     case 'codex': {
-      return spawnAsync(command, ['exec', '--json', '--full-auto', '-C', cwd], {
+      const args = buildCodexArgs({ cwd, model, reasoningEffort: 'medium' });
+      return spawnAsync(command, args, {
         cwd,
         input: prompt,
-        env: { ...process.env },
+        env: buildCodexEnv(process.env),
+        encoding: 'utf8',
+        maxBuffer: TEN_MB,
+        timeout: FIVE_MINUTES_MS,
+      });
+    }
+
+    case 'gemini': {
+      const args = buildGeminiArgs({ model });
+      return spawnAsync(command, args, {
+        cwd,
+        input: prompt,
+        env: buildGeminiEnv(process.env),
         encoding: 'utf8',
         maxBuffer: TEN_MB,
         timeout: FIVE_MINUTES_MS,
@@ -107,7 +112,7 @@ export async function invokeAgent(agent: AgentName, prompt: string, cwd: string,
     default: {
       return execFileAsync(command, ['-p', prompt], {
         cwd,
-        env: { ...process.env },
+        env: { ...process.env, MESA_REVIEW_AGENT: '1' },
         encoding: 'utf8',
         maxBuffer: TEN_MB,
         timeout: FIVE_MINUTES_MS,
