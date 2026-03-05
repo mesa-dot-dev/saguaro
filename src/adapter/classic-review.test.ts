@@ -3,7 +3,7 @@
 import { describe, expect, test } from 'bun:test';
 import { buildStaffEngineerPrompt, parseFindings } from '../daemon/prompt.js';
 
-describe('daemon review prompt integration', () => {
+describe('classic review prompt integration', () => {
   test('builds prompt with diffs and parses empty findings', () => {
     const prompt = buildStaffEngineerPrompt({
       diffs: new Map([['src/index.ts', '+export const a = 1;']]),

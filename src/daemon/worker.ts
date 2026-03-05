@@ -48,11 +48,11 @@ export async function runWorker(store: DaemonStore, workerId: number, config: Wo
 
     const agentSummary = job.agentSummary ? job.agentSummary.slice(0, MAX_AGENT_SUMMARY_CHARS) : null;
 
-    // Load daemon_prompt from config if available
+    // Load classic_prompt from config if available
     let customCriteria: string | undefined;
     try {
       const mesaConfig = loadValidatedConfig();
-      customCriteria = mesaConfig.review.daemon_prompt;
+      customCriteria = mesaConfig.review.classic_prompt;
     } catch {
       // Config loading failure should not block daemon reviews
     }

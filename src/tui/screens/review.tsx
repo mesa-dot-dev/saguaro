@@ -1,5 +1,5 @@
-import type { DaemonReviewResult, ReviewEngineOutcome, ReviewProgressEvent, ReviewResult } from '@mesa/code-review';
-import { getDefaultBranch, runDaemonReview, runReview } from '@mesa/code-review';
+import type { ClassicReviewResult, ReviewEngineOutcome, ReviewProgressEvent, ReviewResult } from '@mesa/code-review';
+import { getDefaultBranch, runClassicReview, runReview } from '@mesa/code-review';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useMemo, useState } from 'react';
 import { Spinner } from '../components/spinner.js';
@@ -9,14 +9,14 @@ import { theme } from '../lib/theme.js';
 type ReviewState =
   | { phase: 'running'; completedBatches: number; totalBatches: number }
   | { phase: 'done'; outcome: ReviewEngineOutcome }
-  | { phase: 'daemon-done'; result: DaemonReviewResult }
-  | { phase: 'full-done'; rulesResult: ReviewResult | null; daemonResult: DaemonReviewResult }
+  | { phase: 'classic-done'; result: ClassicReviewResult }
+  | { phase: 'full-done'; rulesResult: ReviewResult | null; classicResult: ClassicReviewResult }
   | { phase: 'error'; message: string };
 
 interface ReviewScreenProps {
   baseRef?: string;
   headRef?: string;
-  mode?: 'rules' | 'daemon' | 'full';
+  mode?: 'rules' | 'classic' | 'full';
 }
 
 export function ReviewScreen({ baseRef, headRef, mode = 'rules' }: ReviewScreenProps) {
@@ -53,9 +53,9 @@ export function ReviewScreen({ baseRef, headRef, mode = 'rules' }: ReviewScreenP
       }
     };
 
-    if (mode === 'daemon') {
-      void runDaemonReview({ baseRef: effectiveBase, headRef: effectiveHead, abortSignal: abortController.signal })
-        .then((result) => setState({ phase: 'daemon-done', result }))
+    if (mode === 'classic') {
+      void runClassicReview({ baseRef: effectiveBase, headRef: effectiveHead, abortSignal: abortController.signal })
+        .then((result) => setState({ phase: 'classic-done', result }))
         .catch((err) => {
           if (!abortController.signal.aborted) {
             setState({ phase: 'error', message: err instanceof Error ? err.message : String(err) });
@@ -71,12 +71,12 @@ export function ReviewScreen({ baseRef, headRef, mode = 'rules' }: ReviewScreenP
           abortSignal: abortController.signal,
           source: 'cli',
         }),
-        runDaemonReview({ baseRef: effectiveBase, headRef: effectiveHead, abortSignal: abortController.signal }),
+        runClassicReview({ baseRef: effectiveBase, headRef: effectiveHead, abortSignal: abortController.signal }),
       ])
-        .then(([rulesResult, daemonResult]) => {
+        .then(([rulesResult, classicResult]) => {
           const outcome = rulesResult.outcome;
           const rulesReviewResult = outcome.kind === 'reviewed' ? outcome.result : null;
-          setState({ phase: 'full-done', rulesResult: rulesReviewResult, daemonResult });
+          setState({ phase: 'full-done', rulesResult: rulesReviewResult, classicResult });
         })
         .catch((err) => {
           if (!abortController.signal.aborted) {
@@ -119,7 +119,7 @@ export function ReviewScreen({ baseRef, headRef, mode = 'rules' }: ReviewScreenP
     );
   }
 
-  if (state.phase === 'daemon-done') {
+  if (state.phase === 'classic-done') {
     const { result } = state;
     if (result.findings.length === 0) {
       return (
@@ -150,12 +150,12 @@ export function ReviewScreen({ baseRef, headRef, mode = 'rules' }: ReviewScreenP
   }
 
   if (state.phase === 'full-done') {
-    const { rulesResult, daemonResult } = state;
+    const { rulesResult, classicResult } = state;
     const rulesViolations = rulesResult?.violations ?? [];
     const hasRulesIssues = rulesViolations.length > 0;
-    const hasDaemonIssues = daemonResult.findings.length > 0;
+    const hasClassicIssues = classicResult.findings.length > 0;
 
-    if (!hasRulesIssues && !hasDaemonIssues) {
+    if (!hasRulesIssues && !hasClassicIssues) {
       return (
         <box flexDirection="column" paddingLeft={2} paddingTop={1}>
           <text fg={theme.success}>Full review: No issues found</text>
@@ -184,11 +184,11 @@ export function ReviewScreen({ baseRef, headRef, mode = 'rules' }: ReviewScreenP
             <text fg={theme.success}>Rules: No violations</text>
           </box>
         )}
-        {hasDaemonIssues && (
+        {hasClassicIssues && (
           <box flexDirection="column" paddingTop={1}>
-            <text fg={theme.error}>Mesa review: {daemonResult.findings.length} issue(s)</text>
-            {daemonResult.findings.map((f, i) => (
-              <text key={`daemon-${i}`} fg={theme.text}>
+            <text fg={theme.error}>Classic review: {classicResult.findings.length} issue(s)</text>
+            {classicResult.findings.map((f, i) => (
+              <text key={`classic-${i}`} fg={theme.text}>
                 {'  '}
                 {f.severity === 'error' ? '✗' : f.severity === 'warning' ? '⚠' : 'ℹ'} {f.file}
                 {f.line ? `:${f.line}` : ''} — {f.message}
@@ -196,9 +196,9 @@ export function ReviewScreen({ baseRef, headRef, mode = 'rules' }: ReviewScreenP
             ))}
           </box>
         )}
-        {!hasDaemonIssues && (
+        {!hasClassicIssues && (
           <box paddingTop={1}>
-            <text fg={theme.success}>Mesa review: No issues</text>
+            <text fg={theme.success}>Classic review: No issues</text>
           </box>
         )}
         <box paddingTop={1}>
@@ -225,7 +225,9 @@ export function ReviewScreen({ baseRef, headRef, mode = 'rules' }: ReviewScreenP
 
   return (
     <box flexDirection="column" paddingLeft={2} paddingTop={1}>
-      <text fg={theme.accent}>Running {mode === 'daemon' ? 'Daemon' : mode === 'full' ? 'Full' : 'Rules'} Review</text>
+      <text fg={theme.accent}>
+        Running {mode === 'classic' ? 'Classic' : mode === 'full' ? 'Full' : 'Rules'} Review
+      </text>
       <text fg={theme.textDim}>
         {effectiveBase} → {effectiveHead}
       </text>

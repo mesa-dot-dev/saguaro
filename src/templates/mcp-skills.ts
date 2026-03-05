@@ -17,18 +17,18 @@ description: Run Mesa code review on current changes
 
 1. **Choose review mode** — Use \`AskUserQuestion\` to ask the user which type of review to run:
    - **Rules** — Review against defined rules in .mesa/rules/
-   - **Daemon** — Agentic staff-engineer review (bugs, security, regressions, dead code, performance)
+   - **Classic** — Agentic staff-engineer review (bugs, security, regressions, dead code, performance)
    - **Both** — Run both reviews and present combined findings
 
 2. **Run the review** — Call the \`mesa_review\` MCP tool with:
-   - \`mode\`: "rules", "daemon", or "full" based on the user's choice
+   - \`mode\`: "rules", "classic", or "full" based on the user's choice
    - \`base_branch\`: defaults to "main" (ask only if the user specifies a different branch)
    - \`head_branch\`: defaults to "HEAD"
 
 3. **Present results** —
    - **Rules mode**: Group violations by severity (error → warning → info) with file paths and line numbers.
-   - **Daemon mode**: Show findings grouped by category with severity and file locations.
-   - **Both mode**: Present rules violations first under a "Rules Review" heading, then daemon findings under a "Staff Engineer Review" heading.
+   - **Classic mode**: Show findings grouped by category with severity and file locations.
+   - **Both mode**: Present rules violations first under a "Rules Review" heading, then classic findings under a "Staff Engineer Review" heading.
    - If no issues are found in either review, confirm the changes look clean.
 `,
     },

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { runDaemonReview } from '../../adapter/daemon-review.js';
+import { runClassicReview } from '../../adapter/classic-review.js';
 import { runReview } from '../../adapter/review.js';
 import {
   createRuleAdapter,
@@ -255,12 +255,12 @@ async function handleReview(args: Record<string, unknown>): Promise<CallToolResu
   switch (mode) {
     case 'rules':
       return handleRulesReview(baseRef, headRef, startMs);
-    case 'daemon':
-      return handleDaemonOnlyReview(baseRef, headRef, startMs);
+    case 'classic':
+      return handleClassicOnlyReview(baseRef, headRef, startMs);
     case 'full':
       return handleFullReview(baseRef, headRef, startMs);
     default:
-      return errorResult(`Invalid mode: ${mode}. Must be "rules", "daemon", or "full".`);
+      return errorResult(`Invalid mode: ${mode}. Must be "rules", "classic", or "full".`);
   }
 }
 
@@ -307,18 +307,18 @@ async function handleRulesReview(baseRef: string, headRef: string, startMs: numb
   }
 }
 
-async function handleDaemonOnlyReview(baseRef: string, headRef: string, startMs: number): Promise<CallToolResult> {
-  const result = await runDaemonReview({ baseRef, headRef });
+async function handleClassicOnlyReview(baseRef: string, headRef: string, startMs: number): Promise<CallToolResult> {
+  const result = await runClassicReview({ baseRef, headRef });
   const durationMs = Date.now() - startMs;
-  debug(`mesa_review (daemon) completed in ${durationMs}ms`, {
+  debug(`mesa_review (classic) completed in ${durationMs}ms`, {
     findings: result.findings.length,
     verdict: result.verdict,
   });
 
   return jsonResult({
     status: 'reviewed',
-    mode: 'daemon',
-    daemon_review: {
+    mode: 'classic',
+    classic_review: {
       findings: result.findings,
       verdict: result.verdict,
       model: result.model,
@@ -327,7 +327,7 @@ async function handleDaemonOnlyReview(baseRef: string, headRef: string, startMs:
 }
 
 async function handleFullReview(baseRef: string, headRef: string, startMs: number): Promise<CallToolResult> {
-  const [rulesSettled, daemonSettled] = await Promise.allSettled([
+  const [rulesSettled, classicSettled] = await Promise.allSettled([
     runReview({
       baseRef,
       headRef,
@@ -337,14 +337,14 @@ async function handleFullReview(baseRef: string, headRef: string, startMs: numbe
       },
       source: 'mcp',
     }),
-    runDaemonReview({ baseRef, headRef }),
+    runClassicReview({ baseRef, headRef }),
   ]);
   const durationMs = Date.now() - startMs;
   debug(`mesa_review (full) completed in ${durationMs}ms`);
 
   // If both failed, surface the errors
-  if (rulesSettled.status === 'rejected' && daemonSettled.status === 'rejected') {
-    return errorResult(`Both reviews failed.\nRules: ${rulesSettled.reason}\nDaemon: ${daemonSettled.reason}`);
+  if (rulesSettled.status === 'rejected' && classicSettled.status === 'rejected') {
+    return errorResult(`Both reviews failed.\nRules: ${rulesSettled.reason}\nClassic: ${classicSettled.reason}`);
   }
 
   const rulesSection = (() => {
@@ -369,15 +369,15 @@ async function handleFullReview(baseRef: string, headRef: string, startMs: numbe
     }
   })();
 
-  const daemonSection = (() => {
-    if (daemonSettled.status === 'rejected') {
-      debug('mesa classic review failed in full mode', { error: String(daemonSettled.reason) });
-      return { status: 'error' as const, error: String(daemonSettled.reason) };
+  const classicSection = (() => {
+    if (classicSettled.status === 'rejected') {
+      debug('classic review failed in full mode', { error: String(classicSettled.reason) });
+      return { status: 'error' as const, error: String(classicSettled.reason) };
     }
     return {
-      findings: daemonSettled.value.findings,
-      verdict: daemonSettled.value.verdict,
-      model: daemonSettled.value.model,
+      findings: classicSettled.value.findings,
+      verdict: classicSettled.value.verdict,
+      model: classicSettled.value.model,
     };
   })();
 
@@ -385,7 +385,7 @@ async function handleFullReview(baseRef: string, headRef: string, startMs: numbe
     status: 'reviewed',
     mode: 'full',
     rules_review: rulesSection,
-    daemon_review: daemonSection,
+    classic_review: classicSection,
   });
 }
 

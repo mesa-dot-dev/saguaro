@@ -2,7 +2,7 @@
 // Public types
 // ---------------------------------------------------------------------------
 
-export * from './adapter/daemon-review.js';
+export * from './adapter/classic-review.js';
 // ---------------------------------------------------------------------------
 // Adapters (primary API surface for packages/cli and TUI)
 // ---------------------------------------------------------------------------

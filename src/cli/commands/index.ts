@@ -124,7 +124,7 @@ interface ReviewArgv {
   base?: string;
   head?: string;
   output?: 'console' | 'json';
-  mode?: 'rules' | 'daemon' | 'full';
+  mode?: 'rules' | 'classic' | 'full';
   rules?: string;
   verbose?: boolean;
   debug?: boolean;
@@ -219,7 +219,7 @@ export async function cli(argv: string[]): Promise<boolean> {
             alias: 'mode',
             describe: 'Review mode',
             type: 'string',
-            choices: ['rules', 'daemon', 'full'] as const,
+            choices: ['rules', 'classic', 'full'] as const,
             default: 'rules',
           });
       },

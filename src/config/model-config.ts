@@ -31,7 +31,7 @@ const IndexSchema = z.object({
 const ReviewSchema = z.object({
   max_steps: z.number().int().positive().default(10),
   files_per_batch: z.number().int().positive().default(2),
-  daemon_prompt: z.string().optional(),
+  classic_prompt: z.string().optional(),
 });
 
 const HookSchema = z.object({
@@ -83,7 +83,7 @@ export interface LoadedReviewAdapterConfig {
   modelConfig: ResolvedModelConfig;
   maxSteps: number;
   filesPerWorker: number;
-  daemonPrompt?: string;
+  classicPrompt?: string;
 }
 
 export function loadValidatedConfig(configPath?: string): MesaConfig {
@@ -177,7 +177,7 @@ export function loadReviewAdapterConfig(configPath?: string): LoadedReviewAdapte
     },
     maxSteps: config.review.max_steps,
     filesPerWorker: config.review.files_per_batch,
-    daemonPrompt: config.review.daemon_prompt,
+    classicPrompt: config.review.classic_prompt,
   };
 }
 

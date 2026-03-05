@@ -1,5 +1,5 @@
 import type { ReviewEngineOutcome, ReviewProgressEvent, ReviewResult, Violation } from '@mesa/code-review';
-import { loadValidatedConfig, logger, MesaError, runDaemonReview, runReview } from '@mesa/code-review';
+import { loadValidatedConfig, logger, MesaError, runClassicReview, runReview } from '@mesa/code-review';
 import chalk from 'chalk';
 
 const CLI_ACCENT = chalk.hex('#be3c00');
@@ -8,7 +8,7 @@ export interface ReviewCommandOptions {
   base?: string;
   head?: string;
   output: 'console' | 'json';
-  mode?: 'rules' | 'daemon' | 'full';
+  mode?: 'rules' | 'classic' | 'full';
   rules?: string;
   verbose?: boolean;
   config?: string;
@@ -25,47 +25,47 @@ export async function reviewCommand(options: ReviewCommandOptions): Promise<numb
 
   console.log(
     chalk.gray(
-      `Starting Mesa ${mode === 'full' ? 'full' : mode === 'daemon' ? 'daemon' : 'rules'} review comparing ${CLI_ACCENT(baseRef)} → ${CLI_ACCENT(headRef)}.`
+      `Starting Mesa ${mode === 'full' ? 'full' : mode === 'classic' ? 'classic' : 'rules'} review comparing ${CLI_ACCENT(baseRef)} → ${CLI_ACCENT(headRef)}.`
     )
   );
 
-  if (mode === 'daemon') {
-    return runDaemonReviewCli(baseRef, headRef, options);
+  if (mode === 'classic') {
+    return runClassicReviewCli(baseRef, headRef, options);
   }
 
   if (mode === 'full') {
-    const [rulesSettled, daemonSettled] = await Promise.allSettled([
+    const [rulesSettled, classicSettled] = await Promise.allSettled([
       runRulesReviewCli(baseRef, headRef, options, cursorDeeplink),
-      runDaemonReviewCli(baseRef, headRef, options),
+      runClassicReviewCli(baseRef, headRef, options),
     ]);
 
     if (rulesSettled.status === 'rejected') {
       console.error(chalk.red(`\nRules review failed: ${rulesSettled.reason}`));
     }
-    if (daemonSettled.status === 'rejected') {
-      console.error(chalk.red(`\nDaemon review failed: ${daemonSettled.reason}`));
+    if (classicSettled.status === 'rejected') {
+      console.error(chalk.red(`\nClassic review failed: ${classicSettled.reason}`));
     }
 
     const rulesExitCode = rulesSettled.status === 'fulfilled' ? rulesSettled.value : 1;
-    const daemonExitCode = daemonSettled.status === 'fulfilled' ? daemonSettled.value : 1;
-    return Math.max(rulesExitCode, daemonExitCode);
+    const classicExitCode = classicSettled.status === 'fulfilled' ? classicSettled.value : 1;
+    return Math.max(rulesExitCode, classicExitCode);
   }
 
   return runRulesReviewCli(baseRef, headRef, options, cursorDeeplink);
 }
 
-async function runDaemonReviewCli(baseRef: string, headRef: string, options: ReviewCommandOptions): Promise<number> {
-  console.log(chalk.gray('\nRunning Mesa agent review...'));
+async function runClassicReviewCli(baseRef: string, headRef: string, options: ReviewCommandOptions): Promise<number> {
+  console.log(chalk.gray('\nRunning Mesa classic review...'));
 
-  const result = await runDaemonReview({ baseRef, headRef, configPath: options.config });
+  const result = await runClassicReview({ baseRef, headRef, configPath: options.config });
 
   if (result.findings.length === 0) {
-    console.log(chalk.green('\nDaemon review: No issues found'));
+    console.log(chalk.green('\nClassic review: No issues found'));
     console.log(chalk.gray(`  Model: ${result.model}`));
     return 0;
   }
 
-  console.log(chalk.red(`\nDaemon review: ${result.findings.length} issue(s) found`));
+  console.log(chalk.red(`\nClassic review: ${result.findings.length} issue(s) found`));
   console.log(chalk.gray(`  Model: ${result.model}`));
 
   if (options.output === 'json') {

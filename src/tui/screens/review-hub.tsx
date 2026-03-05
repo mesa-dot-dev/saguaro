@@ -70,8 +70,8 @@ export function ReviewHubScreen() {
 
   const menuOptions: SelectOption[] = [
     { name: 'Rules', description: `Rules review on ${currentBranch} against ${defaultBranch}` },
-    { name: 'Daemon', description: `Agentic staff-engineer review on ${currentBranch}` },
-    { name: 'Full', description: `Run both rules + daemon reviews on ${currentBranch}` },
+    { name: 'Classic', description: `Agentic staff-engineer review on ${currentBranch}` },
+    { name: 'Full', description: `Run both rules + classic reviews on ${currentBranch}` },
     { name: 'Branch', description: `Review ${currentBranch} against a specific base branch` },
     { name: 'Index', description: 'Build the codebase import graph' },
   ];
@@ -82,8 +82,8 @@ export function ReviewHubScreen() {
       case 'Rules':
         navigate({ screen: 'review', mode: 'rules' });
         break;
-      case 'Daemon':
-        navigate({ screen: 'review', mode: 'daemon' });
+      case 'Classic':
+        navigate({ screen: 'review', mode: 'classic' });
         break;
       case 'Full':
         navigate({ screen: 'review', mode: 'full' });
@@ -112,8 +112,8 @@ export function ReviewHubScreen() {
         <text fg={theme.textDim}> </text>
         <text fg={theme.textDim}>Or enter slash commands:</text>
         <text fg={theme.textDim}> /review local Run rules review with defaults</text>
-        <text fg={theme.textDim}> /review daemon Run agentic staff-engineer review</text>
-        <text fg={theme.textDim}> /review full Run both rules + Mesa classic reviews</text>
+        <text fg={theme.textDim}> /review classic Run agentic staff-engineer review</text>
+        <text fg={theme.textDim}> /review full Run both rules + classic reviews</text>
         <text fg={theme.textDim}> /review branch --base main Review against a base branch</text>
         <text fg={theme.textDim}> /review index Build the import graph</text>
       </box>

@@ -16,10 +16,10 @@ export function createMesaMcpServer(): McpServer {
         base_branch: z.string().default('main').describe('Branch to diff against'),
         head_branch: z.string().default('HEAD').describe('Branch or ref to review (defaults to HEAD)'),
         mode: z
-          .enum(['rules', 'daemon', 'full'])
+          .enum(['rules', 'classic', 'full'])
           .default('rules')
           .describe(
-            'Review mode: "rules" for rules-based review, "daemon" for agentic staff-engineer review, "full" for both'
+            'Review mode: "rules" for rules-based review, "classic" for agentic staff-engineer review, "full" for both'
           ),
       },
     },

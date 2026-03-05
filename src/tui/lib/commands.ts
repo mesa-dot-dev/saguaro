@@ -44,12 +44,12 @@ export const commands: Command[] = [
     name: 'review',
     description: 'Run reviews and build index',
     category: 'review',
-    subcommands: ['local', 'daemon', 'full', 'branch', 'index'],
+    subcommands: ['local', 'classic', 'full', 'branch', 'index'],
     route: (args) => {
       const sub = args[0];
       if (!sub) return { screen: 'review-hub' };
       if (sub === 'local') return { ...parseReviewArgs(args.slice(1)), mode: undefined };
-      if (sub === 'daemon') return { ...parseReviewArgs(args.slice(1)), mode: 'daemon' as const };
+      if (sub === 'classic') return { ...parseReviewArgs(args.slice(1)), mode: 'classic' as const };
       if (sub === 'full') return { ...parseReviewArgs(args.slice(1)), mode: 'full' as const };
       if (sub === 'branch') return parseReviewArgs(args.slice(1));
       if (sub === 'index') return { screen: 'index' };
