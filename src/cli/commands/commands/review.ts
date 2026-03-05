@@ -55,9 +55,17 @@ export async function reviewCommand(options: ReviewCommandOptions): Promise<numb
 }
 
 async function runClassicReviewCli(baseRef: string, headRef: string, options: ReviewCommandOptions): Promise<number> {
-  console.log(chalk.gray('\nRunning Mesa classic review...'));
+  const spinner = new CliSpinner('Running classic review...');
+  spinner.start();
 
-  const result = await runClassicReview({ baseRef, headRef, configPath: options.config });
+  let result: Awaited<ReturnType<typeof runClassicReview>>;
+  try {
+    result = await runClassicReview({ baseRef, headRef, configPath: options.config });
+  } catch (error) {
+    spinner.stop();
+    throw error;
+  }
+  spinner.stop();
 
   if (result.findings.length === 0) {
     console.log(chalk.green('\nClassic review: No issues found'));
@@ -277,6 +285,41 @@ class ReviewCliProgressReporter {
   private getSpinnerText(): string {
     const workers = Math.max(this.totalWorkers, 0);
     return `Reviewing files... ${this.completedWorkers} of ${workers} batches complete`;
+  }
+}
+
+class CliSpinner {
+  private interval: ReturnType<typeof setInterval> | null = null;
+  private frameIndex = 0;
+  private readonly frames = ['-', '\\', '|', '/'];
+  private readonly text: string;
+
+  constructor(text: string) {
+    this.text = text;
+  }
+
+  start(): void {
+    if (!process.stdout.isTTY) return;
+    this.render();
+    this.interval = setInterval(() => {
+      this.frameIndex = (this.frameIndex + 1) % this.frames.length;
+      this.render();
+    }, 80);
+  }
+
+  stop(): void {
+    if (this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
+    }
+    if (process.stdout.isTTY) {
+      process.stdout.write('\r\x1b[2K');
+    }
+  }
+
+  private render(): void {
+    const frame = this.frames[this.frameIndex];
+    process.stdout.write(`\r\x1b[2K${CLI_ACCENT(frame)} ${this.text}`);
   }
 }
 
