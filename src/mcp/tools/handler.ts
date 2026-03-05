@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { runDaemonReview } from '../../adapter/daemon-review.js';
 import { runReview } from '../../adapter/review.js';
 import {
   createRuleAdapter,
@@ -244,11 +245,26 @@ async function handleSetModel(args: Record<string, unknown>): Promise<CallToolRe
 async function handleReview(args: Record<string, unknown>): Promise<CallToolResult> {
   const baseRef = (args.base_branch as string) ?? 'main';
   const headRef = (args.head_branch as string) ?? 'HEAD';
+  const mode = (args.mode as string) ?? 'rules';
 
   const configExists = fs.existsSync(path.resolve(process.cwd(), '.mesa', 'config.yaml'));
-  debug('mesa_review called', { baseRef, headRef, cwd: process.cwd(), configExists });
+  debug('mesa_review called', { baseRef, headRef, mode, cwd: process.cwd(), configExists });
 
   const startMs = Date.now();
+
+  switch (mode) {
+    case 'rules':
+      return handleRulesReview(baseRef, headRef, startMs);
+    case 'daemon':
+      return handleDaemonOnlyReview(baseRef, headRef, startMs);
+    case 'full':
+      return handleFullReview(baseRef, headRef, startMs);
+    default:
+      return errorResult(`Invalid mode: ${mode}. Must be "rules", "daemon", or "full".`);
+  }
+}
+
+async function handleRulesReview(baseRef: string, headRef: string, startMs: number): Promise<CallToolResult> {
   const { outcome } = await runReview({
     baseRef,
     headRef,
@@ -259,8 +275,7 @@ async function handleReview(args: Record<string, unknown>): Promise<CallToolResu
     source: 'mcp',
   });
   const durationMs = Date.now() - startMs;
-
-  debug(`mesa_review completed in ${durationMs}ms, outcome: ${outcome.kind}`);
+  debug(`mesa_review (rules) completed in ${durationMs}ms, outcome: ${outcome.kind}`);
 
   switch (outcome.kind) {
     case 'no-changed-files':
@@ -290,6 +305,88 @@ async function handleReview(args: Record<string, unknown>): Promise<CallToolResu
         violations: outcome.result.violations,
       });
   }
+}
+
+async function handleDaemonOnlyReview(baseRef: string, headRef: string, startMs: number): Promise<CallToolResult> {
+  const result = await runDaemonReview({ baseRef, headRef });
+  const durationMs = Date.now() - startMs;
+  debug(`mesa_review (daemon) completed in ${durationMs}ms`, {
+    findings: result.findings.length,
+    verdict: result.verdict,
+  });
+
+  return jsonResult({
+    status: 'reviewed',
+    mode: 'daemon',
+    daemon_review: {
+      findings: result.findings,
+      verdict: result.verdict,
+      model: result.model,
+    },
+  });
+}
+
+async function handleFullReview(baseRef: string, headRef: string, startMs: number): Promise<CallToolResult> {
+  const [rulesSettled, daemonSettled] = await Promise.allSettled([
+    runReview({
+      baseRef,
+      headRef,
+      verbose: true,
+      onProgress: (event) => {
+        debug('review-progress', event);
+      },
+      source: 'mcp',
+    }),
+    runDaemonReview({ baseRef, headRef }),
+  ]);
+  const durationMs = Date.now() - startMs;
+  debug(`mesa_review (full) completed in ${durationMs}ms`);
+
+  // If both failed, surface the errors
+  if (rulesSettled.status === 'rejected' && daemonSettled.status === 'rejected') {
+    return errorResult(`Both reviews failed.\nRules: ${rulesSettled.reason}\nDaemon: ${daemonSettled.reason}`);
+  }
+
+  const rulesSection = (() => {
+    if (rulesSettled.status === 'rejected') {
+      debug('rules review failed in full mode', { error: String(rulesSettled.reason) });
+      return { status: 'error' as const, error: String(rulesSettled.reason) };
+    }
+    switch (rulesSettled.value.outcome.kind) {
+      case 'no-changed-files':
+        return { status: 'no-changed-files' as const };
+      case 'no-matching-skills':
+        return {
+          status: 'no-matching-skills' as const,
+          changedFiles: rulesSettled.value.outcome.changedFiles,
+        };
+      case 'reviewed':
+        return {
+          status: 'reviewed' as const,
+          summary: rulesSettled.value.outcome.result.summary,
+          violations: rulesSettled.value.outcome.result.violations,
+        };
+    }
+  })();
+
+  const daemonSection = (() => {
+    if (daemonSettled.status === 'rejected') {
+      debug('mesa classic review failed in full mode', { error: String(daemonSettled.reason) });
+      return { status: 'error' as const, error: String(daemonSettled.reason) };
+    }
+    return {
+      findings: daemonSettled.value.findings,
+      verdict: daemonSettled.value.verdict,
+      model: daemonSettled.value.model,
+    };
+  })();
+
+  return jsonResult({
+    status: 'reviewed',
+    mode: 'full',
+    rules_review: rulesSection,
+    daemon_review: daemonSection,
+  });
 }
 
 function measureResult(result: CallToolResult): { chars: number; contentBlocks: number } {

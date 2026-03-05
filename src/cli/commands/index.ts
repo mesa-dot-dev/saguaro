@@ -124,6 +124,7 @@ interface ReviewArgv {
   base?: string;
   head?: string;
   output?: 'console' | 'json';
+  mode?: 'rules' | 'daemon' | 'full';
   rules?: string;
   verbose?: boolean;
   debug?: boolean;
@@ -213,6 +214,13 @@ export async function cli(argv: string[]): Promise<boolean> {
           .option('rules', {
             describe: 'Path to rules directory',
             type: 'string',
+          })
+          .option('m', {
+            alias: 'mode',
+            describe: 'Review mode',
+            type: 'string',
+            choices: ['rules', 'daemon', 'full'] as const,
+            default: 'rules',
           });
       },
       wrapHandler(async (argv: ReviewArgv) => {
@@ -233,6 +241,7 @@ export async function cli(argv: string[]): Promise<boolean> {
           base: argv.base,
           head: argv.head,
           output: argv.output ?? 'console',
+          mode: argv.mode ?? 'rules',
           rules: argv.rules,
           verbose: argv.verbose || argv.debug,
           config: argv.config,

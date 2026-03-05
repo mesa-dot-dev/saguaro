@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useState } from 'react';
 export type Route =
   | { screen: 'home' }
   | { screen: 'review-hub' }
-  | { screen: 'review'; baseRef?: string; headRef?: string }
+  | { screen: 'review'; baseRef?: string; headRef?: string; mode?: 'rules' | 'daemon' | 'full' }
   | { screen: 'review-results'; result: ReviewResult }
   | { screen: 'rules' }
   | { screen: 'rules-list' }

@@ -35,7 +35,7 @@ export function getMcpJsonConfig(): McpJsonConfig {
   // Dev mode: node/bun running the script directly.
   const scriptPath = process.argv[1] ?? '';
   const homebrew = isHomebrewPath(scriptPath);
-  const command = homebrew ? 'mesa' : 'node';
+  const command = homebrew ? 'mesa' : 'bun';
   const args = homebrew ? ['serve'] : [scriptPath, 'serve'];
 
   return {

@@ -11,11 +11,25 @@ export function getMcpSkillFiles(): McpSkillFile[] {
       skillFilePath: 'mesa-review/SKILL.md',
       content: `---
 name: mesa-review
-description: Run Mesa code review on current changes against defined rules
+description: Run Mesa code review on current changes
 ---
-Use the mesa_review MCP tool to review the current changes against the base branch.
-Present violations grouped by severity with file paths and line numbers.
-If no violations are found, confirm the changes look clean.
+## Flow
+
+1. **Choose review mode** — Use \`AskUserQuestion\` to ask the user which type of review to run:
+   - **Rules** — Review against defined rules in .mesa/rules/
+   - **Daemon** — Agentic staff-engineer review (bugs, security, regressions, dead code, performance)
+   - **Both** — Run both reviews and present combined findings
+
+2. **Run the review** — Call the \`mesa_review\` MCP tool with:
+   - \`mode\`: "rules", "daemon", or "full" based on the user's choice
+   - \`base_branch\`: defaults to "main" (ask only if the user specifies a different branch)
+   - \`head_branch\`: defaults to "HEAD"
+
+3. **Present results** —
+   - **Rules mode**: Group violations by severity (error → warning → info) with file paths and line numbers.
+   - **Daemon mode**: Show findings grouped by category with severity and file locations.
+   - **Both mode**: Present rules violations first under a "Rules Review" heading, then daemon findings under a "Staff Engineer Review" heading.
+   - If no issues are found in either review, confirm the changes look clean.
 `,
     },
     {

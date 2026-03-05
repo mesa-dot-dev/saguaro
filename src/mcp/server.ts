@@ -11,10 +11,16 @@ export function createMesaMcpServer(): McpServer {
     'mesa_review',
     {
       description:
-        'Run a code review against defined rules. Returns violations found in the current changes. Only call this tool when the user explicitly asks for a review. Do NOT call it proactively before or after making edits — the review hook handles that automatically.',
+        'Run a code review on current changes. Supports three modes: rules-based review against defined rules, Mesa classic review (staff-engineer quality check), or both combined. Only call this tool when the user explicitly asks for a review. Do NOT call it proactively before or after making edits — the review hook handles that automatically.',
       inputSchema: {
         base_branch: z.string().default('main').describe('Branch to diff against'),
         head_branch: z.string().default('HEAD').describe('Branch or ref to review (defaults to HEAD)'),
+        mode: z
+          .enum(['rules', 'daemon', 'full'])
+          .default('rules')
+          .describe(
+            'Review mode: "rules" for rules-based review, "daemon" for agentic staff-engineer review, "full" for both'
+          ),
       },
     },
     (args) => handleToolCall('mesa_review', args)

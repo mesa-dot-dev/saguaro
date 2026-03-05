@@ -32,7 +32,7 @@ function ScreenRouter() {
     case 'review-hub':
       return <ReviewHubScreen />;
     case 'review':
-      return <ReviewScreen baseRef={route.baseRef} headRef={route.headRef} />;
+      return <ReviewScreen baseRef={route.baseRef} headRef={route.headRef} mode={route.mode} />;
     case 'review-results':
       return <ReviewResultsScreen result={route.result} />;
     case 'rules':

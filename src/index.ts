@@ -2,6 +2,7 @@
 // Public types
 // ---------------------------------------------------------------------------
 
+export * from './adapter/daemon-review.js';
 // ---------------------------------------------------------------------------
 // Adapters (primary API surface for packages/cli and TUI)
 // ---------------------------------------------------------------------------
@@ -48,6 +49,8 @@ export {
   formatFindingsForAgent,
   postReviewToDaemon,
 } from './daemon/hook-client.js';
+export type { StaffEngineerPromptOptions } from './daemon/prompt.js';
+export { buildStaffEngineerPrompt, parseFindings, stripDiffContext } from './daemon/prompt.js';
 export { MesaDaemon } from './daemon/server.js';
 export { DaemonStore } from './daemon/store.js';
 // ---------------------------------------------------------------------------

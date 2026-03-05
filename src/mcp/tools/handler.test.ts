@@ -273,3 +273,15 @@ describe('mesa_review', () => {
     });
   });
 });
+
+describe('mesa_review mode parameter', () => {
+  test('lists mode in mesa_review tool schema', async () => {
+    const { client } = await createTestClient();
+    const tools = await client.listTools();
+    const reviewTool = tools.tools.find((t) => t.name === 'mesa_review');
+    expect(reviewTool).toBeDefined();
+    const schema = reviewTool!.inputSchema as Record<string, unknown>;
+    const properties = schema.properties as Record<string, unknown>;
+    expect(properties.mode).toBeDefined();
+  });
+});
