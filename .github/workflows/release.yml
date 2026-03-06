@@ -1,0 +1,214 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (skip publish steps)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  BUN_VERSION: "1.3.1"
+
+jobs:
+  detect:
+    name: Detect Version Change
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.detect.outputs.should_release }}
+      version: ${{ steps.detect.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: detect
+        run: |
+          current=$(node -e 'process.stdout.write(require("./package.json").version)')
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            previous=$(git show HEAD^:package.json | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>process.stdout.write(JSON.parse(d).version))')
+          else
+            previous=""
+          fi
+          should_release="false"
+          if [ "$current" != "$previous" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            should_release="true"
+          fi
+          echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
+          echo "version=$current" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: detect
+    if: needs.detect.outputs.should_release == 'true'
+    strategy:
+      matrix:
+        include:
+          - target: darwin-arm64
+            os: macos-latest
+          - target: darwin-x64
+            os: macos-13
+          - target: linux-x64
+            os: ubuntu-latest
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+
+      - name: Build binary
+        run: |
+          version="${{ needs.detect.outputs.version }}"
+          bun build src/cli/bin.tsx --compile --minify \
+            --define "__MESA_VERSION__=\"$version\"" \
+            --external @swc/wasm \
+            --outfile mesa
+
+      - name: Package
+        run: |
+          version="${{ needs.detect.outputs.version }}"
+          target="${{ matrix.target }}"
+          tarball="mesa-review-${version}-${target}.tar.gz"
+          chmod +x mesa
+
+          mkdir -p wasm
+          cp node_modules/web-tree-sitter/tree-sitter.wasm wasm/
+          for lang in python go rust java kotlin; do
+            cp "node_modules/tree-sitter-wasms/out/tree-sitter-${lang}.wasm" wasm/
+          done
+
+          tar -czf "$tarball" mesa wasm/
+          shasum -a 256 "$tarball" > "$tarball.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: |
+            mesa-review-*.tar.gz
+            mesa-review-*.tar.gz.sha256
+
+  publish-npm:
+    name: Publish to npm
+    needs: [detect, build]
+    if: github.event.inputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-github:
+    name: Create GitHub Release
+    needs: [detect, build]
+    if: github.event.inputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      darwin_arm64_url: ${{ steps.urls.outputs.darwin_arm64_url }}
+      darwin_arm64_sha: ${{ steps.urls.outputs.darwin_arm64_sha }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${{ needs.detect.outputs.version }}"
+          tag="v${version}"
+          gh release create "$tag" \
+            mesa-review-*.tar.gz \
+            mesa-review-*.tar.gz.sha256 \
+            --title "v${version}" \
+            --generate-notes \
+            -R "${{ github.repository }}"
+
+      - name: Export Homebrew URLs
+        id: urls
+        run: |
+          version="${{ needs.detect.outputs.version }}"
+          tag="v${version}"
+          base="https://github.com/${{ github.repository }}/releases/download/${tag}"
+          sha=$(cat "mesa-review-${version}-darwin-arm64.tar.gz.sha256" | awk '{print $1}')
+          echo "darwin_arm64_url=${base}/mesa-review-${version}-darwin-arm64.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "darwin_arm64_sha=${sha}" >> "$GITHUB_OUTPUT"
+
+  update-homebrew:
+    name: Update Homebrew Tap
+    needs: [detect, publish-github]
+    if: github.event.inputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update Homebrew formula
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          version="${{ needs.detect.outputs.version }}"
+          url="${{ needs.publish-github.outputs.darwin_arm64_url }}"
+          sha="${{ needs.publish-github.outputs.darwin_arm64_sha }}"
+
+          gh repo clone mesa-dot-dev/homebrew-tap /tmp/tap -- --depth=1
+          cd /tmp/tap
+          git config user.name "mesa-ci[bot]"
+          git config user.email "ci-bot@mesa.dev"
+
+          cat > Formula/code-review.rb <<RUBY
+          class CodeReview < Formula
+            desc "Mesa code review CLI"
+            homepage "https://mesa.dev"
+            url "${url}"
+            sha256 "${sha}"
+            license "Apache-2.0"
+            version "${version}"
+
+            depends_on arch: :arm64
+
+            def install
+              bin.install "mesa"
+              (bin/"wasm").install Dir["wasm/*"]
+            end
+
+            test do
+              assert_match "mesa", shell_output("#{bin}/mesa --help")
+            end
+          end
+          RUBY
+
+          git add Formula/code-review.rb
+          git commit -m "code-review ${version}"
+          git push

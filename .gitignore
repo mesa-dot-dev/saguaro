@@ -6,3 +6,4 @@ dist/
 *.tgz
 .mesa/.tmp/
 bun.lockb
+.mesa/history/
