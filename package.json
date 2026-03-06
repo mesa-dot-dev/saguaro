@@ -1,5 +1,5 @@
 {
-  "name": "mesa-review",
+  "name": "@mesadev/code-review",
   "version": "0.3.8",
   "description": "AI code review that enforces your team's rules during development",
   "license": "Apache-2.0",

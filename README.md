@@ -1,4 +1,4 @@
-[![npm version](https://img.shields.io/npm/v/mesa-review)](https://www.npmjs.com/package/mesa-review)
+[![npm version](https://img.shields.io/npm/v/@mesadev/code-review)](https://www.npmjs.com/package/@mesadev/code-review)
 [![CI](https://github.com/mesa-dot-dev/code-review/actions/workflows/ci.yml/badge.svg)](https://github.com/mesa-dot-dev/code-review/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
@@ -23,13 +23,13 @@ brew install mesa-dot-dev/homebrew-tap/code-review
 ### npm
 
 ```bash
-npm install -g mesa-review
+npm install -g @mesadev/code-review
 ```
 
 Or run without installing:
 
 ```bash
-npx mesa-review review
+npx @mesadev/code-review review
 ```
 
 ### GitHub Releases
