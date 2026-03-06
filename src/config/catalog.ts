@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import yaml from 'js-yaml';
+import { parseDocument } from 'yaml';
 import { findRepoRoot } from '../git/git.js';
 import { getEnvKey, upsertEnvValue } from './env.js';
 import type { ModelProvider } from './model-config.js';
@@ -211,21 +212,16 @@ export function setModel(provider: ModelProvider, modelName: string, options?: {
   const repoRoot = findRepoRoot();
   const configPath = path.resolve(repoRoot, '.mesa', 'config.yaml');
 
-  // Read existing config and preserve other fields
-  let existing: Record<string, unknown> = {};
   if (fs.existsSync(configPath)) {
-    const contents = fs.readFileSync(configPath, 'utf8');
-    const parsed = yaml.load(contents);
-    if (parsed && typeof parsed === 'object') {
-      existing = parsed as Record<string, unknown>;
-    }
+    const doc = parseDocument(fs.readFileSync(configPath, 'utf8'));
+    doc.setIn(['model', 'provider'], provider);
+    doc.setIn(['model', 'name'], modelName);
+    fs.writeFileSync(configPath, doc.toString());
+  } else {
+    const output = yaml.dump({ model: { provider, name: modelName } }, { lineWidth: -1 });
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(configPath, output);
   }
-
-  existing.model = { provider, name: modelName };
-
-  const output = yaml.dump(existing, { lineWidth: -1 });
-  fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  fs.writeFileSync(configPath, output);
 
   if (options?.apiKey) {
     const envLocalPath = path.resolve(repoRoot, '.env.local');

@@ -145,30 +145,41 @@ describe('setModel', () => {
     });
   });
 
-  test('updates config preserving other fields', () => {
+  test('updates config preserving other fields and comments', () => {
     withTempRepo((root) => {
       const mesaDir = path.join(root, '.mesa');
       fs.mkdirSync(mesaDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(mesaDir, 'config.yaml'),
-        yaml.dump({
-          model: { provider: 'anthropic', name: 'claude-opus-4-6' },
-          review: { max_steps: 10, files_per_batch: 2 },
-        })
-      );
+      const configPath = path.join(mesaDir, 'config.yaml');
+      const original = [
+        '# Mesa Configuration',
+        'model:',
+        '  provider: anthropic',
+        '  name: claude-opus-4-6',
+        '',
+        '# Review settings',
+        'review:',
+        '  max_steps: 10',
+        '',
+      ].join('\n');
+      fs.writeFileSync(configPath, original);
 
       setModel('openai', 'gpt-5.2-codex');
 
-      const parsed = yaml.load(fs.readFileSync(path.join(mesaDir, 'config.yaml'), 'utf8')) as Record<string, unknown>;
+      const raw = fs.readFileSync(configPath, 'utf8');
 
+      // Comments must survive
+      expect(raw).toContain('# Mesa Configuration');
+      expect(raw).toContain('# Review settings');
+
+      // Values must be updated
+      const parsed = yaml.load(raw) as Record<string, unknown>;
       const model = parsed.model as { provider: string; name: string };
       expect(model.provider).toBe('openai');
       expect(model.name).toBe('gpt-5.2-codex');
 
-      // review settings should be preserved
-      const review = parsed.review as { max_steps: number; files_per_batch: number };
+      // Other sections must be preserved
+      const review = parsed.review as { max_steps: number };
       expect(review.max_steps).toBe(10);
-      expect(review.files_per_batch).toBe(2);
     });
   });
 

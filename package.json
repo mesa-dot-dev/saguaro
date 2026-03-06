@@ -53,6 +53,7 @@
     "react": "^19.0.0",
     "tree-sitter-wasms": "^0.1.13",
     "web-tree-sitter": "0.25.10",
+    "yaml": "^2.8.2",
     "yargs": "^18.0.0",
     "zod": "^4.3.6"
   },
