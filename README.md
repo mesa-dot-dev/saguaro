@@ -4,13 +4,7 @@
 
 # Mesa Code Review CLI
 
-AI code reviewers leave comments on your PR after the agent that wrote the code is gone. You end up as the middleman between two AIs that never met each other.
-
-Mesa takes a different approach. You define your team's rules as markdown files in your repo. Mesa runs those rules **during development** — inside your coding agent's session, while it still has full context. If the agent violates a rule, it fixes it immediately. By the time you look at the diff, the problem is already gone.
-
-No PR comments. No noise. Silent unless something breaks a rule. You bring your own API key.
-
-<!-- Read the full story: https://mesa.dev/blog/code-review-built-for-slower-world -->
+Rules enforced inside Claude Code, Codex, and Cursor. Your agent fixes its own mistakes while context is hot. Free. Apache 2.0.
 
 ## Install
 
@@ -56,38 +50,27 @@ mesa review
 `mesa init` walks you through setup:
 - Creates `.mesa/config.yaml` and `.mesa/rules/`
 - Offers three options: generate rules from your codebase, use starter rules, or start from scratch
-- Sets up Claude Code integration automatically (MCP server, stop hook, slash commands)
+- Sets up Claude Code integration automatically (MCP server, hooks, slash commands)
 - Stores your API key in `.env.local` if provided
 
 ## How It Works
 
-```
-Your rules (.mesa/rules/*.md)
-     +
-Git diff (base..HEAD)
-     +
-Codebase context (import graph, blast radius)
-     ↓
-AI checks each changed file against matching rules
-     ↓
-Violations found -> prints them, exits 1
-Nothing found -> silence, exits 0
-```
+1. **Match rules to files** — Rules load from `.mesa/rules/` as markdown with YAML frontmatter. Changed files match against rule globs using minimatch. Rules without globs apply to all changed files.
+2. **Gather context** — Mesa builds an import graph (tree-sitter + SWC) showing the "blast radius" — files that depend on your changes and files your changes depend on. Context is token-budgeted so reviews stay fast.
+3. **AI review per file** — Changed files batch together (configurable via `files_per_batch`). An AI agent checks each batch against matched rules with the diff and context. If a rule is violated, Mesa prints it. If nothing is wrong, silence.
 
-1. Mesa loads your rules from `.mesa/rules/`
-2. It diffs your current branch against the base (default: `main`)
-3. For each changed file, it finds rules whose globs match
-4. It builds codebase context — an import graph showing the "blast radius" (files that import from your changes and files your changes depend on)
-5. An AI agent reviews each file against the matched rules, with the diff and context
-6. If a rule is violated, Mesa prints the violation. If nothing is wrong, Mesa says nothing.
+Violations exit 1. Clean reviews exit 0.
 
 ## Claude Code Integration
 
-`mesa init` sets up three things for Claude Code automatically:
+`mesa init` sets up three things automatically:
 
-### Stop Hook (automatic review)
+### Hooks
 
-Every time Claude Code finishes writing code, Mesa reviews the uncommitted changes. If violations are found, Claude is blocked and asked to fix them before completing.
+Two hooks install into `.claude/settings.json`:
+
+- **PreToolUse** — Fires before `Edit` and `Write` tool calls. Injects relevant rules so Claude knows your team's conventions before writing code.
+- **Stop** — Fires when Claude finishes a turn. Mesa diffs uncommitted changes against the base branch and reviews them. Violations block Claude and ask it to fix before completing.
 
 ```bash
 mesa hook install    # Enable (done by mesa init)
@@ -96,17 +79,45 @@ mesa hook uninstall  # Disable
 
 ### MCP Server
 
-Mesa registers as an MCP server via `.mcp.json`. Claude Code discovers it on startup and gains access to Mesa's tools (review, create rules, generate rules, etc.).
+Mesa registers as an MCP server via `.mcp.json`. Claude Code discovers it on startup and gains access to Mesa's tools (review, create rules, generate rules).
 
 ### Slash Commands
-
-Available inside Claude Code after `mesa init`:
 
 | Command | What it does |
 |---------|-------------|
 | `/mesa-review` | Run a code review manually |
 | `/mesa-createrule` | Create a new rule with AI assistance |
 | `/mesa-generaterules` | Auto-generate rules from your codebase |
+
+## Other Agents
+
+Mesa works with any coding agent. The CLI is agent-agnostic.
+
+| Agent | Integration |
+|-------|-------------|
+| **Codex CLI** | Run `mesa review` manually or in CI |
+| **Gemini CLI** | Same CLI and rules |
+| **Cursor** | JSON output with deeplinks to violations (`--output json`, `cursor_deeplink: true` in config) |
+| **CI pipelines** | `mesa review --base origin/main` — exits 1 on violations |
+
+## Background Daemon
+
+For long-running agent sessions, the daemon reviews changes asynchronously without blocking your agent.
+
+```bash
+mesa daemon start   # Start the review daemon
+mesa daemon stop    # Stop it
+```
+
+The daemon runs an HTTP server with a SQLite-backed job queue and worker pool. The stop hook posts diffs to the daemon instead of running reviews inline. Workers claim jobs, spawn AI agents, and store results. The hook client polls for completion.
+
+Daemon configuration in `.mesa/config.yaml`:
+
+```yaml
+daemon:
+  workers: 2           # Concurrent review workers
+  idle_timeout: 1800   # Seconds before auto-shutdown
+```
 
 ## Rules
 
@@ -148,7 +159,9 @@ logger.info("Processing order", { orderId });
 | `severity` | Yes | `error` (blocks, exit 1), `warning` (logged), or `info` |
 | `globs` | No | File patterns to match. Default: all files. Prefix `!` to exclude. |
 
-The markdown body contains the instructions the AI uses to evaluate the rule, plus optional `### Violations` and `### Compliant` sections with code examples.
+The markdown body is the instruction the AI uses to evaluate the rule. Include `### Violations` and `### Compliant` sections with code examples.
+
+Mesa reviews any text file — rules are language-agnostic. The import graph supports TypeScript, JavaScript, Python, Go, Rust, Java, and Kotlin.
 
 For a deep dive on writing effective rules, see [Writing Rules](plans/writing-rules.md).
 
@@ -156,7 +169,7 @@ For a deep dive on writing effective rules, see [Writing Rules](plans/writing-ru
 
 | Command | Description |
 |---------|-------------|
-| `mesa init` | Set up Mesa in your repo (config, rules, hooks, Claude Code integration) |
+| `mesa init` | Set up Mesa in your repo (config, rules, hooks, integrations) |
 | `mesa review` | Review code changes against your rules |
 | `mesa rules generate` | Auto-generate rules by analyzing your codebase |
 | `mesa rules create [dir]` | Create a new rule with AI assistance, scoped to a directory |
@@ -170,6 +183,9 @@ For a deep dive on writing effective rules, see [Writing Rules](plans/writing-ru
 | `mesa index` | Build the import graph for richer review context |
 | `mesa hook install` | Enable automatic reviews in Claude Code |
 | `mesa hook uninstall` | Disable automatic reviews |
+| `mesa daemon start` | Start the background review daemon |
+| `mesa daemon stop` | Stop the background review daemon |
+| `mesa model` | Switch AI provider and model interactively |
 | `mesa stats` | Show review history and cost analytics |
 
 ### `mesa review` Options
@@ -198,7 +214,7 @@ mesa rules create [target]
 
 ## Configuration
 
-`.mesa/config.yaml` is created by `mesa init`. Here's the full reference:
+`.mesa/config.yaml` is created by `mesa init`:
 
 ```yaml
 # AI model for reviews
@@ -218,6 +234,11 @@ review:
 # Claude Code stop hook
 hook:
   enabled: true              # Auto-review when Claude Code finishes writing
+
+# Background daemon
+daemon:
+  workers: 2                 # Concurrent review workers
+  idle_timeout: 1800         # Seconds before auto-shutdown
 
 # Import graph indexing (richer cross-file context)
 # index:
@@ -240,11 +261,7 @@ mesa review --base origin/main
 
 **How is this different from CodeRabbit / Greptile / etc?**
 
-Those tools are AI reviewers that comment on your PRs. Mesa is a rules engine. You define what matters to your team, Mesa enforces it. No noise, no generic suggestions, no "consider adding a docstring" comments. If nothing is violated, you hear nothing.
-
-**How is this different from Mesa's hosted code review?**
-
-Mesa's hosted review at [mesa.dev/features/code-review](https://www.mesa.dev/features/code-review) is a traditional AI reviewer that comments on PRs. This CLI is a complementary tool — it enforces your team's specific rules locally during development, before code ever reaches a PR.
+Those tools are AI reviewers that comment on your PRs. Mesa is a rules engine. You define what matters to your team, Mesa enforces it during development — not after the code is already in a PR. No noise, no generic suggestions. If nothing is violated, you hear nothing.
 
 **How much does it cost?**
 
@@ -252,11 +269,27 @@ You use your own API key. Cost depends on your model choice, codebase size, numb
 
 **Can I use it without Claude Code?**
 
-Yes. The CLI works standalone. Run `mesa review` from any terminal or CI pipeline. The Claude Code integration (hook, MCP, slash commands) is optional.
+Yes. The CLI works standalone. Run `mesa review` from any terminal or CI pipeline. The Claude Code integration (hooks, MCP, slash commands) is optional.
 
 **Where does my data go?**
 
-Nowhere. Mesa runs locally. Your code is sent to the AI provider you configure (Anthropic, OpenAI, Google) for review. Review history is stored locally in `.mesa/history/reviews.jsonl`.
+Nowhere. Mesa runs locally. Your code is sent to the AI provider you configure (Anthropic, OpenAI, Google) for review. Nothing touches Mesa's servers.
+
+**What languages are supported?**
+
+Mesa reviews any text file — rules are language-agnostic. The import graph supports TypeScript, JavaScript, Python, Go, Rust, Java, and Kotlin.
+
+**Can I use it in CI?**
+
+Yes. `mesa review --base origin/main` exits 1 if violations are found. Use `--output json` for structured output.
+
+**What AI providers are supported?**
+
+Anthropic (Claude), OpenAI (GPT-4o, o3), and Google (Gemini).
+
+**What's the background daemon?**
+
+An optional async review system for long-running agent sessions. Reviews run in parallel without blocking your agent. See [Background Daemon](#background-daemon).
 
 ## License
 

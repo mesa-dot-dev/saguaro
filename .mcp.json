@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "mesa": {
+      "type": "stdio",
+      "command": "mesa",
+      "args": [
+        "serve"
+      ]
+    }
+  }
+}

@@ -1,0 +1,49 @@
+# Mesa Configuration
+# =============================================================================
+# Model Configuration
+# =============================================================================
+# The AI model to use for reviews. Set API keys in your environment
+# (.env.local, .env, or shell export).
+
+model:
+  provider: anthropic
+  name: opus
+
+# =============================================================================
+# Output Configuration
+# =============================================================================
+
+output:
+  # Print Cursor deeplink when violations are found
+  cursor_deeplink: true
+
+# =============================================================================
+# Review Settings
+# =============================================================================
+
+review:
+  # Maximum tool-calling steps per review batch
+  max_steps: 10
+
+# =============================================================================
+# Hook Settings
+# =============================================================================
+
+hook:
+  # Master switch for all Mesa hooks
+  enabled: true
+
+  # Stop hook: full LLM review after Claude finishes writing code
+  # The PreToolUse hook injects rules proactively, so this is opt-in
+  stop:
+    enabled: false
+
+# =============================================================================
+# Background Reviews
+# =============================================================================
+# Automatically reviews your changes as you code and reports findings
+# before you finish. No extra setup required.
+
+daemon:
+  enabled: true
+  workers: 2
