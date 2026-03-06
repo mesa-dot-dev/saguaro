@@ -4,7 +4,7 @@ import {
   createGeminiCliRunner,
   isCliAuthenticated,
 } from '../ai/agent-runner.js';
-import { loadValidatedConfig, type ModelProvider } from '../config/model-config.js';
+import { loadValidatedConfig, type ModelProvider, resolveModelForReview } from '../config/model-config.js';
 import type { AgentRunner } from '../core/types.js';
 import { buildStaffEngineerPrompt, parseFindings, stripDiffContext } from '../daemon/prompt.js';
 import type { Finding } from '../daemon/store.js';
@@ -26,7 +26,7 @@ export interface ClassicReviewResult {
 
 export async function runClassicReview(request: ClassicReviewRequest): Promise<ClassicReviewResult> {
   const config = loadValidatedConfig(request.configPath);
-  const modelName = config.model.name;
+  const modelName = resolveModelForReview(config, 'classic');
   const model = modelName === 'default' ? undefined : modelName;
 
   const changedFiles = listChangedFilesFromGit(request.baseRef, request.headRef);

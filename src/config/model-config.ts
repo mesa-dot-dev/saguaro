@@ -7,6 +7,7 @@ import type { LanguageModel } from 'ai';
 import dotenv from 'dotenv';
 import yaml from 'js-yaml';
 import { z } from 'zod';
+import type { AgentName } from '../daemon/agent-cli.js';
 import { findRepoRoot } from '../git/git.js';
 import { ApiKeyMissingError, ConfigInvalidError, ConfigMissingError } from '../util/errors.js';
 import { logger } from '../util/logger.js';
@@ -28,10 +29,16 @@ const IndexSchema = z.object({
   max_blast_radius_files: z.number().int().positive().default(100),
 });
 
+const ReviewKindSchema = z.object({
+  model: z.string().optional(),
+});
+
 const ReviewSchema = z.object({
   max_steps: z.number().int().positive().default(10),
   files_per_batch: z.number().int().positive().default(2),
   classic_prompt: z.string().optional(),
+  rules: ReviewKindSchema.optional(),
+  classic: ReviewKindSchema.optional(),
 });
 
 const HookSchema = z.object({
@@ -47,7 +54,6 @@ const DaemonSchema = z.object({
   enabled: z.boolean().default(false),
   workers: z.number().int().positive().max(2).default(1),
   idle_timeout: z.number().int().positive().default(1800),
-  agent: z.string().default('auto'),
   model: z.string().optional(),
 });
 
@@ -57,7 +63,6 @@ export const MesaConfigSchema = z
       provider: ModelProviderSchema,
       name: z.string().min(1, 'model.name must not be empty'),
     }),
-    api_keys: z.record(z.string(), z.string()).optional(),
     output: OutputSchema.default(() => OutputSchema.parse({})),
     index: IndexSchema.default(() => IndexSchema.parse({})),
     review: ReviewSchema.default(() => ReviewSchema.parse({})),
@@ -68,6 +73,43 @@ export const MesaConfigSchema = z
 
 export type MesaConfig = z.infer<typeof MesaConfigSchema>;
 export type ModelProvider = z.infer<typeof ModelProviderSchema>;
+
+export type ReviewKind = 'rules' | 'classic' | 'daemon';
+
+export function resolveModelForReview(config: MesaConfig, kind: ReviewKind): string {
+  switch (kind) {
+    case 'rules':
+      return config.review.rules?.model ?? config.model.name;
+    case 'classic':
+      return config.review.classic?.model ?? config.model.name;
+    case 'daemon':
+      return config.daemon?.model ?? config.model.name;
+  }
+}
+
+const PROVIDER_CLI_MAP: Record<ModelProvider, AgentName> = {
+  anthropic: 'claude',
+  openai: 'codex',
+  google: 'gemini',
+};
+
+export function getCliForProvider(provider: ModelProvider): AgentName {
+  return PROVIDER_CLI_MAP[provider];
+}
+
+/** Known CLI aliases that resolve to the latest version of a model family. */
+const CLI_ALIASES = new Set(['sonnet', 'opus', 'haiku', 'default']);
+
+/**
+ * Format a model name for display. If it's a CLI alias, appends a hint
+ * that it resolves to the latest version.
+ */
+export function formatModelForDisplay(modelName: string): string {
+  if (CLI_ALIASES.has(modelName)) {
+    return `${modelName} (latest)`;
+  }
+  return modelName;
+}
 
 // ---------------------------------------------------------------------------
 // Config loading

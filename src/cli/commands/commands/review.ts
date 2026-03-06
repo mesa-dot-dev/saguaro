@@ -1,5 +1,12 @@
 import type { ReviewEngineOutcome, ReviewProgressEvent, ReviewResult, Violation } from '@mesa/code-review';
-import { loadValidatedConfig, logger, MesaError, runClassicReview, runReview } from '@mesa/code-review';
+import {
+  formatModelForDisplay,
+  loadValidatedConfig,
+  logger,
+  MesaError,
+  runClassicReview,
+  runReview,
+} from '@mesa/code-review';
 import chalk from 'chalk';
 
 const CLI_ACCENT = chalk.hex('#be3c00');
@@ -69,7 +76,7 @@ async function runClassicReviewCli(baseRef: string, headRef: string, options: Re
 
   if (result.findings.length === 0) {
     console.log(chalk.green('\nClassic review: No issues found'));
-    console.log(chalk.gray(`  Model: ${result.model}`));
+    console.log(chalk.gray(`  Model: ${formatModelForDisplay(result.model)}`));
     return 0;
   }
 

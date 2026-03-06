@@ -24,8 +24,10 @@ export function buildConfigContent(opts: ConfigOptions): string {
 # =============================================================================
 # Model Configuration
 # =============================================================================
-# The AI model to use for reviews. Set API keys in your environment
-# (.env.local, .env, or shell export).
+# The AI provider and default model for all reviews.
+# The provider determines which CLI harness is used (claude, codex, gemini).
+# You can use a CLI alias (e.g. "sonnet", "opus") which resolves to the
+# latest version, or a specific model ID (e.g. "claude-sonnet-4-6").
 
 model:
   provider: ${opts.provider}
@@ -46,6 +48,12 @@ output:
 review:
   # Maximum tool-calling steps per review batch
   max_steps: 10
+
+  # Optional per-review-kind model overrides (defaults to model.name above)
+  # rules:
+  #   model: claude-sonnet-4-6
+  # classic:
+  #   model: claude-sonnet-4-6
 
 # =============================================================================
 # Hook Settings
@@ -71,6 +79,8 @@ hook:
 
 daemon:
   enabled: true
+  # Optional model override for background reviews (defaults to model.name above)
+  # model: claude-sonnet-4-6
 `;
   }
 

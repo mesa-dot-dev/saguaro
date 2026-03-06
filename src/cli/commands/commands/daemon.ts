@@ -1,4 +1,4 @@
-import { loadValidatedConfig, MesaDaemon } from '@mesa/code-review';
+import { getCliForProvider, loadValidatedConfig, MesaDaemon, resolveModelForReview } from '@mesa/code-review';
 
 export async function daemonStart(): Promise<number> {
   const existing = MesaDaemon.readPidFile();
@@ -8,11 +8,14 @@ export async function daemonStart(): Promise<number> {
   }
 
   const config = loadValidatedConfig();
+  const cli = getCliForProvider(config.model.provider);
+  const model = resolveModelForReview(config, 'daemon');
+
   const daemon = new MesaDaemon({
     workers: config.daemon?.workers ?? 2,
     idleTimeout: config.daemon?.idle_timeout ?? 1800,
-    agent: config.daemon?.agent ?? 'auto',
-    model: config.daemon?.model ?? 'sonnet',
+    agent: cli,
+    model: model === 'default' ? undefined : model,
   });
 
   const port = await daemon.start();

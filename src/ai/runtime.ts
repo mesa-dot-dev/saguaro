@@ -1,12 +1,16 @@
-import type { MesaConfig } from '../config/model-config.js';
-import { loadValidatedConfig, resolveApiKey, resolveModelFromResolvedConfig } from '../config/model-config.js';
+import type { MesaConfig, ModelProvider } from '../config/model-config.js';
+import { loadValidatedConfig, resolveModelForReview } from '../config/model-config.js';
 import type { AgentRunner, ModelInfo, Reviewer, ReviewRuntime } from '../core/types.js';
 import { getFileAtRef, getRepoRoot, listChangedFilesFromGit } from '../git/git.js';
 import { resolveRulesForFiles } from '../rules/resolution.js';
-import { AgentExecutionError, ConfigMissingError } from '../util/errors.js';
-import { createCodexCliRunner, createGeminiCliRunner, isCliAuthenticated } from './agent-runner.js';
+import { ConfigMissingError } from '../util/errors.js';
+import {
+  createClaudeCliRunner,
+  createCodexCliRunner,
+  createGeminiCliRunner,
+  isCliAuthenticated,
+} from './agent-runner.js';
 import { runCliReview } from './cli-reviewer.js';
-import { runReviewAgent } from './sdk-reviewer.js';
 
 export function createNodeReviewRuntime(options?: { rulesDir?: string }): ReviewRuntime {
   return {
@@ -17,7 +21,6 @@ export function createNodeReviewRuntime(options?: { rulesDir?: string }): Review
       return resolveRulesForFiles(changedFiles, { explicitRulesDir: options?.rulesDir });
     },
     createReviewer(configPath) {
-      // Try loading config. If missing, default to CLI runner.
       let config: MesaConfig | undefined;
       try {
         config = loadValidatedConfig(configPath);
@@ -28,20 +31,11 @@ export function createNodeReviewRuntime(options?: { rulesDir?: string }): Review
         throw error;
       }
 
-      // Route by provider: prefer CLI runners, fall back to SDK
-      if (config.model.provider === 'anthropic') {
-        return createCliReviewer(config);
-      }
+      const provider = config.model.provider;
+      const model = resolveModelForReview(config, 'rules');
+      const runner = resolveCliRunner(provider);
 
-      if (config.model.provider === 'openai' && isCliAuthenticated('codex')) {
-        return createCliReviewer(config, createCodexCliRunner());
-      }
-
-      if (config.model.provider === 'google' && isCliAuthenticated('gemini')) {
-        return createCliReviewer(config, createGeminiCliRunner());
-      }
-
-      return createSdkReviewer(config);
+      return createCliReviewer(config, runner, model);
     },
   };
 }
@@ -56,9 +50,38 @@ function createGitFileResolver(ref: string): (filePath: string) => string | null
   };
 }
 
-function createCliReviewer(config?: MesaConfig, runner?: AgentRunner): { reviewer: Reviewer; modelInfo: ModelInfo } {
+function resolveCliRunner(provider: ModelProvider): AgentRunner {
+  switch (provider) {
+    case 'anthropic':
+      return createClaudeCliRunner();
+    case 'openai': {
+      if (!isCliAuthenticated('codex')) {
+        throw new Error('OpenAI models require the Codex CLI. Install it from https://github.com/openai/codex');
+      }
+      return createCodexCliRunner();
+    }
+    case 'google': {
+      if (!isCliAuthenticated('gemini')) {
+        throw new Error(
+          'Google models require the Gemini CLI. Install it from https://github.com/google-gemini/gemini-cli'
+        );
+      }
+      return createGeminiCliRunner();
+    }
+    default: {
+      const _exhaustive: never = provider;
+      throw new Error(`Unsupported provider: ${_exhaustive}`);
+    }
+  }
+}
+
+function createCliReviewer(
+  config?: MesaConfig,
+  runner?: AgentRunner,
+  modelOverride?: string
+): { reviewer: Reviewer; modelInfo: ModelInfo } {
   const provider = config?.model.provider ?? 'anthropic';
-  const modelName = config?.model.name ?? 'default';
+  const modelName = modelOverride ?? config?.model.name ?? 'default';
   const model = modelName === 'default' ? undefined : modelName;
   return {
     modelInfo: { provider, model: modelName },
@@ -81,42 +104,6 @@ function createCliReviewer(config?: MesaConfig, runner?: AgentRunner): { reviewe
           violations: result.violations,
           summary: { ...result.summary, provider, model: modelName },
         };
-      },
-    },
-  };
-}
-
-function createSdkReviewer(config: MesaConfig): { reviewer: Reviewer; modelInfo: ModelInfo } {
-  const apiKey = resolveApiKey(config);
-  const modelConfig = { provider: config.model.provider, model: config.model.name, apiKey };
-  const model = resolveModelFromResolvedConfig(modelConfig);
-
-  return {
-    modelInfo: { provider: modelConfig.provider, model: modelConfig.model },
-    reviewer: {
-      async review(input) {
-        try {
-          const result = await runReviewAgent({
-            filesWithRules: input.filesWithRules,
-            diffs: input.diffs ?? new Map(),
-            model,
-            filesPerWorker: config.review.files_per_batch,
-            maxSteps: config.review.max_steps,
-            verbose: input.verbose,
-            codebaseContext: input.codebaseContext,
-            onProgress: input.onProgress,
-            resolveFile: createGitFileResolver(input.headRef),
-            abortSignal: input.abortSignal,
-            modelId: modelConfig.model,
-          });
-          return {
-            violations: result.violations,
-            summary: { ...result.summary, provider: modelConfig.provider, model: modelConfig.model },
-          };
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          throw new AgentExecutionError(message, error);
-        }
       },
     },
   };

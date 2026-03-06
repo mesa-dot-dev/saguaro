@@ -47,7 +47,7 @@ export class MesaDaemon {
   async start(): Promise<number> {
     if (!this.detectedAgent) {
       throw new Error(
-        '[mesa-daemon] No agent CLI found. Install claude, codex, or gemini, or set daemon.agent in .mesa/config.yaml'
+        `[mesa-daemon] No CLI found for provider "${this.config.agent}". Install it or change model.provider in .mesa/config.yaml`
       );
     }
 

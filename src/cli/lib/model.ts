@@ -1,16 +1,42 @@
 import chalk from 'chalk';
 import { getCurrentModel, getModelCatalog, setModel } from '../../config/catalog.js';
-import type { ModelProvider } from '../../config/model-config.js';
-import { loadValidatedConfig, resolveApiKey } from '../../config/model-config.js';
+import type { ModelProvider, ReviewKind } from '../../config/model-config.js';
+import {
+  formatModelForDisplay,
+  loadValidatedConfig,
+  resolveApiKey,
+  resolveModelForReview,
+} from '../../config/model-config.js';
 import { ask, askChoice, createReadline } from './prompt.js';
 
 const secondary = chalk.hex('#be3c00');
 
+const REVIEW_KINDS: { id: ReviewKind; label: string }[] = [
+  { id: 'rules', label: 'Rules review' },
+  { id: 'classic', label: 'Classic review' },
+  { id: 'daemon', label: 'Background (daemon) review' },
+];
+
 const modelHandler = async (): Promise<number> => {
-  // Show current model
   const current = getCurrentModel();
   if (current) {
-    console.log(chalk.gray(`\nCurrent model: ${secondary(`${current.provider} / ${current.model}`)}\n`));
+    console.log(
+      chalk.gray(`\nCurrent model: ${secondary(`${current.provider} / ${formatModelForDisplay(current.model)}`)}`)
+    );
+
+    // Show per-kind overrides if configured
+    try {
+      const config = loadValidatedConfig();
+      for (const kind of REVIEW_KINDS) {
+        const resolved = resolveModelForReview(config, kind.id);
+        if (resolved !== config.model.name) {
+          console.log(chalk.gray(`  ${kind.label}: ${secondary(formatModelForDisplay(resolved))}`));
+        }
+      }
+    } catch {
+      // Config may not exist yet
+    }
+    console.log();
   } else {
     console.log(chalk.gray('\nNo model configured yet.\n'));
   }

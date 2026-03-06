@@ -10,7 +10,12 @@ import {
   locateRulesDirectoryAdapter,
   validateRulesAdapter,
 } from '../../adapter/rules.js';
-import { loadValidatedConfig, resolveApiKey, resolveModelFromResolvedConfig } from '../../config/model-config.js';
+import {
+  loadValidatedConfig,
+  resolveApiKey,
+  resolveModelForReview,
+  resolveModelFromResolvedConfig,
+} from '../../config/model-config.js';
 import { findRepoRoot } from '../../git/git.js';
 import { generateRule } from '../../rules/generator.js';
 import { previewRule } from '../../rules/preview.js';
@@ -228,9 +233,10 @@ const createRule = async (argv: CreateRuleArgv): Promise<number> => {
     try {
       const config = loadValidatedConfig();
       const apiKey = resolveApiKey(config);
+      const modelName = resolveModelForReview(config, 'rules');
       const model = resolveModelFromResolvedConfig({
         provider: config.model.provider,
-        model: config.model.name,
+        model: modelName,
         apiKey,
       });
 

@@ -1,4 +1,4 @@
-import { loadValidatedConfig } from '../../config/model-config.js';
+import { getCliForProvider, loadValidatedConfig, resolveModelForReview } from '../../config/model-config.js';
 import { MesaDaemon } from '../../daemon/server.js';
 
 export async function daemonStart(): Promise<number> {
@@ -9,11 +9,14 @@ export async function daemonStart(): Promise<number> {
   }
 
   const config = loadValidatedConfig();
+  const cli = getCliForProvider(config.model.provider);
+  const model = resolveModelForReview(config, 'daemon');
+
   const daemon = new MesaDaemon({
     workers: config.daemon?.workers ?? 1,
     idleTimeout: config.daemon?.idle_timeout ?? 1800,
-    agent: config.daemon?.agent ?? 'auto',
-    model: config.daemon?.model ?? 'sonnet',
+    agent: cli,
+    model: model === 'default' ? undefined : model,
   });
 
   const port = await daemon.start();

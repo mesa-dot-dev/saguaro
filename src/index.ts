@@ -37,7 +37,13 @@ export { statsCommand } from './cli/lib/stats.js';
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
-export { loadValidatedConfig, resolveApiKey } from './config/model-config.js';
+export {
+  formatModelForDisplay,
+  getCliForProvider,
+  loadValidatedConfig,
+  resolveApiKey,
+  resolveModelForReview,
+} from './config/model-config.js';
 export type { ModelInfo, ReviewEngineOutcome, ReviewRuntime } from './core/types.js';
 // ---------------------------------------------------------------------------
 // Daemon

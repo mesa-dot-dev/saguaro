@@ -1,6 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadValidatedConfig, resolveApiKey, resolveModelFromResolvedConfig } from '../config/model-config.js';
+import {
+  loadValidatedConfig,
+  resolveApiKey,
+  resolveModelForReview,
+  resolveModelFromResolvedConfig,
+} from '../config/model-config.js';
 import { findRepoRoot } from '../git/git.js';
 import { generateRule } from '../rules/generator.js';
 import { deleteMesaRuleFile, getMesaRulesDir, loadMesaRules, writeMesaRuleFile } from '../rules/mesa-rules.js';
@@ -169,9 +174,10 @@ export async function generateRuleAdapter(request: GenerateRuleAdapterRequest): 
 
   const config = loadValidatedConfig();
   const apiKey = resolveApiKey(config);
+  const modelName = resolveModelForReview(config, 'rules');
   const model = resolveModelFromResolvedConfig({
     provider: config.model.provider,
-    model: config.model.name,
+    model: modelName,
     apiKey,
   });
 

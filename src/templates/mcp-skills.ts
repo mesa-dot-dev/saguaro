@@ -216,7 +216,7 @@ IMPORTANT: Use the exact \`id\` field from the catalog as the model identifier. 
 
 6. **API key** — Check \`api_key_configured\` from the \`mesa_set_model\` response. If \`false\`, tell the user: "No {envKey} found. Paste your key or type 'n' to skip." If they provide a key, call \`mesa_set_model\` again with the \`api_key\` field.
 
-7. **Confirm** — Say the model was updated. Always end with: "You can also set this directly in .mesa/config.yaml"
+7. **Confirm** — Say the model was updated. If the \`overrides\` field is present in the \`mesa_get_models\` response, also list any active per-review-kind overrides. Always end with: "You can set per-review-kind model overrides directly in .mesa/config.yaml under review.rules.model, review.classic.model, and daemon.model."
 `,
     },
   ];

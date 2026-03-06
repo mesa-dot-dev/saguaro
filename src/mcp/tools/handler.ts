@@ -13,6 +13,7 @@ import {
 } from '../../adapter/rules.js';
 import { getCurrentModel, getModelCatalog, setModel } from '../../config/catalog.js';
 import { checkApiKey } from '../../config/env.js';
+import { loadValidatedConfig } from '../../config/model-config.js';
 import { generateRules } from '../../generator/index.js';
 import type { RulePolicy, Severity } from '../../types/types.js';
 
@@ -207,7 +208,20 @@ async function handleGetModels(args: Record<string, unknown>): Promise<CallToolR
     ...p,
     api_key_configured: checkApiKey(p.id),
   }));
-  return jsonResult({ providers: providersWithKeyStatus, current });
+  // Include per-kind model overrides if config exists
+  let overrides: Record<string, string> | undefined;
+  try {
+    const config = loadValidatedConfig();
+    overrides = {};
+    if (config.review.rules?.model) overrides.rules = config.review.rules.model;
+    if (config.review.classic?.model) overrides.classic = config.review.classic.model;
+    if (config.daemon?.model) overrides.daemon = config.daemon.model;
+    if (Object.keys(overrides).length === 0) overrides = undefined;
+  } catch {
+    // Config may not exist
+  }
+
+  return jsonResult({ providers: providersWithKeyStatus, current, overrides });
 }
 
 async function handleSetModel(args: Record<string, unknown>): Promise<CallToolResult> {
