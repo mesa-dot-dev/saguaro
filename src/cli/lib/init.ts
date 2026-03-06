@@ -25,6 +25,12 @@ const envLocalPath = '.env.local';
 const secondary = chalk.hex('#be3c00');
 const tertiary = chalk.hex('#ffecba');
 
+const CLI_PROVIDERS: { cli: string; provider: ModelProvider; label: string }[] = [
+  { cli: 'claude', provider: 'anthropic', label: 'Claude Code' },
+  { cli: 'codex', provider: 'openai', label: 'Codex' },
+  { cli: 'gemini', provider: 'google', label: 'Gemini' },
+];
+
 type SkillSetupChoice = 'default' | 'generate' | 'skip';
 
 const mcpJsonPath = '.mcp.json';
@@ -69,24 +75,44 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   fs.mkdirSync(rootMesaDir, { recursive: true });
   fs.mkdirSync(rootSkillsDir, { recursive: true });
 
+  // Detect all authenticated CLIs
+  const detectedClis = CLI_PROVIDERS.filter((c) => isCliAuthenticated(c.cli));
+
   let selectedProvider: ModelProvider;
   let selectedModel: string;
   let wroteApiKey = false;
 
-  if (isCliAuthenticated('claude')) {
-    console.log(secondary('  Detected Claude Code: Mesa will use existing subscription\n'));
-    selectedProvider = 'anthropic';
-    selectedModel = CLI_DEFAULT_MODELS.anthropic;
-  } else if (isCliAuthenticated('codex')) {
-    console.log(secondary('  Detected Codex CLI: Mesa will use existing subscription\n'));
-    selectedProvider = 'openai';
-    selectedModel = CLI_DEFAULT_MODELS.openai;
-  } else if (isCliAuthenticated('gemini')) {
-    console.log(secondary('  Detected Gemini CLI: Mesa will use existing subscription\n'));
-    selectedProvider = 'google';
-    selectedModel = CLI_DEFAULT_MODELS.google;
+  if (detectedClis.length > 0) {
+    // Show what we found
+    const harnessLabel = detectedClis.length === 1 ? 'Harness' : 'Harnesses';
+    console.log(secondary(`  Detected ${harnessLabel}:`));
+    for (const c of detectedClis) {
+      console.log(secondary(`    - ${c.label}`));
+    }
+    console.log();
+
+    let chosen: (typeof detectedClis)[number];
+    if (detectedClis.length === 1) {
+      chosen = detectedClis[0];
+    } else {
+      const rl = createReadline();
+      try {
+        const choice = await askChoice(
+          rl,
+          secondary('Which harness should be enhanced with Mesa reviews?'),
+          detectedClis.map((c) => ({ id: c.provider, label: c.label }))
+        );
+        chosen = detectedClis.find((c) => c.provider === choice.id)!;
+      } finally {
+        rl.close();
+      }
+    }
+
+    selectedProvider = chosen.provider;
+    selectedModel = CLI_DEFAULT_MODELS[chosen.provider];
+    console.log(secondary(`  Using your ${chosen.label} subscription\n`));
   } else {
-    // No CLI auth detected — ask for provider and API key only
+    // No CLI auth detected — ask for provider and API key
     console.log(chalk.gray('  No authenticated CLI detected (Claude Code, Codex, Gemini).\n'));
     const catalog = await getModelCatalog();
 
@@ -123,8 +149,10 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
       rl2.close();
     }
 
-    console.log(chalk.gray(`  Using ${recommendedModel.label} (change anytime in .mesa/config.yaml)\n`));
+    console.log(chalk.gray(`  Using ${recommendedModel.label}\n`));
   }
+
+  console.log(`  ${secondary('NOTE:')} ${chalk.gray('You can change the provider anytime in .mesa/config.yaml')}\n`);
 
   // Collect remaining preferences before writing any files
   const rl4 = createReadline();
@@ -147,7 +175,10 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   const rl5 = createReadline();
   let enableDaemon = false;
   try {
-    enableDaemon = await askYesNo(rl5, secondary('\nWould you like to automatically review changes as you code?'));
+    enableDaemon = await askYesNo(
+      rl5,
+      chalk.bold(secondary('\nWould you like to automatically review changes as you code?'))
+    );
   } finally {
     rl5.close();
   }
