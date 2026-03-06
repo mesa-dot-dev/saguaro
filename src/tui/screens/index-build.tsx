@@ -1,4 +1,4 @@
-import { runBuildIndex } from '@mesa/code-review';
+import { runBuildIndex } from '../../adapter/index-build.js';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useState } from 'react';
 import { Spinner } from '../components/spinner.js';

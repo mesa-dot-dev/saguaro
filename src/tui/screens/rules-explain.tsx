@@ -1,5 +1,5 @@
-import type { RulePolicy } from '@mesa/code-review';
-import { explainRuleAdapter } from '@mesa/code-review';
+import type { RulePolicy } from '../../types/types.js';
+import { explainRuleAdapter } from '../../adapter/rules.js';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useState } from 'react';
 import { useRouter } from '../lib/router.js';

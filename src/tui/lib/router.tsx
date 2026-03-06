@@ -1,4 +1,4 @@
-import type { ReviewResult } from '@mesa/code-review';
+import type { ReviewResult } from '../../types/types.js';
 import { createContext, useCallback, useContext, useState } from 'react';
 
 export type Route =

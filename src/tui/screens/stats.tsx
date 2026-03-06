@@ -1,5 +1,5 @@
-import type { StatsResult } from '@mesa/code-review';
-import { getStats } from '@mesa/code-review';
+import type { StatsResult } from '../../adapter/stats.js';
+import { getStats } from '../../adapter/stats.js';
 import type { SelectOption } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useState } from 'react';

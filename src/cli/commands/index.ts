@@ -1,16 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { inspect } from 'node:util';
-import { findRepoRoot, generateRulesCommand, logger, MesaError, requireGitRepo } from '@mesa/code-review';
-import chalk from 'chalk';
-import type { Argv } from 'yargs';
-import yargs from 'yargs';
-import { daemonStart, daemonStatus, daemonStop } from './commands/daemon.js';
-import { installHook, runHook, runNotify, runPreTool, uninstallHook } from './commands/hook.js';
-import { indexCmdHandler } from './commands/index-cmd.js';
-import { initHandler } from './commands/init.js';
-import { modelHandler } from './commands/model.js';
-import { reviewCommand } from './commands/review.js';
+import { findRepoRoot, requireGitRepo } from '../../git/git.js';
+import { generateRulesCommand } from '../lib/generate.js';
+import { installHook, runHook, runNotify, runPreTool, uninstallHook } from '../lib/hook.js';
+import indexCmdHandler from '../lib/index-cmd.js';
+import initHandler from '../lib/init.js';
+import modelHandler from '../lib/model.js';
 import {
   createRule,
   deleteRule,
@@ -18,9 +14,16 @@ import {
   listRules,
   locateRulesDirectory,
   validateRules,
-} from './commands/rules.js';
-import { serveHandler } from './commands/serve.js';
-import { statsCommand } from './commands/stats.js';
+} from '../lib/rules.js';
+import serveHandler from '../lib/serve.js';
+import { statsCommand } from '../lib/stats.js';
+import { MesaError } from '../../util/errors.js';
+import { logger } from '../../util/logger.js';
+import chalk from 'chalk';
+import type { Argv } from 'yargs';
+import yargs from 'yargs';
+import { daemonStart, daemonStatus, daemonStop } from './commands/daemon.js';
+import { reviewCommand } from './commands/review.js';
 
 const secondary = chalk.hex('#be3c00');
 

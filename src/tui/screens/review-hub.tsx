@@ -1,4 +1,4 @@
-import { getCurrentBranch, getDefaultBranch } from '@mesa/code-review';
+import { getCurrentBranch, getDefaultBranch } from '../../git/git.js';
 import type { SelectOption } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useMemo, useState } from 'react';

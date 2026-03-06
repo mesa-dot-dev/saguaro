@@ -1,5 +1,7 @@
-import type { InitProjectResult, ModelOptions } from '@mesa/code-review';
-import { getModelOptions, initProject } from '@mesa/code-review';
+import type { ModelOptions } from '../../adapter/model.js';
+import type { InitProjectResult } from '../../adapter/init.js';
+import { getModelOptions } from '../../adapter/model.js';
+import { initProject } from '../../adapter/init.js';
 import type { SelectOption } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useMemo, useState } from 'react';

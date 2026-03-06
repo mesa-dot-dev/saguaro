@@ -1,5 +1,6 @@
-import type { GenerateRuleAdapterResult, RulePolicy } from '@mesa/code-review';
-import { createRuleAdapter, generateRuleAdapter } from '@mesa/code-review';
+import type { GenerateRuleAdapterResult } from '../../adapter/rules.js';
+import type { RulePolicy } from '../../types/types.js';
+import { createRuleAdapter, generateRuleAdapter } from '../../adapter/rules.js';
 import type { SelectOption } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useMemo, useState } from 'react';

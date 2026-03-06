@@ -1,5 +1,5 @@
-import type { RulePolicy } from '@mesa/code-review';
-import { deleteRuleAdapter, explainRuleAdapter } from '@mesa/code-review';
+import type { RulePolicy } from '../../types/types.js';
+import { deleteRuleAdapter, explainRuleAdapter } from '../../adapter/rules.js';
 import type { SelectOption } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useState } from 'react';

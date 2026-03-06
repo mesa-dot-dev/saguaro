@@ -1,4 +1,4 @@
-import type { ReviewResult, Violation } from '@mesa/code-review';
+import type { ReviewResult, Violation } from '../../types/types.js';
 import { useKeyboard } from '@opentui/react';
 import { useRouter } from '../lib/router.js';
 import { theme } from '../lib/theme.js';

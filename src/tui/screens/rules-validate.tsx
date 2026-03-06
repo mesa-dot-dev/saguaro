@@ -1,5 +1,5 @@
-import type { ValidateRulesAdapterResult } from '@mesa/code-review';
-import { validateRulesAdapter } from '@mesa/code-review';
+import type { ValidateRulesAdapterResult } from '../../adapter/rules.js';
+import { validateRulesAdapter } from '../../adapter/rules.js';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useState } from 'react';
 import { useRouter } from '../lib/router.js';

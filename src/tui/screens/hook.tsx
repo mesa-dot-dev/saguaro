@@ -1,5 +1,5 @@
-import type { HookAction } from '@mesa/code-review';
-import { runInstallHook, runUninstallHook } from '@mesa/code-review';
+import type { HookAction } from '../../adapter/hook.js';
+import { runInstallHook, runUninstallHook } from '../../adapter/hook.js';
 import type { SelectOption } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useState } from 'react';

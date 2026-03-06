@@ -1,5 +1,5 @@
-import type { ModelOptions } from '@mesa/code-review';
-import { getModelOptions, hasApiKey, switchModel } from '@mesa/code-review';
+import type { ModelOptions } from '../../adapter/model.js';
+import { getModelOptions, hasApiKey, switchModel } from '../../adapter/model.js';
 import type { SelectOption } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useMemo, useState } from 'react';

@@ -1,4 +1,5 @@
-import { getCliForProvider, loadValidatedConfig, MesaDaemon, resolveModelForReview } from '@mesa/code-review';
+import { getCliForProvider, loadValidatedConfig, resolveModelForReview } from '../../../config/model-config.js';
+import { MesaDaemon } from '../../../daemon/server.js';
 
 export async function daemonStart(): Promise<number> {
   const existing = MesaDaemon.readPidFile();
