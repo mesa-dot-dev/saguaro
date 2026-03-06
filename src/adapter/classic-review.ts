@@ -1,5 +1,11 @@
-import { createClaudeCliRunner } from '../ai/agent-runner.js';
-import { loadValidatedConfig } from '../config/model-config.js';
+import {
+  createClaudeCliRunner,
+  createCodexCliRunner,
+  createGeminiCliRunner,
+  isCliAuthenticated,
+} from '../ai/agent-runner.js';
+import { loadValidatedConfig, type ModelProvider } from '../config/model-config.js';
+import type { AgentRunner } from '../core/types.js';
 import { buildStaffEngineerPrompt, parseFindings, stripDiffContext } from '../daemon/prompt.js';
 import type { Finding } from '../daemon/store.js';
 import { getDiffs, getRepoRoot, listChangedFilesFromGit } from '../git/git.js';
@@ -50,7 +56,7 @@ export async function runClassicReview(request: ClassicReviewRequest): Promise<C
 
   logger.debug(`[classic-review] Running Mesa classic review with ${changedFiles.length} files`);
 
-  const runner = createClaudeCliRunner();
+  const runner = resolveClassicRunner(config.model.provider);
   const result = await runner.execute({
     systemPrompt: '',
     prompt,
@@ -69,4 +75,31 @@ export async function runClassicReview(request: ClassicReviewRequest): Promise<C
     verdict,
     model: modelName,
   };
+}
+
+function resolveClassicRunner(provider: ModelProvider): AgentRunner {
+  switch (provider) {
+    case 'openai': {
+      if (!isCliAuthenticated('codex')) {
+        throw new Error(
+          'OpenAI models require the Codex CLI for classic reviews. Install it from https://github.com/openai/codex'
+        );
+      }
+      return createCodexCliRunner();
+    }
+    case 'google': {
+      if (!isCliAuthenticated('gemini')) {
+        throw new Error(
+          'Google models require the Gemini CLI for classic reviews. Install it from https://github.com/google-gemini/gemini-cli'
+        );
+      }
+      return createGeminiCliRunner();
+    }
+    case 'anthropic':
+      return createClaudeCliRunner();
+    default: {
+      const _exhaustive: never = provider;
+      throw new Error(`Unsupported provider for classic reviews: ${_exhaustive}`);
+    }
+  }
 }
