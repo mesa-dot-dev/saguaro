@@ -1,6 +1,6 @@
-import { runBuildIndex } from '../../adapter/index-build.js';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useState } from 'react';
+import { runBuildIndex } from '../../adapter/index-build.js';
 import { Spinner } from '../components/spinner.js';
 import { useRouter } from '../lib/router.js';
 import { theme } from '../lib/theme.js';

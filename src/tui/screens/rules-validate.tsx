@@ -1,7 +1,7 @@
-import type { ValidateRulesAdapterResult } from '../../adapter/rules.js';
-import { validateRulesAdapter } from '../../adapter/rules.js';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useState } from 'react';
+import type { ValidateRulesAdapterResult } from '../../adapter/rules.js';
+import { validateRulesAdapter } from '../../adapter/rules.js';
 import { useRouter } from '../lib/router.js';
 import { theme } from '../lib/theme.js';
 

@@ -1,7 +1,7 @@
-import { getCurrentBranch, getDefaultBranch } from '../../git/git.js';
 import type { SelectOption } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useMemo, useState } from 'react';
+import { getCurrentBranch, getDefaultBranch } from '../../git/git.js';
 import { useScreenInput } from '../lib/input-bar-context.js';
 import { useRouter } from '../lib/router.js';
 import { selectColors, theme } from '../lib/theme.js';

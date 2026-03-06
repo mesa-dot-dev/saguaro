@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.1.3/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.6/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -12,8 +12,8 @@
       "src/**/*.js",
       "src/**/*.jsx",
       "*.json",
-      "!**/node_modules/**",
-      "!**/dist/**",
+      "!**/node_modules",
+      "!**/dist",
       "!**/*.d.ts"
     ]
   },
@@ -43,7 +43,8 @@
         "noUnusedVariables": "warn",
         "noUnusedImports": "off",
         "useExhaustiveDependencies": "warn",
-        "useHookAtTopLevel": "error"
+        "useHookAtTopLevel": "error",
+        "noUnusedFunctionParameters": "off"
       },
       "security": {
         "recommended": true
@@ -61,7 +62,9 @@
         "noExplicitAny": "warn",
         "noArrayIndexKey": "off",
         "noAssignInExpressions": "off",
-        "noRedeclare": "off"
+        "noRedeclare": "off",
+        "noConfusingVoidType": "off",
+        "useIterableCallbackReturn": "off"
       }
     }
   },

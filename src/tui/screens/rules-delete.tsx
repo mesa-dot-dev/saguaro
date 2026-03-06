@@ -1,8 +1,8 @@
-import type { RulePolicy } from '../../types/types.js';
-import { deleteRuleAdapter, explainRuleAdapter } from '../../adapter/rules.js';
 import type { SelectOption } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useState } from 'react';
+import { deleteRuleAdapter, explainRuleAdapter } from '../../adapter/rules.js';
+import type { RulePolicy } from '../../types/types.js';
 import { useRouter } from '../lib/router.js';
 import { selectColors, theme } from '../lib/theme.js';
 

@@ -1,9 +1,9 @@
-import type { GenerateRuleAdapterResult } from '../../adapter/rules.js';
-import type { RulePolicy } from '../../types/types.js';
-import { createRuleAdapter, generateRuleAdapter } from '../../adapter/rules.js';
 import type { SelectOption } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useMemo, useState } from 'react';
+import type { GenerateRuleAdapterResult } from '../../adapter/rules.js';
+import { createRuleAdapter, generateRuleAdapter } from '../../adapter/rules.js';
+import type { RulePolicy } from '../../types/types.js';
 import { Spinner } from '../components/spinner.js';
 import { useScreenInput } from '../lib/input-bar-context.js';
 import { useRouter } from '../lib/router.js';

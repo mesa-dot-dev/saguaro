@@ -1,8 +1,8 @@
-import type { HookAction } from '../../adapter/hook.js';
-import { runInstallHook, runUninstallHook } from '../../adapter/hook.js';
 import type { SelectOption } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useState } from 'react';
+import type { HookAction } from '../../adapter/hook.js';
+import { runInstallHook, runUninstallHook } from '../../adapter/hook.js';
 import { Spinner } from '../components/spinner.js';
 import { useRouter } from '../lib/router.js';
 import { selectColors, theme } from '../lib/theme.js';

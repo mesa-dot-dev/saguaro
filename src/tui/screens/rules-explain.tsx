@@ -1,7 +1,7 @@
-import type { RulePolicy } from '../../types/types.js';
-import { explainRuleAdapter } from '../../adapter/rules.js';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useState } from 'react';
+import { explainRuleAdapter } from '../../adapter/rules.js';
+import type { RulePolicy } from '../../types/types.js';
 import { useRouter } from '../lib/router.js';
 import { theme } from '../lib/theme.js';
 

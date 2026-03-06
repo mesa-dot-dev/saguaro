@@ -1,10 +1,10 @@
-import type { ModelOptions } from '../../adapter/model.js';
-import type { InitProjectResult } from '../../adapter/init.js';
-import { getModelOptions } from '../../adapter/model.js';
-import { initProject } from '../../adapter/init.js';
 import type { SelectOption } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useMemo, useState } from 'react';
+import type { InitProjectResult } from '../../adapter/init.js';
+import { initProject } from '../../adapter/init.js';
+import type { ModelOptions } from '../../adapter/model.js';
+import { getModelOptions } from '../../adapter/model.js';
 import { Spinner } from '../components/spinner.js';
 import { useScreenInput } from '../lib/input-bar-context.js';
 import { useRouter } from '../lib/router.js';
