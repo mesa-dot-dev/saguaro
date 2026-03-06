@@ -54,13 +54,14 @@ function writeMcpJson(repoRoot: string): void {
 
 function ensureMesaGitignore(repoRoot: string): void {
   const gitignorePath = path.join(repoRoot, '.gitignore');
-  const entry = '.mesa/history/';
+  const entries = ['.mesa/config.yaml', '.mesa/history/', '.mcp.json'];
   let content = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8') : '';
 
-  if (content.includes(entry)) return;
+  const missing = entries.filter((e) => !content.includes(e));
+  if (missing.length === 0) return;
 
   const trimmed = content.trimEnd();
-  content = trimmed.length > 0 ? `${trimmed}\n${entry}\n` : `${entry}\n`;
+  content = trimmed.length > 0 ? `${trimmed}\n${missing.join('\n')}\n` : `${missing.join('\n')}\n`;
   fs.writeFileSync(gitignorePath, content, 'utf8');
 }
 
