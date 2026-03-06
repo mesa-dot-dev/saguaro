@@ -62,6 +62,10 @@ export async function reviewCommand(options: ReviewCommandOptions): Promise<numb
 }
 
 async function runClassicReviewCli(baseRef: string, headRef: string, options: ReviewCommandOptions): Promise<number> {
+  if (options.verbose) {
+    logger.verbose('\nRunning classic (staff-engineer) review...');
+  }
+
   const spinner = new CliSpinner('Running classic review...');
   spinner.start();
 
@@ -81,7 +85,7 @@ async function runClassicReviewCli(baseRef: string, headRef: string, options: Re
   }
 
   console.log(chalk.red(`\nClassic review: ${result.findings.length} issue(s) found`));
-  console.log(chalk.gray(`  Model: ${result.model}`));
+  console.log(chalk.gray(`  Model: ${formatModelForDisplay(result.model)}`));
 
   if (options.output === 'json') {
     console.log(JSON.stringify({ findings: result.findings, verdict: result.verdict }, null, 2));

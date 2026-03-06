@@ -54,7 +54,10 @@ export async function runClassicReview(request: ClassicReviewRequest): Promise<C
     return { findings: [], verdict: 'pass', model: modelName };
   }
 
-  logger.debug(`[classic-review] Running Mesa classic review with ${changedFiles.length} files`);
+  logger.verbose(
+    `[classic-review] ${changedFiles.length} changed files, prompt ${(prompt.length / 1024).toFixed(0)}KB`
+  );
+  logger.verbose(`[classic-review] Model: ${modelName}, provider: ${config.model.provider}`);
 
   const runner = resolveClassicRunner(config.model.provider);
   const result = await runner.execute({
