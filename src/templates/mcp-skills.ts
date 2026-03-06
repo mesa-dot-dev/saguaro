@@ -15,10 +15,24 @@ description: Run Mesa code review on current changes
 ---
 ## Flow
 
-1. **Choose review mode** — Use \`AskUserQuestion\` to ask the user which type of review to run:
-   - **Rules** — Review against defined rules in .mesa/rules/
-   - **Classic** — Agentic staff-engineer review (bugs, security, regressions, dead code, performance)
-   - **Both** — Run both reviews and present combined findings
+1. **Choose review mode** — You MUST use the \`AskUserQuestion\` tool with structured options (NOT a free-text question). Call it exactly like this:
+
+   \`\`\`
+   AskUserQuestion({
+     questions: [{
+       question: "What type of review would you like to run?",
+       header: "Review type",
+       options: [
+         { label: "Both (Recommended)", description: "Run rules + staff-engineer review and present combined findings" },
+         { label: "Rules only", description: "Review against defined rules in .mesa/rules/" },
+         { label: "Classic only", description: "Agentic staff-engineer review (bugs, security, regressions, dead code, performance)" }
+       ],
+       multiSelect: false
+     }]
+   })
+   \`\`\`
+
+   Map the user's selection: "Both" → mode "full", "Rules only" → mode "rules", "Classic only" → mode "classic".
 
 2. **Run the review** — Call the \`mesa_review\` MCP tool with:
    - \`mode\`: "rules", "classic", or "full" based on the user's choice
@@ -54,12 +68,24 @@ description: Generate a single Mesa review rule using the AI pipeline with previ
    - **Preview data**: how many files would be flagged vs. passed, and which files
    - **Placement options**: where the rule can be saved (collocated, package, root) with the recommended option marked
 
-4. **Ask for approval** — Present three options:
-   - **Accept** — proceed to write the rule as-is
-   - **Edit** — let the user modify fields (title, severity, instructions, globs) then re-confirm
-   - **Cancel** — discard the proposal
+4. **Ask for approval** — Use \`AskUserQuestion\` with structured options:
 
-5. **Choose placement** — If the user accepts, present the placement options and ask which scope to use.
+   \`\`\`
+   AskUserQuestion({
+     questions: [{
+       question: "How would you like to proceed with this rule?",
+       header: "Approval",
+       options: [
+         { label: "Accept", description: "Write the rule as-is" },
+         { label: "Edit", description: "Modify fields (title, severity, instructions, globs) before writing" },
+         { label: "Cancel", description: "Discard the proposal" }
+       ],
+       multiSelect: false
+     }]
+   })
+   \`\`\`
+
+5. **Choose placement** — If the user accepts, use \`AskUserQuestion\` to present the placement options from the proposal and ask which scope to use.
 
 6. **Write the rule** — Call \`mesa_create_rule\` with the final rule fields and the selected scope.
    Report the created rule ID and file path.
@@ -91,11 +117,23 @@ Both tools read from the same session state populated by \`mesa_generate_rules\`
    - Duration
    Do NOT list individual rules here — the list is too long and users don't want to scroll.
 
-3. **Choose review mode** — Use the \`AskUserQuestion\` tool to ask the user how they want to review the generated rules. Present these options:
-   - **Accept all** — Create all rules as-is without individual review
-   - **Bulk review by group** — Group rules by package/domain (inferred from their glob patterns) and let the user accept or skip entire groups at a time
-   - **Review individually** — Go through each rule one by one for Accept/Skip/Edit decisions
-   - **Skip all** — Discard all generated rules
+3. **Choose review mode** — Use \`AskUserQuestion\` with structured options (NOT a free-text question):
+
+   \`\`\`
+   AskUserQuestion({
+     questions: [{
+       question: "How would you like to review the generated rules?",
+       header: "Review mode",
+       options: [
+         { label: "Bulk review by group (Recommended)", description: "Group rules by package/domain and accept or skip entire groups at a time" },
+         { label: "Accept all", description: "Create all rules as-is without individual review" },
+         { label: "Review individually", description: "Go through each rule one by one for Accept/Skip/Edit decisions" },
+         { label: "Skip all", description: "Discard all generated rules" }
+       ],
+       multiSelect: false
+     }]
+   })
+   \`\`\`
 
 4. **Execute the chosen review mode:**
 
@@ -106,11 +144,23 @@ Both tools read from the same session state populated by \`mesa_generate_rules\`
    **If "Review individually":**
    - Call \`mesa_get_generated_rule_details\` with no arguments to get the next batch of 10 rules. The server tracks position automatically — just keep calling it for each batch.
    - For each rule in the batch, present: **Title**, **ID**, **severity**, **Globs**, **Instructions** (the full rule body), **Examples** (if present).
-   - Then use \`AskUserQuestion\` to ask: **Accept / Skip / Accept all remaining / Edit**
-     - **Accept** — mark for creation
-     - **Skip** — discard this rule
-     - **Accept all remaining** — mark this rule and all remaining unreviewed rules for creation, stop reviewing
-     - **Edit** — let the user modify fields, then re-confirm
+   - Then use \`AskUserQuestion\` with structured options:
+
+     \`\`\`
+     AskUserQuestion({
+       questions: [{
+         question: "What would you like to do with this rule?",
+         header: "Decision",
+         options: [
+           { label: "Accept", description: "Mark this rule for creation" },
+           { label: "Skip", description: "Discard this rule" },
+           { label: "Accept all remaining", description: "Accept this and all remaining rules, stop reviewing" },
+           { label: "Edit", description: "Modify fields before accepting" }
+         ],
+         multiSelect: false
+       }]
+     })
+     \`\`\`
    - Repeat for each batch until all rules have been reviewed.
 
    **If "Skip all":** Discard everything and confirm.
@@ -132,7 +182,23 @@ description: Switch the AI model used for Mesa code reviews
 
 2. **Show current model** — If \`current\` is set, display: "Current model: {provider} / {model}". Otherwise: "No model configured."
 
-3. **Pick a provider** — Use \`AskUserQuestion\` with the providers from step 1 as options (there are exactly 3: Anthropic, OpenAI, Google).
+3. **Pick a provider** — Use \`AskUserQuestion\` with structured options built from the providers returned in step 1. Example:
+
+   \`\`\`
+   AskUserQuestion({
+     questions: [{
+       question: "Which provider would you like to use?",
+       header: "Provider",
+       options: [
+         // Build these from the providers array returned by mesa_get_models
+         { label: "Anthropic", description: "Claude models" },
+         { label: "OpenAI", description: "GPT models" },
+         { label: "Google", description: "Gemini models" }
+       ],
+       multiSelect: false
+     }]
+   })
+   \`\`\`
 
 4. **Pick a model** — From the step 1 data, find the selected provider's model list. Present the models as a numbered text list — do NOT use AskUserQuestion (there are too many models for 4 options). Format each line as:
 
