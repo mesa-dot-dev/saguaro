@@ -1,10 +1,10 @@
-import type { ReviewEngineOutcome } from '../../../core/types.js';
-import type { ReviewProgressEvent, ReviewResult, Violation } from '../../../types/types.js';
-import { runClassicReview } from '../../../adapter/classic-review.js';
-import { runReview } from '../../../adapter/review.js';
-import { formatModelForDisplay, loadValidatedConfig } from '../../../config/model-config.js';
-import { MesaError } from '../../../util/errors.js';
-import { logger } from '../../../util/logger.js';
+import type { ReviewEngineOutcome } from '../../core/types.js';
+import type { ReviewProgressEvent, ReviewResult, Violation } from '../../types/types.js';
+import { runClassicReview } from '../../adapter/classic-review.js';
+import { runReview } from '../../adapter/review.js';
+import { formatModelForDisplay, loadValidatedConfig } from '../../config/model-config.js';
+import { MesaError } from '../../util/errors.js';
+import { logger } from '../../util/logger.js';
 import chalk from 'chalk';
 
 const CLI_ACCENT = chalk.hex('#be3c00');

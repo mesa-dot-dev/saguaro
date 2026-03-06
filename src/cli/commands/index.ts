@@ -22,8 +22,8 @@ import { logger } from '../../util/logger.js';
 import chalk from 'chalk';
 import type { Argv } from 'yargs';
 import yargs from 'yargs';
-import { daemonStart, daemonStatus, daemonStop } from './commands/daemon.js';
-import { reviewCommand } from './commands/review.js';
+import { daemonStart, daemonStatus, daemonStop } from './daemon.js';
+import { reviewCommand } from './review.js';
 
 const secondary = chalk.hex('#be3c00');
 
