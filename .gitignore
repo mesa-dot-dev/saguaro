@@ -7,3 +7,5 @@ dist/
 .mesa/.tmp/
 bun.lockb
 .mesa/history/
+.mesa/config.yaml
+.mcp.json
