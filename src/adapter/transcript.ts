@@ -36,32 +36,41 @@ export function extractEditedFiles(transcriptPath: string, repoRoot: string): Se
   for (const line of content.split('\n')) {
     if (!line.trim()) continue;
 
-    let entry: { type?: string; tool_name?: string; tool_input?: Record<string, unknown> };
+    let entry: {
+      type?: string;
+      message?: { content?: Array<{ type?: string; name?: string; input?: Record<string, unknown> }> };
+    };
     try {
       entry = JSON.parse(line);
     } catch {
       continue;
     }
 
-    if (entry.type !== 'tool_use' || !entry.tool_name || !entry.tool_input) continue;
+    if (entry.type !== 'assistant') continue;
 
-    if (READ_ONLY_TOOLS.has(entry.tool_name)) continue;
+    const blocks = entry.message?.content;
+    if (!Array.isArray(blocks)) continue;
 
-    // Bash: parse command string for write patterns
-    if (entry.tool_name === 'Bash') {
-      const command = entry.tool_input.command;
-      if (typeof command === 'string') {
-        for (const filePath of extractBashWritePaths(command)) {
-          addFile(files, filePath, repoRoot);
+    for (const block of blocks) {
+      if (block.type !== 'tool_use' || !block.name || !block.input) continue;
+      if (READ_ONLY_TOOLS.has(block.name)) continue;
+
+      // Bash: parse command string for write patterns
+      if (block.name === 'Bash') {
+        const command = block.input.command;
+        if (typeof command === 'string') {
+          for (const filePath of extractBashWritePaths(command)) {
+            addFile(files, filePath, repoRoot);
+          }
         }
+        continue;
       }
-      continue;
-    }
 
-    // Structured tools: check file_path and notebook_path
-    const filePath = entry.tool_input.file_path ?? entry.tool_input.notebook_path;
-    if (typeof filePath === 'string') {
-      addFile(files, filePath, repoRoot);
+      // Structured tools: check file_path and notebook_path
+      const filePath = block.input.file_path ?? block.input.notebook_path;
+      if (typeof filePath === 'string') {
+        addFile(files, filePath, repoRoot);
+      }
     }
   }
 

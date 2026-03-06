@@ -147,6 +147,15 @@ interface SpawnOptions extends ExecOptions {
 
 function spawnAsync(command: string, args: string[], options: SpawnOptions): Promise<string> {
   return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const settle = <T>(fn: (value: T) => void, value: T) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn(value);
+    };
+
     const child = spawn(command, args, {
       cwd: options.cwd,
       env: options.env,
@@ -158,14 +167,14 @@ function spawnAsync(command: string, args: string[], options: SpawnOptions): Pro
 
     const timer = setTimeout(() => {
       child.kill('SIGTERM');
-      reject(new Error(`${command} timed out after ${options.timeout}ms`));
+      settle(reject, new Error(`${command} timed out after ${options.timeout}ms`));
     }, options.timeout);
 
     child.stdout.on('data', (chunk: Buffer) => {
       size += chunk.length;
       if (size > options.maxBuffer) {
         child.kill('SIGTERM');
-        reject(new Error(`${command} stdout exceeded maxBuffer (${options.maxBuffer})`));
+        settle(reject, new Error(`${command} stdout exceeded maxBuffer (${options.maxBuffer})`));
         return;
       }
       stdout += chunk;
@@ -176,17 +185,15 @@ function spawnAsync(command: string, args: string[], options: SpawnOptions): Pro
     });
 
     child.on('close', (code) => {
-      clearTimeout(timer);
       if (code !== 0) {
-        reject(new Error(`${command} exited with status ${code}: ${stderr}`));
+        settle(reject, new Error(`${command} exited with status ${code}: ${stderr}`));
       } else {
-        resolve(stdout);
+        settle(resolve, stdout);
       }
     });
 
     child.on('error', (err) => {
-      clearTimeout(timer);
-      reject(err);
+      settle(reject, err);
     });
 
     child.stdin.write(options.input);

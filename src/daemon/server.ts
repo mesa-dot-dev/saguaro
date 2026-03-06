@@ -270,15 +270,30 @@ export class MesaDaemon {
    * Cleans up stale PID files where the process has died.
    */
   static readPidFile(): PidFile | null {
+    let raw: string;
     try {
-      const raw = fs.readFileSync(PID_FILE_PATH, 'utf8');
-      const pidFile = JSON.parse(raw) as PidFile;
+      raw = fs.readFileSync(PID_FILE_PATH, 'utf8');
+    } catch {
+      return null;
+    }
 
-      // Verify the process is still alive (signal 0 = existence check)
+    let pidFile: PidFile;
+    try {
+      pidFile = JSON.parse(raw) as PidFile;
+    } catch {
+      MesaDaemon.cleanupStalePidFile();
+      return null;
+    }
+
+    try {
       process.kill(pidFile.pid, 0);
       return pidFile;
-    } catch {
-      // Process dead or file missing — clean up
+    } catch (err: unknown) {
+      // EPERM means process exists but we can't signal it — treat as running
+      if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'EPERM') {
+        return pidFile;
+      }
+      // ESRCH or other errors mean process is dead
       MesaDaemon.cleanupStalePidFile();
       return null;
     }
