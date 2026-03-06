@@ -4,7 +4,7 @@
 
 export * from './adapter/classic-review.js';
 // ---------------------------------------------------------------------------
-// Adapters (primary API surface for packages/cli and TUI)
+// Adapters (primary API surface for CLI and TUI)
 // ---------------------------------------------------------------------------
 export * from './adapter/generate.js';
 export * from './adapter/hook.js';
@@ -17,7 +17,7 @@ export * from './adapter/review.js';
 export * from './adapter/rules.js';
 export * from './adapter/stats.js';
 // ---------------------------------------------------------------------------
-// CLI handlers (re-exported for packages/cli to wrap in yargs)
+// CLI handlers (wrapped in yargs by src/cli/commands)
 // ---------------------------------------------------------------------------
 export { generateRulesCommand } from './cli/lib/generate.js';
 export { installHook, runHook, runNotify, runPreTool, uninstallHook } from './cli/lib/hook.js';

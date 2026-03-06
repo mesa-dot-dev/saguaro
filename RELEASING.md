@@ -5,21 +5,21 @@ of the code-review CLI.
 
 ## Prerequisites
 
-- `HOMEBREW_TAP_TOKEN` GitHub Actions secret exists in `mesa-dot-dev/depot`
+- `HOMEBREW_TAP_TOKEN` GitHub Actions secret exists in this repo
 - Token has write access to `mesa-dot-dev/homebrew-tap`
 
 ## Automated Release (Preferred)
 
-Use the GitHub workflow at `.github/workflows/release-code-review.yml`.
+Use the GitHub workflow at `.github/workflows/release.yml`.
 
 ### Trigger via GitHub Actions
 
-1. Bump `packages/code-review/package.json` version and merge to `main`, or
+1. Bump `package.json` version and merge to `main`, or
 2. Run the workflow manually (`workflow_dispatch`) and set `version`.
 
 The workflow will:
 
-- pack `packages/code-review` into `mesa-code-review-<version>.tgz`
+- build the package and create platform-specific binaries
 - run smoke checks (`mesa --help`, `mesa index` in a temp git repo)
 - create release assets in `mesa-dot-dev/homebrew-tap`
 - update `Formula/code-review.rb` and `Formula/code-review@<version>.rb` on
