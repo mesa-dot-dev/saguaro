@@ -26,7 +26,7 @@ export interface SqliteStatement {
 }
 
 function isBun(): boolean {
-  return typeof globalThis.Bun !== 'undefined';
+  return typeof (globalThis as Record<string, unknown>).Bun !== 'undefined';
 }
 
 export function openDatabase(dbPath: string): SqliteDatabase {

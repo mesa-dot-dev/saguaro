@@ -1,0 +1,12 @@
+src/
+evals/
+plans/
+.github/
+biome.json
+tsconfig.json
+*.test.ts
+*.test.js
+__tests__/
+.mesa/
+.env*
+.DS_Store
