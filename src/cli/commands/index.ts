@@ -177,14 +177,21 @@ export async function cli(argv: string[]): Promise<boolean> {
 
     .command(
       'review',
-      'Review code changes against your rules',
+      'Run an agentic code review on your changes',
       (y: Argv) => {
-        y.option('b', {
-          alias: 'base',
-          describe: 'Base branch to diff against',
-          type: 'string',
-          defaultDescription: 'main',
-        })
+        y.usage(
+          `${secondary('mesa review')} [options]\n\n` +
+            'Modes:\n' +
+            '  rules    Optimized for bug and codebase violations. Maximum signal, lowest noise.\n' +
+            "  classic  Permissive senior-level review, inspired by Mesa's GitHub review product.\n" +
+            '  full     Run both rules and classic reviews together.'
+        )
+          .option('b', {
+            alias: 'base',
+            describe: 'Base branch to diff against',
+            type: 'string',
+            defaultDescription: 'main',
+          })
           .option('head', {
             describe: 'Head ref to review',
             type: 'string',
@@ -219,7 +226,7 @@ export async function cli(argv: string[]): Promise<boolean> {
           })
           .option('m', {
             alias: 'mode',
-            describe: 'Review mode',
+            describe: 'Review mode: rules, classic, or full',
             type: 'string',
             choices: ['rules', 'classic', 'full'] as const,
             default: 'rules',
