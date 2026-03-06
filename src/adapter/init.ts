@@ -10,10 +10,10 @@ import { writeMesaRuleFile } from '../rules/mesa-rules.js';
 import { selectStarterRules } from '../rules/starter.js';
 import { getMcpSkillFiles } from '../templates/mcp-skills.js';
 import { STARTER_RULES } from '../templates/starter-rules.js';
+import { getDetectedAdapters } from './agents/index.js';
 import { runInstallHook } from './hook.js';
 
 const MESA_DIR = '.mesa';
-const SKILLS_DIR = '.claude/skills';
 const CONFIG_PATH = path.join(MESA_DIR, 'config.yaml');
 const ENV_LOCAL_PATH = '.env.local';
 const MCP_JSON_PATH = '.mcp.json';
@@ -52,17 +52,6 @@ function writeMcpJson(repoRoot: string): void {
   fs.writeFileSync(fullPath, `${content}\n`);
 }
 
-function writeMcpSkills(skillsDirPath: string): string[] {
-  const written: string[] = [];
-  for (const skill of getMcpSkillFiles()) {
-    const fullPath = path.join(skillsDirPath, skill.skillFilePath);
-    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-    fs.writeFileSync(fullPath, skill.content);
-    written.push(skill.skillFilePath);
-  }
-  return written;
-}
-
 function ensureMesaGitignore(repoRoot: string): void {
   const gitignorePath = path.join(repoRoot, '.gitignore');
   const entry = '.mesa/history/';
@@ -83,7 +72,6 @@ export async function initProject(options: InitProjectOptions): Promise<InitProj
   const { provider, model, apiKey, ruleStrategy, daemon, force } = options;
   const repoRoot = findRepoRoot();
   const rootMesaDir = path.join(repoRoot, MESA_DIR);
-  const rootSkillsDir = path.join(repoRoot, SKILLS_DIR);
   const rulesDir = path.join(repoRoot, MESA_DIR, 'rules');
 
   if (fs.existsSync(rootMesaDir) && !force) {
@@ -101,7 +89,6 @@ export async function initProject(options: InitProjectOptions): Promise<InitProj
 
   // Create directories
   fs.mkdirSync(rootMesaDir, { recursive: true });
-  fs.mkdirSync(rootSkillsDir, { recursive: true });
 
   // Write config
   fs.writeFileSync(path.join(repoRoot, CONFIG_PATH), buildConfigContent({ provider, model, daemon: daemon ?? false }));
@@ -122,14 +109,26 @@ export async function initProject(options: InitProjectOptions): Promise<InitProj
   // Write .mcp.json
   writeMcpJson(repoRoot);
 
-  // Write MCP skill files
-  const skillsWritten = writeMcpSkills(rootSkillsDir);
+  // Write MCP skill files for all detected agents
+  const detected = getDetectedAdapters();
+  const skills = getMcpSkillFiles();
+  const skillsWritten: string[] = [];
+  for (const adapter of detected) {
+    adapter.writeSkills(repoRoot, skills);
+    if (adapter.skillsDir) {
+      for (const skill of skills) {
+        skillsWritten.push(path.join(adapter.skillsDir, skill.skillFilePath));
+      }
+    }
+  }
 
   // Handle rules
   const rulesCreated: string[] = [];
   if (ruleStrategy === 'default') {
-    const detected = detectEcosystems(repoRoot);
-    const selected = selectStarterRules(STARTER_RULES, detected, (globs) => anyFileMatchesGlob(repoRoot, globs));
+    const detectedEcosystems = detectEcosystems(repoRoot);
+    const selected = selectStarterRules(STARTER_RULES, detectedEcosystems, (globs) =>
+      anyFileMatchesGlob(repoRoot, globs)
+    );
     for (const rule of selected) {
       writeMesaRuleFile(repoRoot, rule);
       rulesCreated.push(rule.id);

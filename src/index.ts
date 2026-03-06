@@ -20,7 +20,7 @@ export * from './adapter/stats.js';
 // CLI handlers (re-exported for packages/cli to wrap in yargs)
 // ---------------------------------------------------------------------------
 export { generateRulesCommand } from './cli/lib/generate.js';
-export { installHook, runHook, runPreTool, uninstallHook } from './cli/lib/hook.js';
+export { installHook, runHook, runNotify, runPreTool, uninstallHook } from './cli/lib/hook.js';
 export { default as indexCmdHandler } from './cli/lib/index-cmd.js';
 export { default as initHandler } from './cli/lib/init.js';
 export { default as modelHandler } from './cli/lib/model.js';

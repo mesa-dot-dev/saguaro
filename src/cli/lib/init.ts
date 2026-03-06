@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
-import { isCliAuthenticated } from '../../ai/agent-runner.js';
+import { getDetectedAdapters } from '../../adapter/agents/index.js';
 import { getModelCatalog } from '../../config/catalog.js';
 import { buildConfigContent, CLI_DEFAULT_MODELS } from '../../config/config-template.js';
 import { upsertEnvValue } from '../../config/env.js';
@@ -12,24 +12,23 @@ import { anyFileMatchesGlob, detectEcosystems } from '../../rules/detect-ecosyst
 import { writeMesaRuleFile } from '../../rules/mesa-rules.js';
 import { selectStarterRules } from '../../rules/starter.js';
 import { ECOSYSTEM_REGISTRY } from '../../templates/ecosystems.js';
-import { getMcpSkillFiles } from '../../templates/mcp-skills.js';
 import { STARTER_RULES } from '../../templates/starter-rules.js';
 import { generateRulesCommand } from './generate.js';
 import { installHook } from './hook.js';
 import { ask, askChoice, askYesNo, createReadline } from './prompt.js';
 
 const mesaDir = '.mesa';
-const skillsDir = '.claude/skills';
 const configPath = path.join(mesaDir, 'config.yaml');
 const envLocalPath = '.env.local';
 const secondary = chalk.hex('#be3c00');
 const tertiary = chalk.hex('#ffecba');
 
-const CLI_PROVIDERS: { cli: string; provider: ModelProvider; label: string }[] = [
-  { cli: 'claude', provider: 'anthropic', label: 'Claude Code' },
-  { cli: 'codex', provider: 'openai', label: 'Codex' },
-  { cli: 'gemini', provider: 'google', label: 'Gemini' },
-];
+/** prioritize claude, then codex, then gemini. */
+const AGENT_PROVIDER_MAP: Record<string, { provider: ModelProvider; label: string }> = {
+  claude: { provider: 'anthropic', label: 'Claude Code' },
+  codex: { provider: 'openai', label: 'Codex' },
+  gemini: { provider: 'google', label: 'Gemini' },
+};
 
 type SkillSetupChoice = 'default' | 'generate' | 'skip';
 
@@ -39,14 +38,6 @@ function writeMcpJson(): void {
   const fullPath = path.resolve(process.cwd(), mcpJsonPath);
   const content = JSON.stringify(getMcpJsonConfig(), null, 2);
   fs.writeFileSync(fullPath, `${content}\n`);
-}
-
-function writeMcpSkills(skillsDirPath: string): void {
-  for (const skill of getMcpSkillFiles()) {
-    const fullPath = path.join(skillsDirPath, skill.skillFilePath);
-    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-    fs.writeFileSync(fullPath, skill.content);
-  }
 }
 
 function ensureMesaGitignore(repoRoot: string): void {
@@ -65,7 +56,6 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   const { force } = argv;
   const repoRoot = findRepoRoot();
   const rootMesaDir = path.join(repoRoot, mesaDir);
-  const rootSkillsDir = path.join(repoRoot, skillsDir);
 
   if (fs.existsSync(rootMesaDir) && !force) {
     console.log(chalk.red(`Mesa already initialized in this directory. Use ${secondary('--force')} to overwrite.`));
@@ -73,47 +63,27 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   }
 
   fs.mkdirSync(rootMesaDir, { recursive: true });
-  fs.mkdirSync(rootSkillsDir, { recursive: true });
 
-  // Detect all authenticated CLIs
-  const detectedClis = CLI_PROVIDERS.filter((c) => isCliAuthenticated(c.cli));
+  // Detect all authenticated coding agents (single source of truth, ordered by priority)
+  const detected = getDetectedAdapters();
 
   let selectedProvider: ModelProvider;
   let selectedModel: string;
   let wroteApiKey = false;
 
-  if (detectedClis.length > 0) {
-    // Show what we found
-    const harnessLabel = detectedClis.length === 1 ? 'Harness' : 'Harnesses';
-    console.log(secondary(`  Detected ${harnessLabel}:`));
-    for (const c of detectedClis) {
-      console.log(secondary(`    - ${c.label}`));
-    }
-    console.log();
+  if (detected.length > 0) {
+    const agentNames = detected.map((a) => a.label).join(', ');
+    console.log(secondary(`  Detected ${detected.length} agent${detected.length > 1 ? 's' : ''}: ${agentNames}`));
+    console.log(chalk.gray('  Mesa will integrate with all detected agents.\n'));
 
-    let chosen: (typeof detectedClis)[number];
-    if (detectedClis.length === 1) {
-      chosen = detectedClis[0];
-    } else {
-      const rl = createReadline();
-      try {
-        const choice = await askChoice(
-          rl,
-          secondary('Which harness should be enhanced with Mesa reviews?'),
-          detectedClis.map((c) => ({ id: c.provider, label: c.label }))
-        );
-        chosen = detectedClis.find((c) => c.provider === choice.id)!;
-      } finally {
-        rl.close();
-      }
-    }
-
+    // Auto-pick provider from the highest-priority detected agent
+    const chosen = AGENT_PROVIDER_MAP[detected[0].id];
     selectedProvider = chosen.provider;
     selectedModel = CLI_DEFAULT_MODELS[chosen.provider];
-    console.log(secondary(`  Using your ${chosen.label} subscription\n`));
+    console.log(chalk.gray(`  Using ${chosen.label} for AI reviews. Change anytime with ${tertiary('mesa model')}.\n`));
   } else {
-    // No CLI auth detected — ask for provider and API key
-    console.log(chalk.gray('  No authenticated CLI detected (Claude Code, Codex, Gemini).\n'));
+    // No CLI auth detected, then ask for provider and API key
+    console.log(chalk.gray('  No coding agents detected (Claude Code, Codex, Gemini).\n'));
     const catalog = await getModelCatalog();
 
     const rl1 = createReadline();
@@ -149,10 +119,8 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
       rl2.close();
     }
 
-    console.log(chalk.gray(`  Using ${recommendedModel.label}\n`));
+    console.log(chalk.gray(`  Using ${recommendedModel.label}`));
   }
-
-  console.log(`  ${secondary('NOTE:')} ${chalk.gray('You can change the provider anytime in .mesa/config.yaml')}\n`);
 
   // Collect remaining preferences before writing any files
   const rl4 = createReadline();
@@ -175,10 +143,7 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   const rl5 = createReadline();
   let enableDaemon = false;
   try {
-    enableDaemon = await askYesNo(
-      rl5,
-      chalk.bold(secondary('\nWould you like to automatically review changes as you code?'))
-    );
+    enableDaemon = await askYesNo(rl5, chalk.bold(secondary('\nRun Mesa reviews in the background?')));
   } finally {
     rl5.close();
   }
@@ -192,21 +157,20 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   // Ensure .mesa/history/ is gitignored
   ensureMesaGitignore(repoRoot);
 
-  // Write .mcp.json for Claude Code auto-discovery
+  // Write .mcp.json (agent-agnostic, read by Claude/Gemini/Codex)
   writeMcpJson();
 
-  // Write MCP skill files for slash commands
-  writeMcpSkills(path.resolve(process.cwd(), skillsDir));
-
   if (skillSetupChoice === 'default') {
-    const detected = detectEcosystems(repoRoot);
-    const selected = selectStarterRules(STARTER_RULES, detected, (globs) => anyFileMatchesGlob(repoRoot, globs));
+    const detectedEcosystems = detectEcosystems(repoRoot);
+    const selected = selectStarterRules(STARTER_RULES, detectedEcosystems, (globs) =>
+      anyFileMatchesGlob(repoRoot, globs)
+    );
 
     for (const rule of selected) {
       writeMesaRuleFile(repoRoot, rule);
     }
 
-    const ecoLabels = ECOSYSTEM_REGISTRY.filter((e) => detected.has(e.id))
+    const ecoLabels = ECOSYSTEM_REGISTRY.filter((e) => detectedEcosystems.has(e.id))
       .map((e) => e.label)
       .join(', ');
 
@@ -219,12 +183,11 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   } else if (skillSetupChoice === 'generate') {
     await generateRulesCommand({ config: path.join(repoRoot, configPath) });
   } else {
-    console.log(chalk.gray(`  Specify your rules with ${secondary('mesa rules create')}.`));
+    console.log(chalk.gray(`Specify your rules with ${secondary('mesa rules create')}.`));
   }
 
   await installHook();
   const relMesaDir = path.relative(process.cwd(), rootMesaDir) || mesaDir;
-  const relSkillsDir = path.relative(process.cwd(), rootSkillsDir) || skillsDir;
   const relEnvPath = path.relative(process.cwd(), path.join(repoRoot, envLocalPath)) || envLocalPath;
 
   const relRulesDir = path.relative(process.cwd(), path.join(repoRoot, '.mesa', 'rules')) || '.mesa/rules';
@@ -233,11 +196,14 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   console.log(chalk.gray(`  Created: ${relMesaDir}/config.yaml`));
   console.log(chalk.gray(`  Created: ${relRulesDir}/`));
   console.log(chalk.gray(`  Created: ${mcpJsonPath}`));
-  console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-review/`));
-  console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-createrule/`));
-  console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-generaterules/`));
-  console.log(chalk.gray(`  Created: ${relSkillsDir}/mesa-model/`));
-  console.log(chalk.gray(`  Updated: .claude/settings.json (PreToolUse + Stop hooks)`));
+  for (const adapter of detected) {
+    const hookType = adapter.supportsBlockingHooks ? 'blocking hooks' : 'notify hook';
+    if (adapter.skillsDir) {
+      console.log(chalk.gray(`  ${adapter.label}: skills + ${hookType}`));
+    } else {
+      console.log(chalk.gray(`  ${adapter.label}: ${hookType}`));
+    }
+  }
   if (enableDaemon) {
     console.log(chalk.gray('  Enabled: automatic reviews'));
   }

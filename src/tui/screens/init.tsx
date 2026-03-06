@@ -249,10 +249,10 @@ export function InitScreen() {
           <text fg={theme.textDim}>Created: {result.rulesDir}/</text>
           {result.skillsWritten.map((s) => (
             <text key={s} fg={theme.textDim}>
-              Created: .claude/skills/{s}
+              Created: {s}
             </text>
           ))}
-          {result.hooksInstalled && <text fg={theme.textDim}>Updated: .claude/settings.json (hooks)</text>}
+          {result.hooksInstalled && <text fg={theme.textDim}>Hooks installed for detected agents</text>}
           {result.envUpdated && <text fg={theme.textDim}>Updated: .env.local (API key)</text>}
           {result.rulesCreated.length > 0 && (
             <text fg={theme.textDim}>Applied {result.rulesCreated.length} starter rule(s)</text>

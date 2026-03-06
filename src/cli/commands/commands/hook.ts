@@ -1,3 +1,3 @@
-import { installHook, runHook, runPreTool, uninstallHook } from '@mesa/code-review';
+import { installHook, runHook, runNotify, runPreTool, uninstallHook } from '@mesa/code-review';
 
-export { installHook, uninstallHook, runHook, runPreTool };
+export { installHook, uninstallHook, runHook, runNotify, runPreTool };

@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import type { Argv } from 'yargs';
 import yargs from 'yargs';
 import { daemonStart, daemonStatus, daemonStop } from './commands/daemon.js';
-import { installHook, runHook, runPreTool, uninstallHook } from './commands/hook.js';
+import { installHook, runHook, runNotify, runPreTool, uninstallHook } from './commands/hook.js';
 import { indexCmdHandler } from './commands/index-cmd.js';
 import { initHandler } from './commands/init.js';
 import { modelHandler } from './commands/model.js';
@@ -23,7 +23,6 @@ import { serveHandler } from './commands/serve.js';
 import { statsCommand } from './commands/stats.js';
 
 const secondary = chalk.hex('#be3c00');
-const tertiary = chalk.hex('#ffecba');
 
 const MESA_BANNER = `  __  __
  |  \\/  |
@@ -252,7 +251,7 @@ export async function cli(argv: string[]): Promise<boolean> {
 
     .command(
       'init',
-      'Set up Mesa in your repo (config, rules, hooks, Claude Code integration)',
+      'Set up Mesa in your repo (config, rules, hooks, agent integration)',
       (y: Argv) => {
         y.option('force', {
           describe: 'Overwrite existing configuration',
@@ -395,17 +394,17 @@ export async function cli(argv: string[]): Promise<boolean> {
       wrapHandler(indexCmdHandler as (argv: unknown) => Promise<void>)
     )
 
-    .command('hook <command>', 'Enable or disable automatic reviews in Claude Code', (y: Argv) => {
+    .command('hook <command>', 'Enable or disable automatic reviews in coding agents', (y: Argv) => {
       y.demandCommand(1, 'Please specify a hook subcommand. Run "mesa hook --help" for options.')
         .command(
           'install',
-          'Enable automatic reviews after Claude Code writes code',
+          'Enable automatic reviews after agents write code',
           {},
           wrapHandler(installHook as (argv: unknown) => Promise<number>)
         )
         .command(
           'uninstall',
-          'Disable automatic reviews in Claude Code',
+          'Disable automatic reviews in coding agents',
           {},
           wrapHandler(uninstallHook as (argv: unknown) => Promise<number>)
         )
@@ -431,6 +430,23 @@ export async function cli(argv: string[]): Promise<boolean> {
           false as unknown as string,
           {},
           wrapHandler(runPreTool as (argv: unknown) => Promise<number>)
+        )
+        .command(
+          'notify',
+          false as unknown as string,
+          (y: Argv) => {
+            y.option('c', {
+              alias: 'config',
+              describe: 'Path to config file',
+              type: 'string',
+            }).option('v', {
+              alias: 'verbose',
+              describe: 'Show detailed progress',
+              type: 'boolean',
+              default: false,
+            });
+          },
+          wrapHandler(runNotify as (argv: unknown) => Promise<number>)
         );
     })
 

@@ -21,17 +21,25 @@ import { logger } from '../../util/logger.js';
 const secondary = chalk.hex('#be3c00');
 
 export async function installHook(): Promise<number> {
-  await runInstallHook();
-  logger.info(secondary('Claude Code hooks installed'));
+  const result = await runInstallHook();
+  if (result.agents.length === 0) {
+    logger.info(chalk.yellow('No agents detected. Install hooks manually with mesa hook install.'));
+  } else {
+    for (const agent of result.agents) {
+      logger.info(secondary(`${agent.label} hooks installed`));
+    }
+  }
   return 0;
 }
 
 export async function uninstallHook(): Promise<number> {
   const result = await runUninstallHook();
-  if (result.noSettingsFound) {
-    logger.info(chalk.yellow('No .claude/settings.json found. Nothing to uninstall.'));
+  if (result.agents.length === 0) {
+    logger.info(chalk.yellow('No agent settings found. Nothing to uninstall.'));
   } else {
-    logger.info(secondary('Mesa hooks uninstalled.'));
+    for (const agent of result.agents) {
+      logger.info(secondary(`${agent.label} hooks uninstalled.`));
+    }
   }
   return 0;
 }
@@ -200,11 +208,40 @@ export async function runPreTool(argv: PreToolArgv): Promise<number> {
   return result.exitCode;
 }
 
+export interface NotifyHookInput {
+  type?: string;
+  'turn-id'?: string;
+  'last-assistant-message'?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export async function runNotify(argv: { config?: string; verbose?: boolean }): Promise<number> {
+  if (process.env.MESA_REVIEW_AGENT) return 0;
+
+  const input = readNotifyStdinJson();
+  if (!input) return 0;
+
+  const config = loadValidatedConfig(argv.config);
+  if (!config.hook.enabled) return 0;
+
+  const decision = await runHookReview({
+    config: argv.config,
+    verbose: argv.verbose,
+  });
+
+  if (decision.decision === 'block') {
+    // Log violations to stderr but don't block (Codex doesn't support blocking)
+    process.stderr.write(`[mesa] Review found violations:\n${decision.reason ?? 'Code review found violations.'}\n`);
+  }
+
+  return 0;
+}
+
 /** Files that should never be sent for review (tool configs, secrets, etc.). */
 const REVIEW_NOISE_PATTERNS = ['.mcp.json', '.env', '.env.local', '.DS_Store', 'package-lock.json', 'bun.lockb'];
 
 /** Directory segments that should never be sent for review. */
-const REVIEW_NOISE_DIRS = ['.claude', '.mesa'];
+const REVIEW_NOISE_DIRS = ['.claude', '.mesa', '.gemini', '.codex'];
 
 function isReviewNoise(filePath: string): boolean {
   const basename = path.basename(filePath);
@@ -213,6 +250,17 @@ function isReviewNoise(filePath: string): boolean {
   }
   const segments = filePath.split('/');
   return segments.some((seg) => REVIEW_NOISE_DIRS.includes(seg));
+}
+
+function readNotifyStdinJson(): NotifyHookInput | null {
+  try {
+    if (process.stdin.isTTY) return null;
+    const raw = fs.readFileSync(0, 'utf8');
+    if (!raw.trim()) return null;
+    return JSON.parse(raw) as NotifyHookInput;
+  } catch {
+    return null;
+  }
 }
 
 function readPreToolStdinJson(): PreToolHookInput | null {
