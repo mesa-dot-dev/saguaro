@@ -1,27 +1,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { inspect } from 'node:util';
+import chalk from 'chalk';
+import type { Argv } from 'yargs';
+import yargs from 'yargs';
 import { findRepoRoot, requireGitRepo } from '../../git/git.js';
+import { MesaError } from '../../util/errors.js';
+import { logger } from '../../util/logger.js';
 import { generateRulesCommand } from '../lib/generate.js';
 import { installHook, runHook, runNotify, runPreTool, uninstallHook } from '../lib/hook.js';
 import indexCmdHandler from '../lib/index-cmd.js';
 import initHandler from '../lib/init.js';
 import modelHandler from '../lib/model.js';
-import {
-  createRule,
-  deleteRule,
-  explainRule,
-  listRules,
-  locateRulesDirectory,
-  validateRules,
-} from '../lib/rules.js';
+import { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, validateRules } from '../lib/rules.js';
 import serveHandler from '../lib/serve.js';
 import { statsCommand } from '../lib/stats.js';
-import { MesaError } from '../../util/errors.js';
-import { logger } from '../../util/logger.js';
-import chalk from 'chalk';
-import type { Argv } from 'yargs';
-import yargs from 'yargs';
 import { daemonStart, daemonStatus, daemonStop } from './daemon.js';
 import { reviewCommand } from './review.js';
 
@@ -177,14 +170,21 @@ export async function cli(argv: string[]): Promise<boolean> {
 
     .command(
       'review',
-      'Review code changes against your rules',
+      'Run an agentic code review on your changes',
       (y: Argv) => {
-        y.option('b', {
-          alias: 'base',
-          describe: 'Base branch to diff against',
-          type: 'string',
-          defaultDescription: 'main',
-        })
+        y.usage(
+          `${secondary('mesa review')} [options]\n\n` +
+            'Modes:\n' +
+            '  rules    Optimized for bug and codebase violations. Maximum signal, lowest noise.\n' +
+            "  classic  Permissive senior-level review, inspired by Mesa's GitHub review product.\n" +
+            '  full     Run both rules and classic reviews together.'
+        )
+          .option('b', {
+            alias: 'base',
+            describe: 'Base branch to diff against',
+            type: 'string',
+            defaultDescription: 'main',
+          })
           .option('head', {
             describe: 'Head ref to review',
             type: 'string',
@@ -219,7 +219,7 @@ export async function cli(argv: string[]): Promise<boolean> {
           })
           .option('m', {
             alias: 'mode',
-            describe: 'Review mode',
+            describe: 'Review mode: rules, classic, or full',
             type: 'string',
             choices: ['rules', 'classic', 'full'] as const,
             default: 'rules',
