@@ -23,9 +23,9 @@ description: Run Mesa code review on current changes
        question: "What type of review would you like to run?",
        header: "Review type",
        options: [
-         { label: "Both (Recommended)", description: "Run rules + staff-engineer review and present combined findings" },
-         { label: "Rules only", description: "Review against defined rules in .mesa/rules/" },
-         { label: "Classic only", description: "Agentic staff-engineer review (bugs, security, regressions, dead code, performance)" }
+         { label: "Both (Recommended)", description: "Run both rules and classic reviews together for maximum coverage" },
+         { label: "Rules only", description: "Optimized for bug and codebase violations — maximum signal, lowest noise" },
+         { label: "Classic only", description: "Senior-level review where the agent is more permissive in its analysis, borrowing the best elements from Mesa's GitHub review product" }
        ],
        multiSelect: false
      }]
