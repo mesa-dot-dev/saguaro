@@ -58,13 +58,17 @@ echo "  mesa --help"
 node "$MESA" --help > /dev/null
 echo "  OK"
 
+# Create a wrapper script so the simulated install can be run as .release/mesa
+cat > "$ROOT/.release/mesa" <<WRAPPER
+#!/usr/bin/env bash
+exec node "$SIMULATE_DIR/package/dist/cli/bin.js" "\$@"
+WRAPPER
+chmod +x "$ROOT/.release/mesa"
+
 echo ""
-echo "==> Simulation complete"
-echo "  Version:  $VERSION"
-echo "  Tarball:  $TARBALL"
-echo "  Install:  $SIMULATE_DIR/package/"
+echo "==> Simulation complete (v$VERSION)"
 echo ""
-echo "  Inspect the install tree:"
-echo "    ls $SIMULATE_DIR/package/"
-echo "    ls $SIMULATE_DIR/package/node_modules/web-tree-sitter/"
-echo "    node $SIMULATE_DIR/package/dist/cli/bin.js --help"
+echo "  Run the simulated install:"
+echo "    .release/mesa --help"
+echo "    .release/mesa review"
+echo "    .release/mesa init --force"

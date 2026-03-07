@@ -36,6 +36,7 @@
     "lint:check": "biome check .",
     "postinstall": "node scripts/postinstall.cjs || true",
     "prepublishOnly": "bun run build",
+    "mesa": "bun src/cli/bin.tsx",
     "brew:simulate": "bash scripts/brew-simulate.sh"
   },
   "dependencies": {
