@@ -1,4 +1,4 @@
-import { isMesaOnPath, resolveDistBin } from "../../util/resolve-bin.js";
+import { isMesaOnPath, resolveDistBin } from '../../util/resolve-bin.js';
 
 /**
  * Resolve the command string for a mesa subcommand.
@@ -7,8 +7,8 @@ import { isMesaOnPath, resolveDistBin } from "../../util/resolve-bin.js";
  */
 export function resolveMesaSubcommand(subcommand: string): string {
   return resolveMesaSubcommandParts(subcommand)
-    .map((p) => (p.includes(" ") ? `"${p}"` : p))
-    .join(" ");
+    .map((p) => (p.includes(' ') ? `"${p}"` : p))
+    .join(' ');
 }
 
 /**
@@ -20,8 +20,8 @@ export function resolveMesaSubcommand(subcommand: string): string {
  */
 export function resolveMesaSubcommandParts(subcommand: string): string[] {
   if (isMesaOnPath()) {
-    return ["mesa", ...subcommand.split(" ")];
+    return ['mesa', ...subcommand.split(' ')];
   }
   const distBin = resolveDistBin(import.meta.url);
-  return ["node", distBin, ...subcommand.split(" ")];
+  return ['node', distBin, ...subcommand.split(' ')];
 }
