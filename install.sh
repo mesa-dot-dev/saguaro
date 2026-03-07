@@ -15,7 +15,7 @@ case "$OS" in
 esac
 
 case "$ARCH" in
-  x86_64|amd64)   ARCH="x64" ;;
+  x86_64|amd64)   ARCH="arm64" ;;  # x64 binary dropped; arm64 runs via Rosetta on Intel Macs
   aarch64|arm64)   ARCH="arm64" ;;
   *)               echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
 esac
