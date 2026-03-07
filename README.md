@@ -8,13 +8,7 @@ Rules enforced inside Claude Code, Codex, and Cursor. Your agent fixes its own m
 
 ## Install
 
-### Homebrew (macOS)
-
-```bash
-brew install mesa-dot-dev/homebrew-tap/code-review
-```
-
-### npm
+### npm (macOS + Linux, requires Node.js 20+)
 
 ```bash
 npm install -g @mesadev/code-review
@@ -24,6 +18,18 @@ Or run without installing:
 
 ```bash
 npx @mesadev/code-review review
+```
+
+### Homebrew (macOS)
+
+```bash
+brew install mesa-dot-dev/homebrew-tap/code-review
+```
+
+### Shell script (macOS + Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mesa-dot-dev/code-review/main/install.sh | sh
 ```
 
 ### GitHub Releases

@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-03-06
+
+### Added
+
+- Shell script installer (`install.sh`) for macOS and Linux binary installs
+- npm postinstall health check for native dependencies (better-sqlite3)
+- Shared `isMesaOnPath()` / `resolveDistBin()` utilities in `src/util/resolve-bin.ts`
+
+### Changed
+
+- npm is now the primary install method; README reordered accordingly
+- Shebang changed from `#!/usr/bin/env bun` to `#!/usr/bin/env node` for Node.js compatibility
+- Binary path resolution uses `import.meta.url` instead of `findRepoRoot()` monorepo paths
+- MCP config detection uses generic PATH lookup instead of Homebrew-specific prefix matching
+- Test files excluded from `dist/` build output and npm package
+
+### Fixed
+
+- CLI and daemon failing to resolve `bin.js` when installed via npm (no longer assumes monorepo layout)
+- Stale `packages/code-review/` references in comments and glob examples
+
 ## [0.3.9] - 2026-03-06
 
 ### Added

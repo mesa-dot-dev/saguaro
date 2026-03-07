@@ -1,3 +1,5 @@
+import { isMesaOnPath, resolveDistBin } from '../util/resolve-bin.js';
+
 export interface McpServerEntry {
   type: 'stdio';
   command: string;
@@ -10,21 +12,19 @@ export interface McpJsonConfig {
   };
 }
 
-const HOMEBREW_BIN_PREFIXES = ['/opt/homebrew/bin/', '/usr/local/bin/'];
-
 function isCompiledBinary(): boolean {
   return (process.argv[1] ?? '').startsWith('/$bunfs/');
 }
 
-function isHomebrewPath(filePath: string): boolean {
-  return HOMEBREW_BIN_PREFIXES.some((prefix) => filePath.startsWith(prefix));
-}
-
+/**
+ * Generate the MCP server configuration for .mcp.json.
+ *
+ * Resolution order:
+ * 1. Compiled Bun binary or mesa on PATH -> { command: "mesa", args: ["serve"] }
+ * 2. Dev mode / npm local -> { command: "node", args: ["<bin.js>", "serve"] }
+ */
 export function getMcpJsonConfig(): McpJsonConfig {
-  if (isCompiledBinary()) {
-    // In compiled Bun binaries, both argv[0] ("bun") and argv[1] ("/$bunfs/...")
-    // are useless for determining the real binary path. The binary is always
-    // invocable as "mesa" (installed via Homebrew or on PATH).
+  if (isCompiledBinary() || isMesaOnPath()) {
     return {
       mcpServers: {
         mesa: { type: 'stdio', command: 'mesa', args: ['serve'] },
@@ -32,15 +32,12 @@ export function getMcpJsonConfig(): McpJsonConfig {
     };
   }
 
-  // Dev mode: node/bun running the script directly.
-  const scriptPath = process.argv[1] ?? '';
-  const homebrew = isHomebrewPath(scriptPath);
-  const command = homebrew ? 'mesa' : 'bun';
-  const args = homebrew ? ['serve'] : [scriptPath, 'serve'];
+  // Dev mode / npm local install: resolve bin.js relative to this file.
+  const distBin = resolveDistBin(import.meta.url);
 
   return {
     mcpServers: {
-      mesa: { type: 'stdio', command, args },
+      mesa: { type: 'stdio', command: 'node', args: [distBin, 'serve'] },
     },
   };
 }

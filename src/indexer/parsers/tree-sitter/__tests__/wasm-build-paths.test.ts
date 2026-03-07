@@ -3,12 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /**
- * Validates that WASM files exist at the canonical workspace paths used by
- * the build scripts (build-binary.sh, release-code-review.yml).
+ * Validates that WASM files exist at the paths used by the release build
+ * scripts (.github/workflows/release.yml).
  *
- * These paths are deterministic — they resolve through bun's workspace
- * symlinks in packages/code-review/node_modules/. If these tests fail,
- * the release build will also fail in CI.
+ * These paths resolve through node_modules/ in the repo root.
+ * If these tests fail, the release build will also fail in CI.
  */
 
 const PKG_DIR = path.resolve(import.meta.dirname, '../../../../..');

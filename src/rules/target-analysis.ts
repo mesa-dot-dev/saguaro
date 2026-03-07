@@ -21,7 +21,7 @@ export interface TargetAnalysis {
   files: CodebaseSnippet[]; // sampled from target dir (up to 5 files, each truncated to 3000 chars)
   boundaryFiles: CodebaseSnippet[]; // sampled from sibling dirs (up to 3 files)
   directoryTree: string; // ascii tree of target's parent showing siblings
-  suggestedGlobs: string[]; // e.g., ["packages/code-review/src/cli/**/*.ts", "!**/*.test.*", "!**/*.spec.*"]
+  suggestedGlobs: string[]; // e.g., ["src/cli/**/*.ts", "!**/*.test.*", "!**/*.spec.*"]
   detectedLanguages: string[]; // e.g., ["typescript"]
   placements: PlacementOption[];
 }
