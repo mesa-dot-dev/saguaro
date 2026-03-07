@@ -12,11 +12,13 @@ This document covers the release flow for publishing new versions.
 
 Before releasing, verify the package locally:
 
-    bun run brew:simulate
+    bun run brew:verify
 
 This builds, packs, extracts the tarball, installs dependencies, verifies all
-WASM files are present, and runs smoke tests. The result in `.release/brew-simulate/`
-is exactly what a Homebrew user gets.
+WASM files are present, and runs smoke tests. Then run the verified build:
+
+    .release/mesa --help
+    .release/mesa review
 
 ## Automated Release
 
