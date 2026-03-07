@@ -1,9 +1,9 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { findRepoRoot } from '../git/git.js';
+import { isMesaOnPath, resolveDistBin } from '../util/resolve-bin.js';
 import { MesaDaemon } from './server.js';
 import type { Finding, QueueJobInput } from './store.js';
 
@@ -104,12 +104,11 @@ async function ensureDaemonRunning(): Promise<{ port: number } | null> {
   try {
     let command: string;
     let args: string[];
-    try {
-      execFileSync('which', ['mesa'], { stdio: 'ignore' });
+    if (isMesaOnPath()) {
       command = 'mesa';
       args = ['daemon', 'start'];
-    } catch {
-      const distBin = path.resolve(findRepoRoot(), 'packages', 'code-review', 'dist', 'cli', 'bin', 'index.js');
+    } else {
+      const distBin = resolveDistBin(import.meta.url);
       command = 'node';
       args = [distBin, 'daemon', 'start'];
     }

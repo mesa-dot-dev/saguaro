@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { cli } from './commands/index.js';
 
 const handled = await cli(process.argv.slice(2));

@@ -1,6 +1,6 @@
 {
   "name": "@mesadev/code-review",
-  "version": "0.3.9",
+  "version": "0.4.0",
   "description": "AI code review that enforces your team's rules during development",
   "license": "Apache-2.0",
   "type": "module",
@@ -16,6 +16,8 @@
   },
   "files": [
     "dist",
+    "!dist/**/*.test.*",
+    "scripts",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"
@@ -32,6 +34,7 @@
     "test": "bun test",
     "lint": "biome check --write .",
     "lint:check": "biome check .",
+    "postinstall": "node scripts/postinstall.cjs || true",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
