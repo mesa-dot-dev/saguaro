@@ -10,3 +10,4 @@ __tests__/
 .mesa/
 .env*
 .DS_Store
+dist/**/*.test.*

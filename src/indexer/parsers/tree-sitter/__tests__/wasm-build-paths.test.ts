@@ -3,11 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /**
- * Validates that WASM files exist at the paths used by the release build
- * scripts (.github/workflows/release.yml).
- *
- * These paths resolve through node_modules/ in the repo root.
- * If these tests fail, the release build will also fail in CI.
+ * Validates that WASM files exist at the expected paths in node_modules.
+ * These are the same files that get installed when a user runs
+ * `brew install mesa-dot-dev/tap/code-review` (via npm install).
+ * If these tests fail, the release will also fail in CI.
  */
 
 const PKG_DIR = path.resolve(import.meta.dirname, '../../../../..');

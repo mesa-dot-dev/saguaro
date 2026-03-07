@@ -6,11 +6,11 @@ class ${FORMULA_CLASS_NAME} < Formula
   license "Apache-2.0"
   version "${VERSION}"
 
-  depends_on arch: :arm64
+  depends_on "node"
 
   def install
-    bin.install "mesa"
-    (bin/"wasm").install Dir["wasm/*"]
+    system "npm", "install", *std_npm_args
+    bin.install_symlink libexec.glob("bin/*")
   end
 
   test do
