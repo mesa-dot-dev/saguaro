@@ -1,58 +1,57 @@
 # Releasing Mesa Code Review CLI
 
-This document covers the full release flow for publishing a new Homebrew version
-of the code-review CLI.
+This document covers the release flow for publishing new versions.
 
 ## Prerequisites
 
-- `HOMEBREW_TAP_TOKEN` GitHub Actions secret exists in this repo
-- Token has write access to `mesa-dot-dev/homebrew-tap`
+- `HOMEBREW_TAP_TOKEN` GitHub Actions secret with write access to
+  `mesa-dot-dev/homebrew-tap`
+- `NPM_TOKEN` GitHub Actions secret for npm publish
 
-## Automated Release (Preferred)
+## Local Verification
+
+Before releasing, verify the package locally:
+
+    bun run brew:simulate
+
+This builds, packs, extracts the tarball, installs dependencies, verifies all
+WASM files are present, and runs smoke tests. The result in `.release/brew-simulate/`
+is exactly what a Homebrew user gets.
+
+## Automated Release
 
 Use the GitHub workflow at `.github/workflows/release.yml`.
 
-### Trigger via GitHub Actions
+### Trigger
 
 1. Bump `package.json` version and merge to `main`, or
-2. Run the workflow manually (`workflow_dispatch`) and set `version`.
+2. Run the workflow manually via `workflow_dispatch`.
 
-The workflow will:
+### What it does
 
-- build the package and create platform-specific binaries
-- run smoke checks (`mesa --help`, `mesa index` in a temp git repo)
-- create release assets in `mesa-dot-dev/homebrew-tap`
-- update `Formula/code-review.rb` and `Formula/code-review@<version>.rb` on
+- Detects version change in `package.json`
+- Builds and packs the npm tarball
+- Runs smoke tests (WASM files, `mesa --help`)
+- Publishes to npm registry
+- Uploads tarball to `mesa-dot-dev/homebrew-tap` releases
+- Updates `Formula/code-review.rb` and `Formula/code-review@<version>.rb` on
   the `staged` branch via `mesa-dot-dev/homebrew-tap-action`
-- rely on `homebrew-tap`'s `test-and-merge` workflow to validate and promote
-  `staged -> main`
+- The tap's `test-and-merge` workflow validates (`brew audit`, `brew style`,
+  `brew install`) and promotes `staged -> main`
 
 ### Dry run
 
-Run `Release Code Review CLI` with `dry_run=true` to validate packaging/smoke
-tests without creating a GitHub release or updating Homebrew formulae.
-
-Dry run still validates the important release path:
-
-- tarball creation
-- checksum generation
-- installability smoke test
-- command smoke checks
-
-If dry-run fails, stop and fix before running a real release.
+Run with `dry_run=true` to validate packaging and smoke tests without
+publishing to npm, creating releases, or updating Homebrew.
 
 ## Post-release verification
 
-```bash
-brew upgrade mesa-dot-dev/homebrew-tap/code-review
-mesa --v
-```
+    brew upgrade mesa-dot-dev/homebrew-tap/code-review
+    mesa --help
 
-Optional clean-slate test:
+Clean-slate test:
 
-```bash
-brew uninstall --force code-review || true
-brew untap mesa-dot-dev/homebrew-tap || true
-brew install mesa-dot-dev/homebrew-tap/code-review
-mesa --help
-```
+    brew uninstall --force code-review || true
+    brew untap mesa-dot-dev/homebrew-tap || true
+    brew install mesa-dot-dev/homebrew-tap/code-review
+    mesa --help
