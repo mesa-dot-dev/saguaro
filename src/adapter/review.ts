@@ -31,11 +31,11 @@ export interface ReviewAdapterResult {
 export async function runReview(request: ReviewAdapterRequest, runtime?: ReviewRuntime): Promise<ReviewAdapterResult> {
   const effectiveRuntime = runtime ?? createNodeReviewRuntime({ rulesDir: request.rulesDir });
   const changedFilesOverride = request.changedFilesOverride;
-  const diffs = request.diffs ?? getDiffs(request.baseRef, request.headRef);
+  const diffs = request.diffs ?? (runtime ? new Map<string, string>() : getDiffs(request.baseRef, request.headRef));
 
   // Compute codebase context if not provided and indexing is enabled
   let codebaseContext = request.codebaseContext;
-  if (codebaseContext === undefined) {
+  if (codebaseContext === undefined && !runtime) {
     codebaseContext = await resolveCodebaseContext({
       baseRef: request.baseRef,
       headRef: request.headRef,

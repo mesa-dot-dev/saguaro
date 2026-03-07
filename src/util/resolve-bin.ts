@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Check whether `mesa` is available on the system PATH.
