@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
-    "mesa": "./dist/cli/bin.js"
+    "mesa": "dist/cli/bin.js"
   },
   "main": "./dist/index.js",
   "exports": {
@@ -72,7 +72,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/mesa-dot-dev/code-review.git"
+    "url": "git+https://github.com/mesa-dot-dev/code-review.git"
   },
   "homepage": "https://mesa.dev",
   "bugs": {

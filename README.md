@@ -38,7 +38,7 @@ Download prebuilt binaries from [Releases](https://github.com/mesa-dot-dev/code-
 
 ---
 
-Requires an API key for your chosen provider. Set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GOOGLE_API_KEY` in your environment, or paste it during `mesa init`.
+Mesa uses your existing agent CLI subscription (Claude Code, Codex, Gemini) when available, no API key needed. If no agent CLI is installed, set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GOOGLE_API_KEY` in your environment.
 
 ## Quickstart
 
