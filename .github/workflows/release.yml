@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   BUN_VERSION: "1.3.1"
@@ -28,86 +28,45 @@ jobs:
     outputs:
       should_release: ${{ steps.detect.outputs.should_release }}
       version: ${{ steps.detect.outputs.version }}
+      dry_run: ${{ steps.detect.outputs.dry_run }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
       - id: detect
+        shell: bash
         run: |
+          set -euo pipefail
+
           current=$(node -e 'process.stdout.write(require("./package.json").version)')
-          if git rev-parse HEAD^ >/dev/null 2>&1; then
-            previous=$(git show HEAD^:package.json | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>process.stdout.write(JSON.parse(d).version))')
-          else
-            previous=""
-          fi
+          dry_run="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run || 'false' }}"
           should_release="false"
-          if [ "$current" != "$previous" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             should_release="true"
+          elif git rev-parse HEAD^ >/dev/null 2>&1; then
+            previous=$(git show HEAD^:package.json | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>process.stdout.write(JSON.parse(d).version))')
+            if [ "$current" != "$previous" ]; then
+              should_release="true"
+            fi
           fi
+
           echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
           echo "version=$current" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$dry_run" >> "$GITHUB_OUTPUT"
 
-  build:
-    name: Build (${{ matrix.target }})
+          echo "Version: $current | Release: $should_release | Dry run: $dry_run"
+
+  publish:
+    name: Build, Test & Publish
     needs: detect
     if: needs.detect.outputs.should_release == 'true'
-    strategy:
-      matrix:
-        include:
-          - target: darwin-arm64
-            os: macos-latest
-          - target: linux-x64
-            os: ubuntu-latest
-          - target: linux-arm64
-            os: ubuntu-24.04-arm
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-
-      - run: bun install --frozen-lockfile
-      - run: bun run build
-
-      - name: Build binary
-        run: |
-          version="${{ needs.detect.outputs.version }}"
-          bun build src/cli/bin.tsx --compile --minify \
-            --define "__MESA_VERSION__=\"$version\"" \
-            --external @swc/wasm \
-            --outfile mesa
-
-      - name: Package
-        run: |
-          version="${{ needs.detect.outputs.version }}"
-          target="${{ matrix.target }}"
-          tarball="mesa-review-${version}-${target}.tar.gz"
-          chmod +x mesa
-
-          mkdir -p wasm
-          cp node_modules/web-tree-sitter/tree-sitter.wasm wasm/
-          for lang in python go rust java kotlin; do
-            cp "node_modules/tree-sitter-wasms/out/tree-sitter-${lang}.wasm" wasm/
-          done
-
-          tar -czf "$tarball" mesa wasm/
-          shasum -a 256 "$tarball" > "$tarball.sha256"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: binary-${{ matrix.target }}
-          path: |
-            mesa-review-*.tar.gz
-            mesa-review-*.tar.gz.sha256
-
-  publish-npm:
-    name: Publish to npm
-    needs: [detect, build]
-    if: github.event.inputs.dry_run != 'true'
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      artifact_url: ${{ steps.meta.outputs.artifact_url }}
+      sha256: ${{ steps.meta.outputs.sha256 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -117,96 +76,129 @@ jobs:
 
       - run: bun install --frozen-lockfile
       - run: bun run build
+
+      - name: Pack npm tarball
+        id: pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.detect.outputs.version }}"
+          tarball="mesa-code-review-${version}.tgz"
+
+          npm pack
+          mv mesadev-code-review-*.tgz "$tarball"
+
+          sha256=$(shasum -a 256 "$tarball" | awk '{print $1}')
+
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tarball="${{ steps.pack.outputs.tarball }}"
+          smoke_dir="$(mktemp -d)"
+
+          echo "Extracting tarball..."
+          tar xzf "$tarball" -C "$smoke_dir"
+          cd "$smoke_dir/package"
+
+          echo "Installing dependencies..."
+          npm install --production
+
+          echo "Verifying WASM files..."
+          for f in \
+            node_modules/web-tree-sitter/tree-sitter.wasm \
+            node_modules/tree-sitter-wasms/out/tree-sitter-python.wasm \
+            node_modules/tree-sitter-wasms/out/tree-sitter-go.wasm \
+            node_modules/tree-sitter-wasms/out/tree-sitter-rust.wasm \
+            node_modules/tree-sitter-wasms/out/tree-sitter-java.wasm \
+            node_modules/tree-sitter-wasms/out/tree-sitter-kotlin.wasm; do
+            if [ ! -f "$f" ]; then
+              echo "FAIL: Missing WASM file: $f" >&2
+              exit 1
+            fi
+          done
+          echo "All WASM files present."
+
+          echo "Running mesa --help..."
+          node dist/cli/bin.js --help > /dev/null
+
+          rm -rf "$smoke_dir"
+          echo "Smoke test passed."
 
       - uses: actions/setup-node@v4
+        if: needs.detect.outputs.dry_run != 'true'
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
-      - run: npm publish
+      - name: Publish to npm
+        if: needs.detect.outputs.dry_run != 'true'
+        run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  publish-github:
-    name: Create GitHub Release
-    needs: [detect, build]
-    if: github.event.inputs.dry_run != 'true'
-    runs-on: ubuntu-latest
-    outputs:
-      darwin_arm64_url: ${{ steps.urls.outputs.darwin_arm64_url }}
-      darwin_arm64_sha: ${{ steps.urls.outputs.darwin_arm64_sha }}
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: binary-*
-          merge-multiple: true
-
-      - name: Create release
+      - name: Publish tarball to homebrew-tap releases
+        if: needs.detect.outputs.dry_run != 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        shell: bash
         run: |
-          version="${{ needs.detect.outputs.version }}"
-          tag="v${version}"
-          gh release create "$tag" \
-            mesa-review-*.tar.gz \
-            mesa-review-*.tar.gz.sha256 \
-            --title "v${version}" \
-            --generate-notes \
-            -R "${{ github.repository }}"
+          set -euo pipefail
 
-      - name: Export Homebrew URLs
-        id: urls
+          version="${{ needs.detect.outputs.version }}"
+          release_tag="mesa-code-review-v$version"
+          tarball="${{ steps.pack.outputs.tarball }}"
+
+          if gh release view "$release_tag" -R "mesa-dot-dev/homebrew-tap" >/dev/null 2>&1; then
+            echo "Release $release_tag already exists in homebrew-tap." >&2
+            exit 1
+          fi
+
+          gh release create "$release_tag" \
+            "$tarball" \
+            --title "Mesa Code Review CLI v$version" \
+            --notes "npm package release for Homebrew formula code-review" \
+            -R "mesa-dot-dev/homebrew-tap"
+
+      - name: Export outputs
+        id: meta
+        shell: bash
         run: |
           version="${{ needs.detect.outputs.version }}"
-          tag="v${version}"
-          base="https://github.com/${{ github.repository }}/releases/download/${tag}"
-          sha=$(cat "mesa-review-${version}-darwin-arm64.tar.gz.sha256" | awk '{print $1}')
-          echo "darwin_arm64_url=${base}/mesa-review-${version}-darwin-arm64.tar.gz" >> "$GITHUB_OUTPUT"
-          echo "darwin_arm64_sha=${sha}" >> "$GITHUB_OUTPUT"
+          release_tag="mesa-code-review-v$version"
+          tarball="${{ steps.pack.outputs.tarball }}"
+          sha256="${{ steps.pack.outputs.sha256 }}"
+          artifact_url="https://github.com/mesa-dot-dev/homebrew-tap/releases/download/$release_tag/$tarball"
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "artifact_url=$artifact_url" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
 
   update-homebrew:
     name: Update Homebrew Tap
-    needs: [detect, publish-github]
-    if: github.event.inputs.dry_run != 'true'
+    needs: [detect, publish]
+    if: needs.detect.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Update Homebrew formula
-        env:
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          version="${{ needs.detect.outputs.version }}"
-          url="${{ needs.publish-github.outputs.darwin_arm64_url }}"
-          sha="${{ needs.publish-github.outputs.darwin_arm64_sha }}"
-
-          gh repo clone mesa-dot-dev/homebrew-tap /tmp/tap -- --depth=1
-          cd /tmp/tap
-          git config user.name "mesa-ci[bot]"
-          git config user.email "ci-bot@mesa.dev"
-
-          cat > Formula/code-review.rb <<RUBY
-          class CodeReview < Formula
-            desc "Mesa code review CLI"
-            homepage "https://mesa.dev"
-            url "${url}"
-            sha256 "${sha}"
-            license "Apache-2.0"
-            version "${version}"
-
-            depends_on arch: :arm64
-
-            def install
-              bin.install "mesa"
-              (bin/"wasm").install Dir["wasm/*"]
-            end
-
-            test do
-              assert_match "mesa", shell_output("#{bin}/mesa --help")
-            end
-          end
-          RUBY
-
-          git add Formula/code-review.rb
-          git commit -m "code-review ${version}"
-          git push
+      - name: Update staged tap formulae
+        uses: mesa-dot-dev/homebrew-tap-action@main
+        with:
+          name: code-review
+          tap: mesa-dot-dev/homebrew-tap
+          tap-token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          tap-branch: staged
+          template: formula-code-review.rb.tmpl
+          latest-path: Formula/code-review.rb
+          versioned-path: "Formula/code-review@${VERSION}.rb"
+          version: ${{ needs.publish.outputs.version }}
+          url: ${{ needs.publish.outputs.artifact_url }}
+          sha256: ${{ needs.publish.outputs.sha256 }}
+          commit-message: "code-review ${VERSION}"
+          committer-name: "mesa-ci[bot]"
+          committer-email: "ci-bot@mesa.dev"

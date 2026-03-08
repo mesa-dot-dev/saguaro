@@ -35,7 +35,8 @@
     "lint": "biome check --write .",
     "lint:check": "biome check .",
     "postinstall": "node scripts/postinstall.cjs || true",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "brew:verify": "bash scripts/brew-verify.sh"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.38",
