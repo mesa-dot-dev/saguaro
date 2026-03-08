@@ -2,8 +2,9 @@
   "mcpServers": {
     "mesa": {
       "type": "stdio",
-      "command": "mesa",
+      "command": "bun",
       "args": [
+        "/Users/peterrallojay/Desktop/mesa/code-review/.release/brew-verify/package/dist/cli/bin.js",
         "serve"
       ]
     }
