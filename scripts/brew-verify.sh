@@ -1,68 +1,61 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Verify the release artifact by replicating what `brew install` does locally.
-# Builds, packs, extracts, installs deps, and checks WASM files.
+# Verify the Homebrew release artifact by building a compiled binary
+# with sidecar WASM files, matching what CI produces.
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERIFY_DIR="$ROOT/.release/brew-verify"
+RELEASE_DIR="$ROOT/.release"
 VERSION=$(node -e 'process.stdout.write(require("./package.json").version)')
 
 echo "==> Building @mesadev/code-review v$VERSION"
 cd "$ROOT"
 bun run build
 
-echo "==> Packing npm tarball"
-TARBALL=$(npm pack --pack-destination "$ROOT/.release" 2>/dev/null)
-TARBALL="$ROOT/.release/$TARBALL"
+echo "==> Compiling binary"
+bun build src/cli/bin.tsx --compile --minify \
+  --define "__MESA_VERSION__=\"$VERSION\"" \
+  --external @swc/wasm \
+  --outfile "$RELEASE_DIR/mesa"
+chmod +x "$RELEASE_DIR/mesa"
 
-echo "==> Extracting to $VERIFY_DIR"
-rm -rf "$VERIFY_DIR"
-mkdir -p "$VERIFY_DIR"
-tar xzf "$TARBALL" -C "$VERIFY_DIR"
-
-echo "==> Installing dependencies (simulating Homebrew npm install)"
-cd "$VERIFY_DIR/package"
-npm install --production 2>&1 | tail -1
+echo "==> Copying WASM files"
+mkdir -p "$RELEASE_DIR/wasm"
+cp node_modules/web-tree-sitter/tree-sitter.wasm "$RELEASE_DIR/wasm/"
+for lang in python go rust java kotlin; do
+  cp "node_modules/tree-sitter-wasms/out/tree-sitter-${lang}.wasm" "$RELEASE_DIR/wasm/"
+done
 
 echo ""
 echo "==> Verifying WASM files"
 WASM_OK=true
 for f in \
-  node_modules/web-tree-sitter/tree-sitter.wasm \
-  node_modules/tree-sitter-wasms/out/tree-sitter-python.wasm \
-  node_modules/tree-sitter-wasms/out/tree-sitter-go.wasm \
-  node_modules/tree-sitter-wasms/out/tree-sitter-rust.wasm \
-  node_modules/tree-sitter-wasms/out/tree-sitter-java.wasm \
-  node_modules/tree-sitter-wasms/out/tree-sitter-kotlin.wasm; do
+  "$RELEASE_DIR/wasm/tree-sitter.wasm" \
+  "$RELEASE_DIR/wasm/tree-sitter-python.wasm" \
+  "$RELEASE_DIR/wasm/tree-sitter-go.wasm" \
+  "$RELEASE_DIR/wasm/tree-sitter-rust.wasm" \
+  "$RELEASE_DIR/wasm/tree-sitter-java.wasm" \
+  "$RELEASE_DIR/wasm/tree-sitter-kotlin.wasm"; do
   if [ -f "$f" ]; then
-    echo "  OK  $f"
+    echo "  OK  $(basename "$f")"
   else
-    echo "  MISSING  $f"
+    echo "  MISSING  $(basename "$f")"
     WASM_OK=false
   fi
 done
 
 if [ "$WASM_OK" = false ]; then
   echo ""
-  echo "FAIL: Missing WASM files. The tree-sitter indexer will not work."
+  echo "FAIL: Missing WASM files."
   exit 1
 fi
 
 echo ""
 echo "==> Smoke tests"
-MESA="$VERIFY_DIR/package/dist/cli/bin.js"
 
 echo "  mesa --help"
-node "$MESA" --help > /dev/null
+"$RELEASE_DIR/mesa" --help > /dev/null
 echo "  OK"
-
-# Create a wrapper script so the simulated install can be run as .release/mesa
-cat > "$ROOT/.release/mesa" <<WRAPPER
-#!/usr/bin/env bash
-exec node "$VERIFY_DIR/package/dist/cli/bin.js" "\$@"
-WRAPPER
-chmod +x "$ROOT/.release/mesa"
 
 echo ""
 echo "==> Verification complete (v$VERSION)"

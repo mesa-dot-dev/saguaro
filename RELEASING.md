@@ -10,12 +10,12 @@ This document covers the release flow for publishing new versions.
 
 ## Local Verification
 
-Before releasing, verify the package locally:
+Before releasing, verify the compiled binary locally:
 
     bun run brew:verify
 
-This builds, packs, extracts the tarball, installs dependencies, verifies all
-WASM files are present, and runs smoke tests. Then run the verified build:
+This compiles a binary with `bun build --compile`, copies WASM sidecar files,
+and runs smoke tests. Then run the verified build:
 
     .release/mesa --help
     .release/mesa review
@@ -31,13 +31,20 @@ Use the GitHub workflow at `.github/workflows/release.yml`.
 
 ### What it does
 
-- Detects version change in `package.json`
+Two independent paths run in parallel:
+
+**npm** (ubuntu):
 - Builds and packs the npm tarball
-- Runs smoke tests (WASM files, `mesa --help`)
+- Runs smoke tests (WASM files via npm deps, `mesa --help`)
 - Publishes to npm registry
-- Uploads tarball to `mesa-dot-dev/homebrew-tap` releases
-- Updates `Formula/code-review.rb` and `Formula/code-review@<version>.rb` on
-  the `staged` branch via `mesa-dot-dev/homebrew-tap-action`
+
+**Homebrew** (per-platform matrix):
+- Compiles binaries with `bun build --compile` for darwin-arm64, linux-x64,
+  linux-arm64
+- Packages each binary with sidecar WASM files
+- Uploads tarballs to `mesa-dot-dev/homebrew-tap` releases
+- Generates and pushes `Formula/code-review.rb` and
+  `Formula/code-review@<version>.rb` to the `staged` branch
 - The tap's `test-and-merge` workflow validates (`brew audit`, `brew style`,
   `brew install`) and promotes `staged -> main`
 

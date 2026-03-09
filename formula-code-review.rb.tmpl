@@ -1,18 +1,33 @@
 class ${FORMULA_CLASS_NAME} < Formula
   desc "Mesa code review CLI"
   homepage "https://mesa.dev"
-  url "${URL}"
-  sha256 "${SHA256}"
-  license "Apache-2.0"
   version "${VERSION}"
+  license "Apache-2.0"
 
-  depends_on "node"
+  on_macos do
+    if Hardware::CPU.arm?
+      url "${URL_DARWIN_ARM64}"
+      sha256 "${SHA256_DARWIN_ARM64}"
+    end
+  end
+
+  on_linux do
+    if Hardware::CPU.intel?
+      url "${URL_LINUX_X64}"
+      sha256 "${SHA256_LINUX_X64}"
+    end
+    if Hardware::CPU.arm?
+      url "${URL_LINUX_ARM64}"
+      sha256 "${SHA256_LINUX_ARM64}"
+    end
+  end
 
   skip_clean "libexec"
 
   def install
-    system "npm", "install", *std_npm_args
-    bin.install_symlink libexec.glob("bin/*")
+    libexec.install "mesa"
+    (libexec/"wasm").install Dir["wasm/*"]
+    bin.install_symlink libexec/"mesa"
   end
 
   test do

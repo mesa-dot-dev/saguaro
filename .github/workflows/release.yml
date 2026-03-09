@@ -58,15 +58,12 @@ jobs:
 
           echo "Version: $current | Release: $should_release | Dry run: $dry_run"
 
-  publish:
-    name: Build, Test & Publish
+  # ── npm publish (unchanged) ───────────────────────────────────────────
+  publish-npm:
+    name: Publish to npm
     needs: detect
     if: needs.detect.outputs.should_release == 'true'
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.meta.outputs.version }}
-      artifact_url: ${{ steps.meta.outputs.artifact_url }}
-      sha256: ${{ steps.meta.outputs.sha256 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -88,10 +85,7 @@ jobs:
           npm pack
           mv mesadev-code-review-*.tgz "$tarball"
 
-          sha256=$(shasum -a 256 "$tarball" | awk '{print $1}')
-
           echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
-          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
 
       - name: Smoke test
         shell: bash
@@ -141,17 +135,105 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish tarball to homebrew-tap releases
-        if: needs.detect.outputs.dry_run != 'true'
+  # ── Build compiled binaries for Homebrew ──────────────────────────────
+  build:
+    name: Build Binary (${{ matrix.target }})
+    needs: detect
+    if: needs.detect.outputs.should_release == 'true'
+    strategy:
+      matrix:
+        include:
+          - target: darwin-arm64
+            os: macos-latest
+          - target: linux-x64
+            os: ubuntu-latest
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+
+      - name: Compile binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.detect.outputs.version }}"
+
+          bun build src/cli/bin.tsx --compile --minify \
+            --define "__MESA_VERSION__=\"$version\"" \
+            --external @swc/wasm \
+            --outfile mesa
+
+      - name: Package binary + WASM
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.detect.outputs.version }}"
+          target="${{ matrix.target }}"
+          tarball="mesa-review-${version}-${target}.tar.gz"
+
+          chmod +x mesa
+
+          mkdir -p wasm
+          cp node_modules/web-tree-sitter/tree-sitter.wasm wasm/
+          for lang in python go rust java kotlin; do
+            cp "node_modules/tree-sitter-wasms/out/tree-sitter-${lang}.wasm" wasm/
+          done
+
+          tar -czf "$tarball" mesa wasm/
+
+      - name: Smoke test binary
+        shell: bash
+        run: |
+          ./mesa --help > /dev/null
+          echo "Binary smoke test passed."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: mesa-review-*.tar.gz
+
+  # ── Publish binaries to Homebrew tap ──────────────────────────────────
+  publish-homebrew:
+    name: Publish to Homebrew
+    needs: [detect, build]
+    if: needs.detect.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Compute checksums
+        id: checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.detect.outputs.version }}"
+
+          for target in darwin-arm64 linux-x64 linux-arm64; do
+            tarball="mesa-review-${version}-${target}.tar.gz"
+            sha256=$(shasum -a 256 "$tarball" | awk '{print $1}')
+            key=$(echo "$target" | tr '-' '_')
+            echo "sha256_${key}=$sha256" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Upload binaries to homebrew-tap releases
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-
           version="${{ needs.detect.outputs.version }}"
           release_tag="mesa-code-review-v$version"
-          tarball="${{ steps.pack.outputs.tarball }}"
 
           if gh release view "$release_tag" -R "mesa-dot-dev/homebrew-tap" >/dev/null 2>&1; then
             echo "Release $release_tag already exists in homebrew-tap." >&2
@@ -159,46 +241,59 @@ jobs:
           fi
 
           gh release create "$release_tag" \
-            "$tarball" \
+            mesa-review-*.tar.gz \
             --title "Mesa Code Review CLI v$version" \
-            --notes "npm package release for Homebrew formula code-review" \
+            --notes "Binary release for Homebrew" \
             -R "mesa-dot-dev/homebrew-tap"
 
-      - name: Export outputs
-        id: meta
+      - uses: actions/checkout@v4
+        with:
+          path: source
+
+      - name: Generate and push formula
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         shell: bash
         run: |
+          set -euo pipefail
           version="${{ needs.detect.outputs.version }}"
           release_tag="mesa-code-review-v$version"
-          tarball="${{ steps.pack.outputs.tarball }}"
-          sha256="${{ steps.pack.outputs.sha256 }}"
-          artifact_url="https://github.com/mesa-dot-dev/homebrew-tap/releases/download/$release_tag/$tarball"
+          base_url="https://github.com/mesa-dot-dev/homebrew-tap/releases/download/$release_tag"
 
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "artifact_url=$artifact_url" >> "$GITHUB_OUTPUT"
-          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          sha256_darwin_arm64="${{ steps.checksums.outputs.sha256_darwin_arm64 }}"
+          sha256_linux_x64="${{ steps.checksums.outputs.sha256_linux_x64 }}"
+          sha256_linux_arm64="${{ steps.checksums.outputs.sha256_linux_arm64 }}"
 
-  update-homebrew:
-    name: Update Homebrew Tap
-    needs: [detect, publish]
-    if: needs.detect.outputs.dry_run != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+          # Generate a formula from the template with the given class name
+          render_formula() {
+            local class_name="$1"
+            sed \
+              -e "s|\${FORMULA_CLASS_NAME}|${class_name}|g" \
+              -e "s|\${VERSION}|${version}|g" \
+              -e "s|\${URL_DARWIN_ARM64}|${base_url}/mesa-review-${version}-darwin-arm64.tar.gz|g" \
+              -e "s|\${SHA256_DARWIN_ARM64}|${sha256_darwin_arm64}|g" \
+              -e "s|\${URL_LINUX_X64}|${base_url}/mesa-review-${version}-linux-x64.tar.gz|g" \
+              -e "s|\${SHA256_LINUX_X64}|${sha256_linux_x64}|g" \
+              -e "s|\${URL_LINUX_ARM64}|${base_url}/mesa-review-${version}-linux-arm64.tar.gz|g" \
+              -e "s|\${SHA256_LINUX_ARM64}|${sha256_linux_arm64}|g" \
+              source/formula-code-review.rb.tmpl
+          }
 
-      - name: Update staged tap formulae
-        uses: mesa-dot-dev/homebrew-tap-action@main
-        with:
-          name: code-review
-          tap: mesa-dot-dev/homebrew-tap
-          tap-token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          tap-branch: staged
-          template: formula-code-review.rb.tmpl
-          latest-path: Formula/code-review.rb
-          versioned-path: "Formula/code-review@${VERSION}.rb"
-          version: ${{ needs.publish.outputs.version }}
-          url: ${{ needs.publish.outputs.artifact_url }}
-          sha256: ${{ needs.publish.outputs.sha256 }}
-          commit-message: "code-review ${VERSION}"
-          committer-name: "mesa-ci[bot]"
-          committer-email: "ci-bot@mesa.dev"
+          # Clone the tap repo
+          tap_url="https://x-access-token:${GH_TOKEN}@github.com/mesa-dot-dev/homebrew-tap.git"
+          git clone --depth 1 -b staged "$tap_url" homebrew-tap || \
+            git clone --depth 1 "$tap_url" homebrew-tap
+
+          cd homebrew-tap
+          git checkout staged 2>/dev/null || git checkout -b staged
+
+          mkdir -p Formula
+
+          render_formula "CodeReview" > "Formula/code-review.rb"
+          render_formula "CodeReviewAT${version//\./_}" > "Formula/code-review@${version}.rb"
+
+          git config user.name "mesa-ci[bot]"
+          git config user.email "ci-bot@mesa.dev"
+          git add Formula/
+          git commit -m "Update code-review formula to ${version}"
+          git push --force-with-lease origin staged
