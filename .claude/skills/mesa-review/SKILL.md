@@ -31,5 +31,5 @@ description: Run Mesa code review on current changes
 3. **Present results** —
    - **Rules mode**: Group violations by severity (error → warning → info) with file paths and line numbers.
    - **Classic mode**: Show findings grouped by category with severity and file locations.
-   - **Both mode**: Present rules violations first under a "Rules Review" heading, then classic findings under a "Staff Engineer Review" heading.
+   - **Both mode**: Present rules violations first under a "Rules Review" heading, then classic findings under a "Senior Engineer Review" heading.
    - If no issues are found in either review, confirm the changes look clean.

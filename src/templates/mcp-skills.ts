@@ -8,7 +8,7 @@ export interface McpSkillFile {
 export function getMcpSkillFiles(): McpSkillFile[] {
   return [
     {
-      skillFilePath: 'mesa-review/SKILL.md',
+      skillFilePath: "mesa-review/SKILL.md",
       content: `---
 name: mesa-review
 description: Run Mesa code review on current changes
@@ -42,12 +42,12 @@ description: Run Mesa code review on current changes
 3. **Present results** —
    - **Rules mode**: Group violations by severity (error → warning → info) with file paths and line numbers.
    - **Classic mode**: Show findings grouped by category with severity and file locations.
-   - **Both mode**: Present rules violations first under a "Rules Review" heading, then classic findings under a "Staff Engineer Review" heading.
+   - **Both mode**: Present rules violations first under a "Rules Review" heading, then classic findings under a "Senior Engineer Review" heading.
    - If no issues are found in either review, confirm the changes look clean.
 `,
     },
     {
-      skillFilePath: 'mesa-createrule/SKILL.md',
+      skillFilePath: "mesa-createrule/SKILL.md",
       content: `---
 name: mesa-createrule
 description: Generate a single Mesa review rule using the AI pipeline with preview and approval
@@ -92,7 +92,7 @@ description: Generate a single Mesa review rule using the AI pipeline with previ
 `,
     },
     {
-      skillFilePath: 'mesa-generaterules/SKILL.md',
+      skillFilePath: "mesa-generaterules/SKILL.md",
       content: `---
 name: mesa-generaterules
 description: Auto-generate Mesa review rules using the full AI pipeline with approval before writing
@@ -171,7 +171,7 @@ Both tools read from the same session state populated by \`mesa_generate_rules\`
 `,
     },
     {
-      skillFilePath: 'mesa-model/SKILL.md',
+      skillFilePath: "mesa-model/SKILL.md",
       content: `---
 name: mesa-model
 description: Switch the AI model used for Mesa code reviews
