@@ -292,7 +292,7 @@ jobs:
           mkdir -p Formula
 
           render_formula "CodeReview" > "Formula/code-review.rb"
-          render_formula "CodeReviewAT${version//\./_}" > "Formula/code-review@${version}.rb"
+          render_formula "CodeReviewAT${version//.}" > "Formula/code-review@${version}.rb"
 
           git config user.name "mesa-ci[bot]"
           git config user.email "ci-bot@mesa.dev"
