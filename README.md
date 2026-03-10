@@ -108,21 +108,21 @@ Mesa works with any coding agent. The CLI is agent-agnostic.
 
 ## Background Daemon
 
-For long-running agent sessions, the daemon reviews changes asynchronously without blocking your agent.
+For long-running agent sessions, the daemon runs classic senior engineer level reviews asynchronously in the background. Findings are advisory and surfaced on the next agent turn — independent of the rules review system.
 
 ```bash
-mesa daemon start   # Start the review daemon
-mesa daemon stop    # Stop it
+mesa daemon start    # Start the review daemon
+mesa daemon stop     # Stop it
+mesa daemon status   # Check if the daemon is running
 ```
 
 The daemon runs an HTTP server with a SQLite-backed job queue and worker pool. The stop hook posts diffs to the daemon instead of running reviews inline. Workers claim jobs, spawn AI agents, and store results. The hook client polls for completion.
 
-Daemon configuration in `.mesa/config.yaml`:
+Enable in `.mesa/config.yaml`:
 
 ```yaml
 daemon:
-  workers: 2           # Concurrent review workers
-  idle_timeout: 1800   # Seconds before auto-shutdown
+  enabled: true
 ```
 
 ## Rules
@@ -182,21 +182,21 @@ For a deep dive on writing effective rules, see [Writing Rules](docs/writing-rul
 | `mesa rules list` | List all rules with IDs, titles, and severity |
 | `mesa rules explain <id>` | Show full details for a rule |
 | `mesa rules validate` | Check all rule files for correct structure |
-| `mesa rules for <paths>` | Show which rules match given files/directories |
 | `mesa rules delete <id>` | Delete a rule |
 | `mesa rules locate` | Print the path to the rules directory |
-| `mesa rules sync` | Regenerate `.claude/skills/` from rules |
 | `mesa index` | Build the import graph for richer review context |
 | `mesa hook install` | Enable automatic reviews in Claude Code |
 | `mesa hook uninstall` | Disable automatic reviews |
 | `mesa daemon start` | Start the background review daemon |
 | `mesa daemon stop` | Stop the background review daemon |
+| `mesa daemon status` | Check if the daemon is running |
 | `mesa model` | Switch AI provider and model interactively |
 | `mesa stats` | Show review history and cost analytics |
 
 ### `mesa review` Options
 
 ```
+-m, --mode     Review mode: rules, classic, or full       [default: "rules"]
 -b, --base     Base branch to diff against                [default: "main"]
     --head     Head ref to review                         [default: "HEAD"]
 -o, --output   Output format: console, json               [default: "console"]
@@ -226,7 +226,7 @@ mesa rules create [target]
 # AI model for reviews
 model:
   provider: anthropic       # anthropic | openai | google
-  name: claude-opus-4-6
+  name: sonnet              # CLI alias (e.g. "sonnet", "opus") or model ID
 
 # Output settings
 output:
@@ -237,20 +237,15 @@ review:
   max_steps: 10              # Max tool-calling steps per review batch
   files_per_batch: 2         # Files reviewed together per batch
 
-# Claude Code stop hook
+# Hook settings
 hook:
-  enabled: true              # Auto-review when Claude Code finishes writing
+  enabled: true              # Master switch for all Mesa hooks
+  stop:
+    enabled: true            # Rules review after each code change
 
-# Background daemon
-daemon:
-  workers: 2                 # Concurrent review workers
-  idle_timeout: 1800         # Seconds before auto-shutdown
-
-# Import graph indexing (richer cross-file context)
-# index:
+# Background daemon (classic reviews)
+# daemon:
 #   enabled: true
-#   blast_radius_depth: 2
-#   context_token_budget: 4000
 ```
 
 API keys are loaded from environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`) or from `.env.local` / `.env` files.
@@ -295,7 +290,7 @@ Anthropic (Claude), OpenAI (GPT-4o, o3), and Google (Gemini).
 
 **What's the background daemon?**
 
-An optional async review system for long-running agent sessions. Reviews run in parallel without blocking your agent. See [Background Daemon](#background-daemon).
+An optional async review system for long-running agent sessions. Runs classic (senior-engineer-style) reviews in parallel without blocking your agent. See [Background Daemon](#background-daemon).
 
 ## License
 
