@@ -45,9 +45,9 @@ const HookSchema = z.object({
   enabled: z.boolean().default(true),
   stop: z
     .object({
-      enabled: z.boolean().default(false),
+      enabled: z.boolean().default(true),
     })
-    .default({ enabled: false }),
+    .default({ enabled: true }),
 });
 
 const DaemonSchema = z.object({

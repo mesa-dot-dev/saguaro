@@ -60,22 +60,23 @@ review:
 # =============================================================================
 
 hook:
-  # Master switch for all Mesa hooks
+  # Master switch for all Mesa hooks (PreToolUse rule injection + stop hook reviews)
   enabled: true
 
-  # Stop hook: full LLM review after Claude finishes writing code
-  # The PreToolUse hook injects rules proactively, so this is opt-in
+  # Rules review: runs after each code change, evaluates diffs against .mesa/rules/*.md,
+  # and blocks the agent until all violations are fixed (fix-loop).
   stop:
-    enabled: false
+    enabled: true
 `;
 
   if (opts.daemon) {
     content += `
 # =============================================================================
-# Background Reviews
+# Background Reviews (Classic)
 # =============================================================================
-# Automatically reviews your changes as you code and reports findings
-# before you finish. No extra setup required.
+# Runs a senior-engineer-style review asynchronously in the background.
+# Findings are advisory and surfaced on the next agent turn.
+# Independent of the rules review above — both can run together.
 
 daemon:
   enabled: true
