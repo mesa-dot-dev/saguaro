@@ -2,9 +2,9 @@
 [![CI](https://github.com/mesa-dot-dev/code-review/actions/workflows/ci.yml/badge.svg)](https://github.com/mesa-dot-dev/code-review/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-# Mesa Code Review CLI
+# Mesa Local Review
 
-Rules enforced inside Claude Code, Codex, and Cursor. Your agent fixes its own mistakes while context is hot. Free. Apache 2.0.
+Local code review for coding agents. Rules enforced inside Claude Code, Codex, and Cursor. Your agent fixes its own mistakes while context is hot. Free. Apache 2.0.
 
 ## Install
 
@@ -31,10 +31,6 @@ brew install mesa-dot-dev/homebrew-tap/code-review
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mesa-dot-dev/code-review/main/install.sh | sh
 ```
-
-### GitHub Releases
-
-Download prebuilt binaries from [Releases](https://github.com/mesa-dot-dev/code-review/releases).
 
 ---
 
@@ -262,7 +258,7 @@ mesa review --base origin/main
 
 **How is this different from CodeRabbit / Greptile / etc?**
 
-Those tools are AI reviewers that comment on your PRs. Mesa is a rules engine. You define what matters to your team, Mesa enforces it during development — not after the code is already in a PR. No noise, no generic suggestions. If nothing is violated, you hear nothing.
+Those tools are AI reviewers that comment on your PRs. Mesa Local Review is a rules engine. You define what matters to your team, Mesa enforces it during development — not after the code is already in a PR. No noise, no generic suggestions. If nothing is violated, you hear nothing.
 
 **How much does it cost?**
 
