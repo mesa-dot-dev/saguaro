@@ -169,7 +169,7 @@ The markdown body is the instruction the AI uses to evaluate the rule. Include `
 
 Mesa reviews any text file — rules are language-agnostic. The import graph supports TypeScript, JavaScript, Python, Go, Rust, Java, and Kotlin.
 
-For a deep dive on writing effective rules, see [Writing Rules](plans/writing-rules.md).
+For a deep dive on writing effective rules, see [Writing Rules](docs/writing-rules.md).
 
 ## CLI Reference
 
