@@ -12,6 +12,7 @@ import { loadMesaRules } from '../rules/mesa-rules.js';
 import { sortRulesByPriority } from '../rules/resolution.js';
 import type { RulePolicy, Violation } from '../types/types.js';
 import { matchesGlobs } from '../util/constants.js';
+import { logger } from '../util/logger.js';
 import { runReview } from './review.js';
 import { filterToSessionFiles } from './transcript.js';
 
@@ -28,6 +29,10 @@ export interface HookRunOptions {
 }
 
 export async function runHookReview(options: HookRunOptions): Promise<HookDecision> {
+  // Hook stdout must be clean JSON — silence all logger output to prevent
+  // console.log pollution that breaks Claude Code's JSON parsing.
+  logger.setLevel('silent');
+
   // Only review uncommitted local changes and untracked files. don't review committed changes. It would burn tokens and be redundant.
   const localChangedFiles = listLocalChangedFilesFromGit();
   const untrackedFiles = listUntrackedFiles();
