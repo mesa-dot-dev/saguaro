@@ -90,6 +90,7 @@ export async function runHook(argv: HookRunArgv): Promise<number> {
   }
 
   const config = loadValidatedConfig(argv.config);
+  let daemonFindings = '';
 
   // Daemon mode: check for previous findings AND queue new background review
   if (config.daemon?.enabled) {
@@ -139,36 +140,39 @@ export async function runHook(argv: HookRunArgv): Promise<number> {
       });
     }
 
-    // Step 3: If there were findings, block with the condensed findings in reason.
-    // Only "reason" reaches the agent in Stop hooks — additionalContext is silently dropped.
-    // Exit 0 + decision:"block" still sets stop_hook_active=true on re-entry.
+    // Step 3: If there were daemon findings, capture them.
+    // They'll be merged with any rules review findings below.
     if (pendingFindings) {
-      const response = JSON.stringify({
-        decision: 'block',
-        reason: pendingFindings,
-      });
-      process.stdout.write(response);
-      return 0;
+      daemonFindings = pendingFindings;
     }
+  }
 
+  // Rules review: runs inline regardless of daemon mode.
+  let rulesReason = '';
+  if (config.hook.enabled && config.hook.stop.enabled) {
+    const decision = await runHookReview({
+      config: argv.config,
+      verbose: argv.verbose,
+      transcriptPath: input?.transcript_path as string | undefined,
+    });
+
+    if (decision.decision === 'block' && decision.reason) {
+      rulesReason = decision.reason;
+    }
+  }
+
+  // Merge daemon findings and rules review results.
+  const combinedReason = [daemonFindings, rulesReason].filter(Boolean).join('\n\n');
+
+  if (combinedReason) {
+    const response = JSON.stringify({
+      decision: 'block',
+      reason: combinedReason,
+    });
+    process.stdout.write(response);
     return 0;
   }
 
-  if (!config.hook.enabled || !config.hook.stop.enabled) {
-    return 0;
-  }
-
-  const decision = await runHookReview({
-    config: argv.config,
-    verbose: argv.verbose,
-    transcriptPath: input?.transcript_path as string | undefined,
-  });
-
-  if (decision.decision === 'block') {
-    // Exit code 2 tells Claude Code to block and provide feedback
-    process.stderr.write(decision.reason ?? 'Code review found violations.');
-    return 2;
-  }
   return 0;
 }
 
