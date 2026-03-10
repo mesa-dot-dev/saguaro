@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.10] - 2026-03-09
+- Moved documentation from `plans/` to `docs/` for better discoverability
+
+## [0.4.9] - 2026-03-09
+
+### Fixed
+
+- Race condition where daemon findings and rules review findings were not merged; daemon would return early, preventing inline rules from running when both systems were enabled
+
+## [0.4.8] - 2026-03-09
+
+### Changed
+
+- Removed `.mcp.json` from version control (already in `.gitignore`)
+### Fixed
+
+- Homebrew formula template path and version string processing in release workflow
+- Homebrew installation failing due to libexec relocation
+- Release pipeline permissions and job separation for npm and Homebrew publishing
+
+## [0.4.1] - 2026-03-06
+
+### Changed
+
+- Dropped darwin-x64 build target; macOS releases now target arm64 only
+
+### Fixed
+
+- Review adapter skips git calls when test runtime is injected
+- npm/Node.js distribution fixes for binary resolution
+
 ## [0.4.0] - 2026-03-06
 
 ### Added

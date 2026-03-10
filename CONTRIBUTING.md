@@ -35,7 +35,7 @@ bun run build
 
 ## Writing Rules
 
-See [plans/writing-rules.md](plans/writing-rules.md) for guidance on writing effective review rules.
+See [docs/writing-rules.md](docs/writing-rules.md) for guidance on writing effective review rules.
 
 ## Code Style
 
