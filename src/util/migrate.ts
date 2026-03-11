@@ -49,6 +49,7 @@ function migrateHomeDir(): void {
             } catch {
               break; // Process exited
             }
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
           }
           logger.debug(`[migrate] Stopped running daemon (PID ${content.pid})`);
         } catch {
