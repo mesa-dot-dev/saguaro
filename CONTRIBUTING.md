@@ -1,4 +1,4 @@
-# Contributing to Mesa Code Review
+# Contributing to Saguaro Code Review
 
 Thank you for your interest in contributing!
 
@@ -6,8 +6,8 @@ Thank you for your interest in contributing!
 
 ```bash
 # Clone the repo
-git clone https://github.com/mesa-dot-dev/code-review.git
-cd code-review
+git clone https://github.com/mesa-dot-dev/saguaro.git
+cd saguaro
 
 # Install dependencies (requires Bun)
 bun install
@@ -43,10 +43,10 @@ This project uses [Biome](https://biomejs.dev/) for linting and formatting. Run 
 
 ## Reporting Bugs
 
-Open an issue at [github.com/mesa-dot-dev/code-review/issues](https://github.com/mesa-dot-dev/code-review/issues) with:
+Open an issue at [github.com/mesa-dot-dev/saguaro/issues](https://github.com/mesa-dot-dev/saguaro/issues) with:
 - Steps to reproduce
 - Expected vs actual behavior
-- `mesa --version` output
+- `sag --version` output
 - OS and Node.js/Bun version
 
 ## License

@@ -372,7 +372,7 @@ function printSummaryTable(results: EvalResult[]): void {
 // ---------------------------------------------------------------------------
 
 function main() {
-  console.log(chalk.bold('\nMesa Eval Runner\n'));
+  console.log(chalk.bold('\nSaguaro Eval Runner\n'));
 
   const allRubrics = discoverRubrics();
   const rubrics = filterRubrics(allRubrics);

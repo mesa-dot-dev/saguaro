@@ -7,7 +7,7 @@ import path from 'node:path';
 import { analyzeTarget, resolveTargetDirectory } from './target-analysis.js';
 
 function withTempRepo(run: (root: string) => void): void {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-target-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'saguaro-target-'));
   try {
     fs.mkdirSync(path.join(root, '.git'));
     run(root);

@@ -112,7 +112,7 @@ export async function generateRulesCommand(argv: GenerateRulesArgv): Promise<num
   const { inputTokens, outputTokens } = result.summary;
   const tokenStr = `${(inputTokens / 1000).toFixed(1)}K input + ${(outputTokens / 1000).toFixed(1)}K output`;
 
-  console.log(chalk.green(`\n${accepted.length} rule(s) written to .mesa/rules/`));
+  console.log(chalk.green(`\n${accepted.length} rule(s) written to .saguaro/rules/`));
   if (accepted.length < result.rules.length) {
     console.log(chalk.gray(`  (${result.rules.length - accepted.length} rule(s) skipped)`));
   }
@@ -217,7 +217,7 @@ function ruleToYaml(rule: RulePolicy): string {
 function openInEditor(rule: RulePolicy): RulePolicy | null {
   const editor = process.env.EDITOR || process.env.VISUAL || 'vi';
   const tmpDir = os.tmpdir();
-  const tmpFile = path.join(tmpDir, `mesa-rule-${rule.id}.yaml`);
+  const tmpFile = path.join(tmpDir, `saguaro-rule-${rule.id}.yaml`);
 
   try {
     fs.writeFileSync(tmpFile, ruleToYaml(rule));

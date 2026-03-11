@@ -46,7 +46,7 @@ export function HomeScreen() {
     <box flexDirection="column" width="100%" height="100%">
       <box flexDirection="column" alignItems="center" paddingTop={1} paddingBottom={1}>
         <text fg={theme.accentDim}>{CACTUS}</text>
-        <text fg={theme.textDim}>Mesa</text>
+        <text fg={theme.textDim}>Saguaro</text>
         <text fg={theme.textDim}>Infrastructure for the next generation of AI-native software development</text>
       </box>
 

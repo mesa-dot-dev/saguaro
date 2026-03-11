@@ -7,7 +7,7 @@ import path from 'node:path';
 import { anyFileMatchesGlob, detectEcosystems, readPackageDeps, readPythonDeps } from './detect-ecosystems.js';
 
 function withTempDir(run: (root: string) => void): void {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-detect-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'saguaro-detect-'));
   try {
     run(root);
   } finally {

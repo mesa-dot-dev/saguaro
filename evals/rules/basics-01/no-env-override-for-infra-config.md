@@ -1,4 +1,4 @@
-<!-- This file is managed by Mesa. Edit only if you know what you're doing. -->
+<!-- This file is managed by Saguaro. Edit only if you know what you're doing. -->
 ---
 id: no-env-override-for-infra-config
 title: No environment variable overrides for infrastructure config

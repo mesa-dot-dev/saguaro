@@ -1,10 +1,10 @@
-/** Directories to skip during file discovery and tsconfig scanning (differs from lib/constants.ts IGNORED_DIRS by including .mesa, .venv, venv). */
+/** Directories to skip during file discovery and tsconfig scanning (differs from lib/constants.ts IGNORED_DIRS by including .saguaro, .venv, venv). */
 export const SKIP_DIRS = new Set([
   'node_modules',
   'dist',
   'build',
   '.git',
-  '.mesa',
+  '.saguaro',
   '.next',
   '.nuxt',
   '.output',

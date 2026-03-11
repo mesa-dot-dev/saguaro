@@ -10,7 +10,7 @@ describe('Daemon integration', () => {
   let dbPath: string;
 
   beforeEach(() => {
-    dbPath = path.join(os.tmpdir(), `mesa-integration-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+    dbPath = path.join(os.tmpdir(), `saguaro-integration-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
     store = new DaemonStore(dbPath);
   });
 
@@ -67,7 +67,7 @@ describe('Daemon integration', () => {
       ],
     });
 
-    expect(formatted).toContain('Mesa review');
+    expect(formatted).toContain('Saguaro review');
     expect(formatted).toContain('[error] auth.ts:47');
     expect(formatted).toContain('[warning] routes.ts:12');
   });

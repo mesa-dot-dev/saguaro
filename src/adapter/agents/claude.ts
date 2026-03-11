@@ -2,15 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { McpSkillFile } from '../../templates/mcp-skills.js';
 import type { AgentAdapter } from './types.js';
-import { resolveMesaSubcommand } from './utils.js';
+import { resolveSaguaroSubcommand } from './utils.js';
 
 const CLAUDE_SETTINGS_DIR = '.claude';
 const CLAUDE_SETTINGS_FILE = 'settings.json';
 const CLAUDE_SKILLS_DIR = '.claude/skills';
-const HOOK_COMMAND = 'mesa hook run';
+const HOOK_COMMAND = 'sag hook run';
 const HOOK_TIMEOUT = 120;
-const HOOK_STATUS_MESSAGE = 'Mesa: reviewing changes...';
-const PRE_TOOL_HOOK_COMMAND = 'mesa hook pre-tool';
+const HOOK_STATUS_MESSAGE = 'Saguaro: reviewing changes...';
+const PRE_TOOL_HOOK_COMMAND = 'sag hook pre-tool';
 const PRE_TOOL_TIMEOUT = 10;
 
 interface ClaudeSettings {
@@ -47,11 +47,11 @@ function writeSettings(filePath: string, settings: ClaudeSettings): void {
   fs.writeFileSync(filePath, `${JSON.stringify(settings, null, 2)}\n`);
 }
 
-function isMesaHookEntry(entry: StopHookEntry): boolean {
+function isSaguaroHookEntry(entry: StopHookEntry): boolean {
   return entry.hooks.some((h) => h.command === HOOK_COMMAND || h.command.endsWith('hook run'));
 }
 
-function isMesaPreToolEntry(entry: PreToolUseHookEntry): boolean {
+function isSaguaroPreToolEntry(entry: PreToolUseHookEntry): boolean {
   return entry.hooks.some((h) => h.command === PRE_TOOL_HOOK_COMMAND || h.command.endsWith('hook pre-tool'));
 }
 
@@ -70,8 +70,8 @@ export class ClaudeAdapter implements AgentAdapter {
 
     // PreToolUse hook
     if (!settings.hooks.PreToolUse) settings.hooks.PreToolUse = [];
-    if (!settings.hooks.PreToolUse.some(isMesaPreToolEntry)) {
-      const preToolCommand = resolveMesaSubcommand('hook pre-tool');
+    if (!settings.hooks.PreToolUse.some(isSaguaroPreToolEntry)) {
+      const preToolCommand = resolveSaguaroSubcommand('hook pre-tool');
       settings.hooks.PreToolUse.push({
         matcher: 'Edit|Write',
         hooks: [{ type: 'command', command: preToolCommand, timeout: PRE_TOOL_TIMEOUT }],
@@ -80,8 +80,8 @@ export class ClaudeAdapter implements AgentAdapter {
 
     // Stop hook
     if (!settings.hooks.Stop) settings.hooks.Stop = [];
-    if (!settings.hooks.Stop.some(isMesaHookEntry)) {
-      const hookCommand = resolveMesaSubcommand('hook run');
+    if (!settings.hooks.Stop.some(isSaguaroHookEntry)) {
+      const hookCommand = resolveSaguaroSubcommand('hook run');
       settings.hooks.Stop.push({
         hooks: [
           {
@@ -105,15 +105,15 @@ export class ClaudeAdapter implements AgentAdapter {
 
     // Remove PreToolUse entries
     const preToolHooks = settings.hooks?.PreToolUse;
-    if (preToolHooks?.some(isMesaPreToolEntry)) {
-      settings.hooks!.PreToolUse = preToolHooks.filter((entry) => !isMesaPreToolEntry(entry));
+    if (preToolHooks?.some(isSaguaroPreToolEntry)) {
+      settings.hooks!.PreToolUse = preToolHooks.filter((entry) => !isSaguaroPreToolEntry(entry));
       if (settings.hooks!.PreToolUse.length === 0) delete settings.hooks!.PreToolUse;
     }
 
     // Remove Stop entries
     const stopHooks = settings.hooks?.Stop;
-    if (stopHooks?.some(isMesaHookEntry)) {
-      settings.hooks!.Stop = stopHooks.filter((entry) => !isMesaHookEntry(entry));
+    if (stopHooks?.some(isSaguaroHookEntry)) {
+      settings.hooks!.Stop = stopHooks.filter((entry) => !isSaguaroHookEntry(entry));
       if (settings.hooks!.Stop.length === 0) delete settings.hooks!.Stop;
     }
 

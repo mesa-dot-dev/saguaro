@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-REPO="mesa-dot-dev/code-review"
-INSTALL_DIR="${MESA_INSTALL_DIR:-$HOME/.mesa/bin}"
+REPO="mesa-dot-dev/saguaro"
+INSTALL_DIR="${SAGUARO_INSTALL_DIR:-$HOME/.saguaro/bin}"
 
 # Detect platform
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -37,14 +37,14 @@ if [ -z "$LATEST" ]; then
   exit 1
 fi
 
-TARBALL="mesa-review-${LATEST}-${TARGET}.tar.gz"
+TARBALL="saguaro-${LATEST}-${TARGET}.tar.gz"
 URL="https://github.com/${REPO}/releases/download/v${LATEST}/${TARBALL}"
 
 # Download and extract
 DOWNLOAD_DIR=$(mktemp -d)
 trap 'rm -rf "$DOWNLOAD_DIR"' EXIT
 
-echo "Downloading Mesa v${LATEST} for ${TARGET}..."
+echo "Downloading Saguaro v${LATEST} for ${TARGET}..."
 curl -fsSL "$URL" -o "${DOWNLOAD_DIR}/${TARBALL}"
 
 echo "Installing to ${INSTALL_DIR}..."
@@ -52,11 +52,11 @@ mkdir -p "$INSTALL_DIR"
 tar -xzf "${DOWNLOAD_DIR}/${TARBALL}" -C "$INSTALL_DIR"
 
 # Verify
-if [ -x "${INSTALL_DIR}/mesa" ]; then
+if [ -x "${INSTALL_DIR}/sag" ]; then
   echo ""
-  echo "Mesa v${LATEST} installed to ${INSTALL_DIR}/mesa"
+  echo "Saguaro v${LATEST} installed to ${INSTALL_DIR}/sag"
 else
-  echo "Installation failed — binary not found at ${INSTALL_DIR}/mesa" >&2
+  echo "Installation failed — binary not found at ${INSTALL_DIR}/sag" >&2
   exit 1
 fi
 
@@ -65,7 +65,7 @@ case ":$PATH:" in
   *":${INSTALL_DIR}:"*) ;;
   *)
     echo ""
-    echo "Add Mesa to your PATH by adding this to your shell profile:"
+    echo "Add Saguaro to your PATH by adding this to your shell profile:"
     echo ""
     echo "  export PATH=\"${INSTALL_DIR}:\$PATH\""
     echo ""

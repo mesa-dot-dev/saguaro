@@ -4,7 +4,7 @@ import { runReview } from '../../adapter/review.js';
 import { formatModelForDisplay, loadValidatedConfig } from '../../config/model-config.js';
 import type { ReviewEngineOutcome } from '../../core/types.js';
 import type { ReviewProgressEvent, ReviewResult, Violation } from '../../types/types.js';
-import { MesaError } from '../../util/errors.js';
+import { SaguaroError } from '../../util/errors.js';
 import { logger } from '../../util/logger.js';
 
 const CLI_ACCENT = chalk.hex('#be3c00');
@@ -30,7 +30,7 @@ export async function reviewCommand(options: ReviewCommandOptions): Promise<numb
 
   console.log(
     chalk.gray(
-      `Starting Mesa ${mode === 'full' ? 'full' : mode === 'classic' ? 'classic' : 'rules'} review comparing ${CLI_ACCENT(baseRef)} → ${CLI_ACCENT(headRef)}.`
+      `Starting Saguaro ${mode === 'full' ? 'full' : mode === 'classic' ? 'classic' : 'rules'} review comparing ${CLI_ACCENT(baseRef)} → ${CLI_ACCENT(headRef)}.`
     )
   );
 
@@ -137,7 +137,7 @@ async function runRulesReviewCli(
     console.log(chalk.gray(`  Comparing ${CLI_ACCENT(baseRef)} → ${CLI_ACCENT(headRef)}. Nothing to review.`));
     console.log(
       chalk.gray(
-        `\n  Tips:\n    ${CLI_ACCENT('mesa review -b HEAD~1')}  Review the last commit\n    ${CLI_ACCENT('mesa review -b main')}   Review changes against main`
+        `\n  Tips:\n    ${CLI_ACCENT('sag review -b HEAD~1')}  Review the last commit\n    ${CLI_ACCENT('sag review -b main')}   Review changes against main`
       )
     );
     return 0;
@@ -156,11 +156,11 @@ async function runRulesReviewCli(
 
   if (outcome.kind === 'no-matching-skills') {
     if (options.rules && outcome.rulesLoaded === 0) {
-      throw new MesaError(
+      throw new SaguaroError(
         'RULES_NOT_LOADED',
         `No rules loaded from ${options.rules}. Expected .md rule files in the directory.`,
         {
-          suggestion: 'Run "mesa init" to generate starter rules, or check the rules directory.',
+          suggestion: 'Run "sag init" to generate starter rules, or check the rules directory.',
         }
       );
     }

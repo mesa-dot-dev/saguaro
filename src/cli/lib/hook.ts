@@ -23,7 +23,7 @@ const secondary = chalk.hex('#be3c00');
 export async function installHook(): Promise<number> {
   const result = await runInstallHook();
   if (result.agents.length === 0) {
-    logger.info(chalk.yellow('No agents detected. Install hooks manually with mesa hook install.'));
+    logger.info(chalk.yellow('No agents detected. Install hooks manually with sag hook install.'));
   } else {
     for (const agent of result.agents) {
       logger.info(secondary(`${agent.label} hooks installed`));
@@ -77,8 +77,8 @@ export interface HookRunArgv {
 
 export async function runHook(argv: HookRunArgv): Promise<number> {
   // Loop prevention: never re-trigger reviews from inside a review agent.
-  // The daemon sets MESA_REVIEW_AGENT=1 in the spawned agent's environment.
-  if (process.env.MESA_REVIEW_AGENT) {
+  // The daemon sets SAGUARO_REVIEW_AGENT=1 in the spawned agent's environment.
+  if (process.env.SAGUARO_REVIEW_AGENT) {
     return 0;
   }
 
@@ -94,7 +94,7 @@ export async function runHook(argv: HookRunArgv): Promise<number> {
 
   // Daemon mode: check for previous findings AND queue new background review
   if (config.daemon?.enabled) {
-    const sessionId = input?.session_id ?? `mesa-${Date.now()}`;
+    const sessionId = input?.session_id ?? `saguaro-${Date.now()}`;
 
     // Step 1: Check for findings from a PREVIOUS review before queueing new work.
     // This injects findings into the agent's context via exit code 2.
@@ -183,7 +183,7 @@ export interface PreToolArgv {
 }
 
 export async function runPreTool(argv: PreToolArgv): Promise<number> {
-  if (process.env.MESA_REVIEW_AGENT) {
+  if (process.env.SAGUARO_REVIEW_AGENT) {
     return 0;
   }
 
@@ -201,7 +201,7 @@ export async function runPreTool(argv: PreToolArgv): Promise<number> {
 
   const filePath = input.tool_input?.file_path ?? 'unknown';
   if (result.matchedCount > 0) {
-    console.error(`[mesa] PreToolUse: ${result.matchedCount} rules matched for ${filePath}`);
+    console.error(`[sag] PreToolUse: ${result.matchedCount} rules matched for ${filePath}`);
   }
 
   if (result.stdout) {
@@ -220,7 +220,7 @@ export interface NotifyHookInput {
 }
 
 export async function runNotify(argv: { config?: string; verbose?: boolean }): Promise<number> {
-  if (process.env.MESA_REVIEW_AGENT) return 0;
+  if (process.env.SAGUARO_REVIEW_AGENT) return 0;
 
   const input = readNotifyStdinJson();
   if (!input) return 0;
@@ -235,7 +235,7 @@ export async function runNotify(argv: { config?: string; verbose?: boolean }): P
 
   if (decision.decision === 'block') {
     // Log violations to stderr but don't block (Codex doesn't support blocking)
-    process.stderr.write(`[mesa] Review found violations:\n${decision.reason ?? 'Code review found violations.'}\n`);
+    process.stderr.write(`[sag] Review found violations:\n${decision.reason ?? 'Code review found violations.'}\n`);
   }
 
   return 0;
@@ -245,7 +245,7 @@ export async function runNotify(argv: { config?: string; verbose?: boolean }): P
 const REVIEW_NOISE_PATTERNS = ['.mcp.json', '.env', '.env.local', '.DS_Store', 'package-lock.json', 'bun.lockb'];
 
 /** Directory segments that should never be sent for review. */
-const REVIEW_NOISE_DIRS = ['.claude', '.mesa', '.gemini', '.codex'];
+const REVIEW_NOISE_DIRS = ['.claude', '.saguaro', '.gemini', '.codex'];
 
 function isReviewNoise(filePath: string): boolean {
   const basename = path.basename(filePath);
@@ -274,7 +274,7 @@ function readPreToolStdinJson(): PreToolHookInput | null {
     if (!raw.trim()) return null;
     return JSON.parse(raw) as PreToolHookInput;
   } catch (err) {
-    console.error(`[mesa] Failed to read PreToolUse stdin: ${err}`);
+    console.error(`[sag] Failed to read PreToolUse stdin: ${err}`);
     return null;
   }
 }

@@ -184,7 +184,7 @@ export function buildClaudeEnv(baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     }
   }
   env.CLAUDE_NO_SOUND = '1';
-  env.MESA_REVIEW_AGENT = '1';
+  env.SAGUARO_REVIEW_AGENT = '1';
   return env;
 }
 
@@ -246,7 +246,7 @@ export function buildCodexArgs(options: {
 }
 
 export function buildCodexEnv(baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return { ...baseEnv, MESA_REVIEW_AGENT: '1' };
+  return { ...baseEnv, SAGUARO_REVIEW_AGENT: '1' };
 }
 
 export function createCodexCliRunner(): AgentRunner {
@@ -283,7 +283,7 @@ export function buildGeminiArgs(options: { model?: string }): string[] {
 }
 
 export function buildGeminiEnv(baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return { ...baseEnv, MESA_REVIEW_AGENT: '1' };
+  return { ...baseEnv, SAGUARO_REVIEW_AGENT: '1' };
 }
 
 export function createGeminiCliRunner(): AgentRunner {

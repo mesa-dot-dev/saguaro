@@ -41,7 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Shell script installer (`install.sh`) for macOS and Linux binary installs
 - npm postinstall health check for native dependencies (better-sqlite3)
-- Shared `isMesaOnPath()` / `resolveDistBin()` utilities in `src/util/resolve-bin.ts`
+- Shared `isSaguaroOnPath()` / `resolveDistBin()` utilities in `src/util/resolve-bin.ts`
 
 ### Changed
 
@@ -60,9 +60,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- 14 curated review rules in `.mesa/rules/` covering security, architecture, correctness, and error handling
+- 14 curated review rules in `.saguaro/rules/` covering security, architecture, correctness, and error handling
 - PreToolUse hook — injects relevant rules before Claude Code writes code
-- Mesa self-review via `.mesa/config.yaml` and `.mcp.json`
+- Saguaro self-review via `.saguaro/config.yaml` and `.mcp.json`
 - `docs/commit-mining-findings.md` and README rewrite design docs
 
 ### Changed
@@ -84,7 +84,7 @@ Initial open-source release.
 - Multi-provider support for classic reviews
 - Improved Codex and Gemini provider support
 - Verbose logging and debug capture for classic and dual reviews (`--verbose`, `--debug`)
-- Configurable provider selection in `mesa init` onboarding
+- Configurable provider selection in `sag init` onboarding
 - Multi-select support for bulk rule approval in Claude Code
 - npm, Homebrew, and GitHub Releases distribution
 
@@ -102,7 +102,7 @@ Initial open-source release.
 - Dual review mode (`full`) that runs both rules and classic together
 - Spinner and progress UI for classic review CLI
 - User-triggered daemon reviews
-- Daemon added to `mesa init` onboarding flow
+- Daemon added to `sag init` onboarding flow
 
 ### Changed
 
@@ -132,7 +132,7 @@ Initial open-source release.
 
 ### Added
 
-- Interactive TUI — launches when `mesa` is run without a subcommand
+- Interactive TUI — launches when `sag` is run without a subcommand
 - TUI screens for review, rules, stats, model selection, hook management, and index building
 
 ### Fixed
@@ -158,8 +158,8 @@ Initial open-source release.
 ### Added
 
 - Prebuilt binary CLI distribution (replaced Node.js runtime packaging)
-- `mesa model` command for interactive provider/model switching
-- Model config enhancements (provider-specific settings in `.mesa/config.yaml`)
+- `sag model` command for interactive provider/model switching
+- Model config enhancements (provider-specific settings in `.saguaro/config.yaml`)
 - WASM tree-sitter parsers bundled with Homebrew formula
 - Less noisy MCP success responses
 
@@ -193,15 +193,15 @@ Initial open-source release.
 
 ### Added
 
-- Review history recording and `mesa stats` analytics view
+- Review history recording and `sag stats` analytics view
 - Toggle auto-review in config
-- Rule generation integrated into `mesa init`
+- Rule generation integrated into `sag init`
 - Unified rule generation across CLI and MCP codepaths
 - Rule generation and creation from MCP server
 
 ### Changed
 
-- Migrated rule hosting to `.mesa/rules/` directory
+- Migrated rule hosting to `.saguaro/rules/` directory
 - Simplified Claude Code skills integration
 - Adapter passes codemaps to all review clients
 - Faster rule generation
@@ -214,9 +214,9 @@ Initial open-source release.
 
 ### Added
 
-- MCP server for Claude Code integration (`mesa serve`)
+- MCP server for Claude Code integration (`sag serve`)
 - Stop hook for automatic reviews after agent writes code
-- Hook install added to `mesa init`
+- Hook install added to `sag init`
 - Deduplication logic for review findings
 
 ### Changed
@@ -247,7 +247,7 @@ Stabilization release — no new features.
 
 ### Added
 
-- Initial CLI with `mesa review`, `mesa init`, and `mesa rules` commands
+- Initial CLI with `sag review`, `sag init`, and `sag rules` commands
 - AI code review engine with rules enforcement against diffs
 - Parallel worker architecture for reviewing large changesets
 - Basic rule generation from codebase analysis

@@ -117,7 +117,7 @@ export const commands: Command[] = [
   },
   {
     name: 'init',
-    description: 'Set up Mesa in your repo',
+    description: 'Set up Saguaro in your repo',
     category: 'config',
     route: { screen: 'init' },
   },
@@ -150,7 +150,7 @@ export const commands: Command[] = [
   {
     name: 'quit',
     aliases: ['q'],
-    description: 'Exit Mesa',
+    description: 'Exit Saguaro',
     category: 'system',
     route: () => {
       exitTui();

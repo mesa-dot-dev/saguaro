@@ -2,15 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { McpSkillFile } from '../../templates/mcp-skills.js';
 import type { AgentAdapter } from './types.js';
-import { resolveMesaSubcommand } from './utils.js';
+import { resolveSaguaroSubcommand } from './utils.js';
 
 const GEMINI_SETTINGS_DIR = '.gemini';
 const GEMINI_SETTINGS_FILE = 'settings.json';
 const GEMINI_SKILLS_DIR = '.gemini/skills';
-const HOOK_COMMAND = 'mesa hook run';
+const HOOK_COMMAND = 'sag hook run';
 const HOOK_TIMEOUT = 120;
-const HOOK_STATUS_MESSAGE = 'Mesa: reviewing changes...';
-const PRE_TOOL_HOOK_COMMAND = 'mesa hook pre-tool';
+const HOOK_STATUS_MESSAGE = 'Saguaro: reviewing changes...';
+const PRE_TOOL_HOOK_COMMAND = 'sag hook pre-tool';
 const PRE_TOOL_TIMEOUT = 10;
 
 interface GeminiSettings {
@@ -47,11 +47,11 @@ function writeSettings(filePath: string, settings: GeminiSettings): void {
   fs.writeFileSync(filePath, `${JSON.stringify(settings, null, 2)}\n`);
 }
 
-function isMesaHookEntry(entry: AfterAgentHookEntry): boolean {
+function isSaguaroHookEntry(entry: AfterAgentHookEntry): boolean {
   return entry.hooks.some((h) => h.command === HOOK_COMMAND || h.command.endsWith('hook run'));
 }
 
-function isMesaPreToolEntry(entry: BeforeToolHookEntry): boolean {
+function isSaguaroPreToolEntry(entry: BeforeToolHookEntry): boolean {
   return entry.hooks.some((h) => h.command === PRE_TOOL_HOOK_COMMAND || h.command.endsWith('hook pre-tool'));
 }
 
@@ -70,8 +70,8 @@ export class GeminiAdapter implements AgentAdapter {
 
     // BeforeTool hook
     if (!settings.hooks.BeforeTool) settings.hooks.BeforeTool = [];
-    if (!settings.hooks.BeforeTool.some(isMesaPreToolEntry)) {
-      const preToolCommand = resolveMesaSubcommand('hook pre-tool');
+    if (!settings.hooks.BeforeTool.some(isSaguaroPreToolEntry)) {
+      const preToolCommand = resolveSaguaroSubcommand('hook pre-tool');
       settings.hooks.BeforeTool.push({
         matcher: 'Edit|Write',
         hooks: [{ type: 'command', command: preToolCommand, timeout: PRE_TOOL_TIMEOUT }],
@@ -80,8 +80,8 @@ export class GeminiAdapter implements AgentAdapter {
 
     // AfterAgent hook
     if (!settings.hooks.AfterAgent) settings.hooks.AfterAgent = [];
-    if (!settings.hooks.AfterAgent.some(isMesaHookEntry)) {
-      const hookCommand = resolveMesaSubcommand('hook run');
+    if (!settings.hooks.AfterAgent.some(isSaguaroHookEntry)) {
+      const hookCommand = resolveSaguaroSubcommand('hook run');
       settings.hooks.AfterAgent.push({
         hooks: [
           {
@@ -105,15 +105,15 @@ export class GeminiAdapter implements AgentAdapter {
 
     // Remove BeforeTool entries
     const beforeToolHooks = settings.hooks?.BeforeTool;
-    if (beforeToolHooks?.some(isMesaPreToolEntry)) {
-      settings.hooks!.BeforeTool = beforeToolHooks.filter((entry) => !isMesaPreToolEntry(entry));
+    if (beforeToolHooks?.some(isSaguaroPreToolEntry)) {
+      settings.hooks!.BeforeTool = beforeToolHooks.filter((entry) => !isSaguaroPreToolEntry(entry));
       if (settings.hooks!.BeforeTool.length === 0) delete settings.hooks!.BeforeTool;
     }
 
     // Remove AfterAgent entries
     const afterAgentHooks = settings.hooks?.AfterAgent;
-    if (afterAgentHooks?.some(isMesaHookEntry)) {
-      settings.hooks!.AfterAgent = afterAgentHooks.filter((entry) => !isMesaHookEntry(entry));
+    if (afterAgentHooks?.some(isSaguaroHookEntry)) {
+      settings.hooks!.AfterAgent = afterAgentHooks.filter((entry) => !isSaguaroHookEntry(entry));
       if (settings.hooks!.AfterAgent.length === 0) delete settings.hooks!.AfterAgent;
     }
 

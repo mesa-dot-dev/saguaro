@@ -1,11 +1,11 @@
 {
-  "name": "@mesadev/code-review",
-  "version": "0.4.13",
+  "name": "@mesadev/saguaro",
+  "version": "0.4.14",
   "description": "AI code review that enforces your team's rules during development",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
-    "mesa": "dist/cli/bin.js"
+    "sag": "dist/cli/bin.js"
   },
   "main": "./dist/index.js",
   "exports": {
@@ -73,17 +73,17 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mesa-dot-dev/code-review.git"
+    "url": "git+https://github.com/mesa-dot-dev/saguaro.git"
   },
   "homepage": "https://mesa.dev",
   "bugs": {
-    "url": "https://github.com/mesa-dot-dev/code-review/issues"
+    "url": "https://github.com/mesa-dot-dev/saguaro/issues"
   },
   "keywords": [
     "code-review",
     "ai",
     "linter",
-    "mesa",
+    "saguaro",
     "claude",
     "rules",
     "static-analysis"

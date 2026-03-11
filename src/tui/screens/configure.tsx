@@ -7,7 +7,7 @@ import { selectColors, theme } from '../lib/theme.js';
 const menuOptions: (SelectOption & { route: Route })[] = [
   { name: 'Index', description: 'Build the codebase import graph', route: { screen: 'index' } },
   { name: 'Hooks', description: 'Manage Claude Code hooks', route: { screen: 'hook' } },
-  { name: 'Init', description: 'Set up Mesa in your repo', route: { screen: 'init' } },
+  { name: 'Init', description: 'Set up Saguaro in your repo', route: { screen: 'init' } },
 ];
 
 export function ConfigureScreen() {

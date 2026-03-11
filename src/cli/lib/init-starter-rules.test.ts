@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { detectEcosystems } from '../../rules/detect-ecosystems.js';
-import { loadMesaRules, writeMesaRuleFile } from '../../rules/mesa-rules.js';
+import { loadSaguaroRules, writeSaguaroRuleFile } from '../../rules/saguaro-rules.js';
 import { selectStarterRules } from '../../rules/starter.js';
 import { STARTER_RULES } from '../../templates/starter-rules.js';
 
@@ -15,7 +15,7 @@ import { STARTER_RULES } from '../../templates/starter-rules.js';
  * the temp directory on exit regardless of success or failure.
  */
 function withTempRepo(setup: (dir: string) => void, run: (dir: string) => void): void {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-init-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'saguaro-init-'));
   try {
     fs.mkdirSync(path.join(dir, '.git'));
     setup(dir);
@@ -172,13 +172,13 @@ describe('init-starter-rules integration', () => {
         // Sanity: we have rules to write
         expect(selected.length).toBeGreaterThan(0);
 
-        // Write each selected rule to .mesa/rules/
+        // Write each selected rule to .saguaro/rules/
         for (const policy of selected) {
-          writeMesaRuleFile(dir, policy);
+          writeSaguaroRuleFile(dir, policy);
         }
 
         // Load them back
-        const { rules, errors } = loadMesaRules(dir);
+        const { rules, errors } = loadSaguaroRules(dir);
 
         // No parse errors
         expect(errors).toHaveLength(0);

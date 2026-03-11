@@ -7,7 +7,7 @@ tsconfig.json
 *.test.ts
 *.test.js
 __tests__/
-.mesa/
+.saguaro/
 .env*
 .DS_Store
 dist/**/*.test.*

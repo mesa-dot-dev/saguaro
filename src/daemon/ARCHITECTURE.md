@@ -1,13 +1,13 @@
-# Mesa Code Review: Architecture
+# Saguaro Code Review: Architecture
 
-Mesa's code review package has two independent systems that share a CLI
+Saguaro's code review package has two independent systems that share a CLI
 entry point but never share a code path at runtime.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        mesa CLI                                     │
+│                        sag CLI                                      │
 │                                                                     │
-│  mesa review / mesa hook run          mesa daemon start/stop/status │
+│  sag review / sag hook run            sag daemon start/stop/status  │
 │         │                                        │                  │
 │         ▼                                        ▼                  │
 │  ┌─────────────┐                        ┌──────────────┐            │
@@ -23,7 +23,7 @@ markdown files, the engine matches them to changed files via globs, and
 injects matched rules into the agent's context before edits.
 
 ```
-.mesa/rules/*.md          Static rule definitions (glob + markdown)
+.saguaro/rules/*.md       Static rule definitions (glob + markdown)
         │
         ▼
 PreToolUse hook ──► glob match changed file against rules
@@ -84,7 +84,7 @@ by shelling out to an installed agent CLI.
 
 ### Data model
 
-Two tables in `~/.mesa/reviews.db`:
+Two tables in `~/.saguaro/reviews.db`:
 
 ```
 review_jobs                          reviews
@@ -170,16 +170,16 @@ These are things we may want but deliberately don't build yet:
   heavy edit cycle, reducing resource contention.
 
 - **Review history UI.** The SQLite store already has the data for a
-  `mesa daemon history` command or a web dashboard showing review verdicts
+  `sag daemon history` command or a web dashboard showing review verdicts
   over time. No schema changes needed.
 
 - **Configurable review prompt.** The staff-engineer prompt is hardcoded.
-  A `.mesa/review-prompt.md` override would let teams customize what the
+  A `.saguaro/review-prompt.md` override would let teams customize what the
   reviewer flags without touching code.
 
 - **Multi-repo awareness.** The daemon currently reviews one repo at a time
   based on `repoPath` in the job payload. For monorepo setups with multiple
-  Mesa configs, the daemon could route jobs to different prompt/rule
+  Saguaro configs, the daemon could route jobs to different prompt/rule
   configurations.
 
 - **Idle timeout tuning.** The daemon auto-shuts down after 30min idle.

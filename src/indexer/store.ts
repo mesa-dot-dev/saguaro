@@ -32,8 +32,8 @@ export class JsonIndexStore {
   private readonly indexPath: string;
   private cached: CodebaseIndex | null = null;
 
-  constructor(mesaCacheDir: string) {
-    this.indexPath = path.join(mesaCacheDir, 'index.json');
+  constructor(saguaroCacheDir: string) {
+    this.indexPath = path.join(saguaroCacheDir, 'index.json');
   }
 
   load(): CodebaseIndex | null {

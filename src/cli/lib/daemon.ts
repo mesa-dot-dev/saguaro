@@ -1,10 +1,10 @@
 import { getCliForProvider, loadValidatedConfig, resolveModelForReview } from '../../config/model-config.js';
-import { MesaDaemon } from '../../daemon/server.js';
+import { SaguaroDaemon } from '../../daemon/server.js';
 
 export async function daemonStart(): Promise<number> {
-  const existing = MesaDaemon.readPidFile();
+  const existing = SaguaroDaemon.readPidFile();
   if (existing) {
-    console.log(`[mesa] Daemon already running on port ${existing.port} (PID: ${existing.pid})`);
+    console.log(`[sag] Daemon already running on port ${existing.port} (PID: ${existing.pid})`);
     return 0;
   }
 
@@ -12,7 +12,7 @@ export async function daemonStart(): Promise<number> {
   const cli = getCliForProvider(config.model.provider);
   const model = resolveModelForReview(config, 'daemon');
 
-  const daemon = new MesaDaemon({
+  const daemon = new SaguaroDaemon({
     workers: config.daemon?.workers ?? 1,
     idleTimeout: config.daemon?.idle_timeout ?? 1800,
     agent: cli,
@@ -20,7 +20,7 @@ export async function daemonStart(): Promise<number> {
   });
 
   const port = await daemon.start();
-  console.log(`[mesa] Daemon started on port ${port}`);
+  console.log(`[sag] Daemon started on port ${port}`);
 
   // Graceful shutdown on signals
   const shutdown = () => {
@@ -36,30 +36,30 @@ export async function daemonStart(): Promise<number> {
 }
 
 export async function daemonStop(): Promise<number> {
-  const pid = MesaDaemon.readPidFile();
+  const pid = SaguaroDaemon.readPidFile();
   if (!pid) {
-    console.log('[mesa] No daemon running');
+    console.log('[sag] No daemon running');
     return 0;
   }
 
   try {
     process.kill(pid.pid, 'SIGTERM');
-    console.log(`[mesa] Sent SIGTERM to daemon (PID: ${pid.pid})`);
+    console.log(`[sag] Sent SIGTERM to daemon (PID: ${pid.pid})`);
   } catch {
-    console.log('[mesa] Daemon process not found, cleaning up');
-    MesaDaemon.cleanupStalePidFile();
+    console.log('[sag] Daemon process not found, cleaning up');
+    SaguaroDaemon.cleanupStalePidFile();
   }
   return 0;
 }
 
 export function daemonStatus(): number {
-  const pid = MesaDaemon.readPidFile();
+  const pid = SaguaroDaemon.readPidFile();
   if (!pid) {
-    console.log('[mesa] Daemon is not running');
+    console.log('[sag] Daemon is not running');
     return 1;
   }
 
-  console.log(`[mesa] Daemon running on port ${pid.port} (PID: ${pid.pid})`);
-  console.log(`[mesa] Started at: ${pid.startedAt}`);
+  console.log(`[sag] Daemon running on port ${pid.port} (PID: ${pid.pid})`);
+  console.log(`[sag] Started at: ${pid.startedAt}`);
   return 0;
 }

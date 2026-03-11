@@ -7,7 +7,7 @@ import path from 'node:path';
 import { createRuleAdapter } from './rules.js';
 
 function withTempRepo(run: (root: string) => void): void {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-adapter-rules-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'saguaro-adapter-rules-'));
   try {
     fs.mkdirSync(path.join(root, '.git'));
     run(root);
@@ -17,7 +17,7 @@ function withTempRepo(run: (root: string) => void): void {
 }
 
 describe('createRuleAdapter centralized storage', () => {
-  test('writes rule to .mesa/rules/', () => {
+  test('writes rule to .saguaro/rules/', () => {
     withTempRepo((root) => {
       const result = createRuleAdapter({
         title: 'No Console Log',
@@ -28,13 +28,13 @@ describe('createRuleAdapter centralized storage', () => {
       });
 
       expect(fs.existsSync(result.policyFilePath)).toBe(true);
-      expect(result.policyFilePath).toContain('.mesa/rules/');
+      expect(result.policyFilePath).toContain('.saguaro/rules/');
     });
   });
 });
 
 describe('createRuleAdapter policy file', () => {
-  test('policy file is markdown with YAML frontmatter in .mesa/rules/', () => {
+  test('policy file is markdown with YAML frontmatter in .saguaro/rules/', () => {
     withTempRepo((root) => {
       const result = createRuleAdapter({
         title: 'No Console Log',

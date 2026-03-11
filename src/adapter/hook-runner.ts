@@ -8,8 +8,8 @@ import {
   listUntrackedFiles,
 } from '../git/git.js';
 import { getCodebaseContext } from '../indexer/index.js';
-import { loadMesaRules } from '../rules/mesa-rules.js';
 import { sortRulesByPriority } from '../rules/resolution.js';
+import { loadSaguaroRules } from '../rules/saguaro-rules.js';
 import type { RulePolicy, Violation } from '../types/types.js';
 import { matchesGlobs } from '../util/constants.js';
 import { logger } from '../util/logger.js';
@@ -61,7 +61,7 @@ export async function runHookReview(options: HookRunOptions): Promise<HookDecisi
     const repoRoot = getRepoRoot();
     codebaseContext = await getCodebaseContext({
       rootDir: repoRoot,
-      cacheDir: path.join(repoRoot, '.mesa', 'cache'),
+      cacheDir: path.join(repoRoot, '.saguaro', 'cache'),
       changedFiles: filteredChangedFiles,
       blastRadiusDepth: indexSettings.blastRadiusDepth,
       tokenBudget: indexSettings.contextTokenBudget,
@@ -114,7 +114,7 @@ export function formatViolationsForClaude(violations: Violation[]): string {
   return lines.join('\n').trimEnd();
 }
 
-/** Load all Mesa rules for a given file. Returns null when no rules match. */
+/** Load all Saguaro rules for a given file. Returns null when no rules match. */
 export function resolveRulesForFileAsMarkdown(absoluteFilePath: string, repoRoot: string): string | null {
   return resolveRulesForFile(absoluteFilePath, repoRoot).markdown;
 }
@@ -123,7 +123,7 @@ function resolveRulesForFile(
   absoluteFilePath: string,
   repoRoot: string
 ): { markdown: string | null; matchedCount: number } {
-  const { rules } = loadMesaRules(repoRoot);
+  const { rules } = loadSaguaroRules(repoRoot);
   if (rules.length === 0) return { markdown: null, matchedCount: 0 };
 
   const relativePath = path.relative(repoRoot, absoluteFilePath);
@@ -178,7 +178,7 @@ export function runPreToolHook(options: { input: PreToolHookInput; repoRoot: str
 
 function formatRulesAsContext(rules: RulePolicy[]): string {
   const parts: string[] = [];
-  parts.push(`# Mesa: ${rules.length} rule(s) apply to this file\n`);
+  parts.push(`# Saguaro: ${rules.length} rule(s) apply to this file\n`);
   parts.push('Follow ALL of these rules when making your changes:\n');
 
   for (const rule of rules) {

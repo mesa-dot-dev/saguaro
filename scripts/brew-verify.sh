@@ -8,16 +8,16 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RELEASE_DIR="$ROOT/.release"
 VERSION=$(node -e 'process.stdout.write(require("./package.json").version)')
 
-echo "==> Building @mesadev/code-review v$VERSION"
+echo "==> Building @mesadev/saguaro v$VERSION"
 cd "$ROOT"
 bun run build
 
 echo "==> Compiling binary"
 bun build src/cli/bin.tsx --compile --minify \
-  --define "__MESA_VERSION__=\"$VERSION\"" \
+  --define "__SAGUARO_VERSION__=\"$VERSION\"" \
   --external @swc/wasm \
-  --outfile "$RELEASE_DIR/mesa"
-chmod +x "$RELEASE_DIR/mesa"
+  --outfile "$RELEASE_DIR/sag"
+chmod +x "$RELEASE_DIR/sag"
 
 echo "==> Copying WASM files"
 mkdir -p "$RELEASE_DIR/wasm"
@@ -53,14 +53,14 @@ fi
 echo ""
 echo "==> Smoke tests"
 
-echo "  mesa --help"
-"$RELEASE_DIR/mesa" --help > /dev/null
+echo "  sag --help"
+"$RELEASE_DIR/sag" --help > /dev/null
 echo "  OK"
 
 echo ""
 echo "==> Verification complete (v$VERSION)"
 echo ""
 echo "  Run the verified build:"
-echo "    .release/mesa --help"
-echo "    .release/mesa review"
-echo "    .release/mesa init --force"
+echo "    .release/sag --help"
+echo "    .release/sag review"
+echo "    .release/sag init --force"

@@ -184,7 +184,7 @@ export function InitScreen() {
     const { provider, model, apiKey } = state;
     const options: SelectOption[] = [
       { name: 'Generate rules from your codebase', description: 'generate' },
-      { name: 'Use Mesa starter rules', description: 'default' },
+      { name: 'Use Saguaro starter rules', description: 'default' },
       { name: 'Skip and create rules manually', description: 'skip' },
     ];
 
@@ -220,7 +220,7 @@ export function InitScreen() {
   if (state.step === 'running') {
     return (
       <box flexDirection="column" paddingLeft={2} paddingTop={1}>
-        <Spinner label="Initializing Mesa..." />
+        <Spinner label="Initializing Saguaro..." />
       </box>
     );
   }
@@ -231,7 +231,7 @@ export function InitScreen() {
   if (result.alreadyInitialized) {
     return (
       <box flexDirection="column" paddingLeft={2} paddingTop={1}>
-        <text fg={theme.warning}>Mesa is already initialized in this directory.</text>
+        <text fg={theme.warning}>Saguaro is already initialized in this directory.</text>
         <box paddingTop={1}>
           <text fg={theme.textDim}>ESC back</text>
         </box>
@@ -242,7 +242,7 @@ export function InitScreen() {
   return (
     <box flexDirection="column" width="100%" height="100%">
       <box paddingLeft={2} paddingTop={1}>
-        <text fg={theme.success}>Mesa initialized successfully!</text>
+        <text fg={theme.success}>Saguaro initialized successfully!</text>
       </box>
       <scrollbox focused flexGrow={1} paddingLeft={2} paddingTop={1}>
         <box flexDirection="column">

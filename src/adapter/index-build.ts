@@ -15,8 +15,8 @@ export interface BuildIndexResult {
 
 export async function runBuildIndex(options?: BuildIndexOptions): Promise<BuildIndexResult> {
   const rootDir = findRepoRoot();
-  const mesaCacheDir = path.join(rootDir, '.mesa', 'cache');
-  const store = new JsonIndexStore(mesaCacheDir);
+  const saguaroCacheDir = path.join(rootDir, '.saguaro', 'cache');
+  const store = new JsonIndexStore(saguaroCacheDir);
 
   const startTime = Date.now();
 
@@ -32,6 +32,6 @@ export async function runBuildIndex(options?: BuildIndexOptions): Promise<BuildI
   return {
     fileCount,
     durationMs,
-    savedTo: '.mesa/cache/index.json',
+    savedTo: '.saguaro/cache/index.json',
   };
 }

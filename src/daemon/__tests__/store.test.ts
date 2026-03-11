@@ -8,7 +8,7 @@ import type { QueueJobInput } from '../store.js';
 import { DaemonStore } from '../store.js';
 
 function makeDbPath(): string {
-  return path.join(os.tmpdir(), `mesa-store-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+  return path.join(os.tmpdir(), `saguaro-store-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
 }
 
 function makeJobInput(overrides: Partial<QueueJobInput> = {}): QueueJobInput {

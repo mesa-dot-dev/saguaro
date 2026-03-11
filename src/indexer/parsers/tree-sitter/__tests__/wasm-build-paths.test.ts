@@ -5,7 +5,7 @@ import path from 'node:path';
 /**
  * Validates that WASM files exist at the expected paths in node_modules.
  * These are the same files that get installed when a user runs
- * `brew install mesa-dot-dev/tap/code-review` (via npm install).
+ * `brew install mesa-dot-dev/homebrew-tap/saguaro` (via npm install).
  * If these tests fail, the release will also fail in CI.
  */
 

@@ -1,4 +1,4 @@
-# Mesa Code Review
+# Saguaro Code Review
 
 ## Architecture Design Document
 
@@ -58,7 +58,7 @@
 |-----------|----------------|
 | **Silence by default** | No output unless rule violation found |
 | **No default checks** | Zero built-in rules; user defines everything |
-| **Rules in code** | `.mesa/rules/` directory in repo, versioned via git |
+| **Rules in code** | `.saguaro/rules/` directory in repo, versioned via git |
 | **Local-first** | CLI tool; user provides own API keys |
 | **Codebase-aware** | Import graph analysis + importer blast radius for navigation context |
 | **Parallel execution** | Workers split files for concurrent LLM calls |
@@ -73,15 +73,15 @@ The system has three entry points — **CLI**, **MCP server**, and **Background 
 
 ```
 +-----------------------------------------------------------------------+
-|                        MESA CODE REVIEW                               |
+|                      SAGUARO CODE REVIEW                              |
 +-----------------------------------------------------------------------+
 |                                                                       |
 |  +---------------------+   +----------------------+                   |
 |  |    CLI (yargs)       |   |  MCP SERVER (stdio)  |                  |
-|  |  mesa review         |   |  mesa_review         |                  |
-|  |  mesa rules *        |   |  mesa_generate_*     |                  |
-|  |  mesa daemon *       |   |  mesa_create_rule    |                  |
-|  |  mesa init | index   |   |  mesa_sync_rules     |                  |
+|  |  sag review          |   |  saguaro_review      |                  |
+|  |  sag rules *         |   |  saguaro_generate_*  |                  |
+|  |  sag daemon *        |   |  saguaro_create_rule |                  |
+|  |  sag init | index    |   |  saguaro_sync_rules  |                  |
 |  +----------+-----------+   +----------+-----------+                  |
 |             |                          |                              |
 |             +----------+---------------+                              |
@@ -128,14 +128,14 @@ return runReview(...);
 | **AI provider** | Vercel AI SDK (API key required) | Agent CLI subscription (no API key) |
 | **Review style** | Injects matched rules as context | Full code review by staff-engineer prompt |
 | **Hook behavior** | Synchronous, blocks on violations | Async: queues job, polls for findings |
-| **Persistence** | `.mesa/history/reviews.jsonl` | SQLite (`~/.mesa/reviews.db`) |
+| **Persistence** | `.saguaro/history/reviews.jsonl` | SQLite (`~/.saguaro/reviews.db`) |
 | **Finding delivery** | Exit code 2 + stderr (blocking) | Soft guidance (non-blocking recommendations) |
 
 ---
 
 ## Package Structure
 
-Package: `@mesadev/code-review`
+Package: `@mesadev/saguaro`
 
 ```
 src/
@@ -171,33 +171,33 @@ src/
 │   ├── bin.tsx                    # Entry point — runs CLI, falls back to TUI
 │   ├── commands/
 │   │   ├── index.ts              # Yargs command router
-│   │   ├── daemon.ts             # mesa daemon start/stop/status
-│   │   └── review.ts             # mesa review command
+│   │   ├── daemon.ts             # sag daemon start/stop/status
+│   │   └── review.ts             # sag review command
 │   └── lib/
 │       ├── daemon.ts              # Daemon start/stop handlers
-│       ├── generate.ts            # mesa rules generate — bulk rule generation + interactive review
-│       ├── hook.ts                # mesa hook run/pre-tool (CLI wrappers)
-│       ├── index-cmd.ts           # mesa index
-│       ├── init.ts                # mesa init (interactive setup)
-│       ├── model.ts               # mesa model
+│       ├── generate.ts            # sag rules generate — bulk rule generation + interactive review
+│       ├── hook.ts                # sag hook run/pre-tool (CLI wrappers)
+│       ├── index-cmd.ts           # sag index
+│       ├── init.ts                # sag init (interactive setup)
+│       ├── model.ts               # sag model
 │       ├── prompt.ts              # Readline helpers: ask(), askChoice(), createReadline()
-│       ├── rules.ts               # mesa rules (list, create, delete, explain, validate, for, sync, locate)
-│       ├── serve.ts               # mesa serve — starts MCP server in stdio mode
+│       ├── rules.ts               # sag rules (list, create, delete, explain, validate, for, sync, locate)
+│       ├── serve.ts               # sag serve — starts MCP server in stdio mode
 │       ├── spinner.ts             # TTY-aware progress spinner
-│       └── stats.ts               # mesa stats
+│       └── stats.ts               # sag stats
 │
 ├── config/                         # Configuration and model resolution
 │   ├── catalog.ts                 # Model catalog: live provider/model fetching
 │   ├── config-template.ts         # Default config YAML template
 │   ├── env.ts                     # API key checking, env file helpers
-│   └── model-config.ts            # .mesa/config.yaml loading, Zod schema, model resolution
+│   └── model-config.ts            # .saguaro/config.yaml loading, Zod schema, model resolution
 │
 ├── core/                           # Pure business logic, injected deps only
 │   ├── review.ts                  # createReviewCore() — pure review engine
 │   └── types.ts                   # Core type definitions
 │
 ├── daemon/                         # Background review daemon (independent system)
-│   ├── server.ts                  # HTTP server + daemon lifecycle (MesaDaemon class)
+│   ├── server.ts                  # HTTP server + daemon lifecycle (SaguaroDaemon class)
 │   ├── store.ts                   # SQLite database: review_jobs + reviews tables
 │   ├── worker.ts                  # Review job worker: claims jobs, runs agent, parses findings
 │   ├── agent-cli.ts               # Agent detection + invocation (claude, codex, gemini, etc.)
@@ -250,7 +250,7 @@ src/
 ├── rules/                          # Rule loading, resolution, generation, and analysis
 │   ├── detect-ecosystems.ts       # Detect project ecosystems (react, python, go, etc.)
 │   ├── generator.ts               # LLM-powered single rule generation from target analysis
-│   ├── mesa-rules.ts              # Load + parse .mesa/rules/*.md (frontmatter + body)
+│   ├── saguaro-rules.ts           # Load + parse .saguaro/rules/*.md (frontmatter + body)
 │   ├── preview.ts                 # Dry-run rules against target files
 │   ├── resolution.ts              # Rule loading, glob matching, priority sorting, repo root
 │   ├── scope-discovery.ts         # Discover package boundaries for rule generation
@@ -279,7 +279,7 @@ src/
 │
 ├── util/                           # Shared utilities
 │   ├── constants.ts               # IGNORED_DIRS, PACKAGE_MARKERS, CodebaseSnippet, toKebabCase
-│   ├── errors.ts                  # Custom error types (MesaError, MesaErrorCode)
+│   ├── errors.ts                  # Custom error types (SaguaroError, SaguaroErrorCode)
 │   ├── logger.ts                  # Debug logging
 │   └── review-utils.ts            # Shared review helpers
 │
@@ -318,16 +318,16 @@ The registry (`registry.ts`) detects installed agents and orders them by priorit
 
 ### Review Adapter (`adapter/review.ts`)
 
-Wires the Node.js runtime (file I/O, git, rule loading) to the pure review core engine. Used identically by both `mesa review` CLI command and `mesa_review` MCP tool.
+Wires the Node.js runtime (file I/O, git, rule loading) to the pure review core engine. Used identically by both `sag review` CLI command and `saguaro_review` MCP tool.
 
 ### Rules Adapter (`adapter/rules.ts`)
 
 Provides a unified interface for all rule operations. Returns `RulePolicy` directly (no wrapper types):
 
-- `createRuleAdapter(opts)` — Creates a `.md` rule file in `.mesa/rules/` with YAML frontmatter
+- `createRuleAdapter(opts)` — Creates a `.md` rule file in `.saguaro/rules/` with YAML frontmatter
 - `writeGeneratedRules(rules)` — Batch write for bulk-generated rules. Calls `createRuleAdapter()` for each rule. Passes through examples and tags.
 - `generateRuleAdapter(request)` — Orchestrates single-rule generation (analyze target → LLM → preview)
-- `listRulesAdapter()` — Lists all rules from `.mesa/rules/` via `loadMesaRules()`
+- `listRulesAdapter()` — Lists all rules from `.saguaro/rules/` via `loadSaguaroRules()`
 - `explainRuleAdapter(id)` — Returns full details for a single rule
 - `deleteRuleAdapter(id)` — Removes a rule file
 - `validateRulesAdapter()` — Validates rule structure and frontmatter
@@ -336,12 +336,12 @@ Provides a unified interface for all rule operations. Returns `RulePolicy` direc
 
 ## Rules System
 
-Rules are stored as **markdown files** in `.mesa/rules/` at the repo root, with YAML frontmatter containing all metadata.
+Rules are stored as **markdown files** in `.saguaro/rules/` at the repo root, with YAML frontmatter containing all metadata.
 
 ### Directory Structure
 
 ```
-.mesa/rules/
+.saguaro/rules/
 ├── no-wall-clock.md
 ├── no-console-log.md
 └── guard-percentage-division.md
@@ -402,44 +402,44 @@ clock.now()
 
 ### Agent Discovery via SKILL.md
 
-A single `.claude/skills/mesa-rules/SKILL.md` at the repo root instructs AI agents to run the CLI for rule discovery. This file is automatically synced by `mesa rules sync` (and during `mesa init`):
+A single `.claude/skills/saguaro-rules/SKILL.md` at the repo root instructs AI agents to run the CLI for rule discovery. This file is automatically synced by `sag rules sync` (and during `sag init`):
 
 ```markdown
 ---
-name: mesa-rules
+name: saguaro-rules
 description: >
-  REQUIRED before ANY file edit or creation. Run mesa rules for <paths>
+  REQUIRED before ANY file edit or creation. Run sag rules for <paths>
   to load applicable code review rules.
 ---
 
 Before editing or creating any files, determine which files and
 directories you plan to touch, then run:
 
-    mesa rules for <path1> <path2> ...
+    sag rules for <path1> <path2> ...
 ```
 
 #### Why a single dispatch skill
 
 Claude Code's native skill discovery traverses the directory tree and loads skills from `.claude/` directories at each level. The natural approach would be to place per-rule skills in each relevant directory so Claude automatically discovers only the rules that apply to its working area. However, this litters the codebase with `.claude/` directories and skill artifacts throughout the repo, which developers don't want checked in alongside their code.
 
-Instead, we use one skill at the root that calls `mesa rules for <paths>`. When Claude knows what directory it's about to work in, it runs this command, which loads all rules from `.mesa/rules/`, matches their globs against the given paths, and returns only the applicable rules. This emulates native per-directory skill discovery without the file system pollution.
+Instead, we use one skill at the root that calls `sag rules for <paths>`. When Claude knows what directory it's about to work in, it runs this command, which loads all rules from `.saguaro/rules/`, matches their globs against the given paths, and returns only the applicable rules. This emulates native per-directory skill discovery without the file system pollution.
 
-This also eliminates duplication — previously each rule required both a `.mesa/rules/` markdown file and a corresponding `.claude/skills/` directory. Now rules live in one place and the single skill handles discovery dynamically.
+This also eliminates duplication — previously each rule required both a `.saguaro/rules/` markdown file and a corresponding `.claude/skills/` directory. Now rules live in one place and the single skill handles discovery dynamically.
 
 #### Why CLI over MCP for rule discovery
 
 - **Zero overhead** — CLI has no server startup cost (MCP takes ~3s)
 - **Text output is ideal** — Rules are returned as text that agents consume directly
 - **Reliable** — Shell commands from SKILL.md are deterministically followed
-- **No flags** — `mesa rules for <paths>` is a proper subcommand, not a flag. Claude Code invokes skills by name and passes arguments, but cannot invoke CLI flags from skill calls.
+- **No flags** — `sag rules for <paths>` is a proper subcommand, not a flag. Claude Code invokes skills by name and passes arguments, but cannot invoke CLI flags from skill calls.
 
 ### Starter Rules
 
-`mesa init` can optionally install starter rules into `.mesa/rules/`. These are defined in `src/templates/starter-rules.ts`. The starter rules also serve as few-shot examples for the LLM during rule generation.
+`sag init` can optionally install starter rules into `.saguaro/rules/`. These are defined in `src/templates/starter-rules.ts`. The starter rules also serve as few-shot examples for the LLM during rule generation.
 
 ### Rule Loading at Review Time
 
-1. Load all `.md` files from `.mesa/rules/` at repo root
+1. Load all `.md` files from `.saguaro/rules/` at repo root
 2. Parse YAML frontmatter for globs, severity, instructions
 3. Deterministic `minimatch` glob matching — no AI for rule selection
 4. Negation patterns (`!**/tests/**`) supported for excluding files
@@ -455,7 +455,7 @@ There are two rule generation pipelines, both available through CLI and MCP. The
 
 Both pipelines use **starter rules** (`src/templates/starter-rules.ts`) as few-shot examples to teach the LLM the expected output format. These are 25 curated `RulePolicy` objects with full `instructions`, `examples` (violations + compliant snippets), and `tags`. The LLM sees them as YAML reference examples in the prompt and learns the structure, example quality bar, and instruction format.
 
-### Pipeline 1: Single Rule Creation (`mesa rules create` / `mesa_generate_rule`)
+### Pipeline 1: Single Rule Creation (`sag rules create` / `saguaro_generate_rule`)
 
 Generates one rule from a user's intent and a target directory.
 
@@ -502,7 +502,7 @@ User provides: target directory + intent
 | `rules/preview.ts` | Substring-match violation patterns against target files |
 | `rules/scope-discovery.ts` | Discover package boundaries for rule scoping |
 
-### Pipeline 2: Bulk Rule Generation (`mesa rules generate` / `mesa_generate_rules`)
+### Pipeline 2: Bulk Rule Generation (`sag rules generate` / `saguaro_generate_rules`)
 
 Discovers rules across the entire codebase automatically.
 
@@ -553,7 +553,7 @@ Discovers rules across the entire codebase automatically.
 +--------------------------------------------------+
 |  6. REVIEW + WRITE                                |
 |     CLI: interactive Y/N/E per rule               |
-|     MCP: session state → mesa_write_accepted_rules|
+|     MCP: session state → saguaro_write_accepted_rules|
 |     Both: writeGeneratedRules() → adapter         |
 +--------------------------------------------------+
 ```
@@ -575,57 +575,57 @@ RulePolicy[]
     |
     +---> writeGeneratedRules() / createRuleAdapter()
               |
-              +-- Write .mesa/rules/<id>.md    — YAML frontmatter + instructions + examples
+              +-- Write .saguaro/rules/<id>.md    — YAML frontmatter + instructions + examples
 ```
 
 ---
 
 ## MCP Server
 
-The MCP server (`src/mcp/`) exposes Mesa's capabilities to AI agents (Claude Code, etc.) over the Model Context Protocol via stdio transport. It provides the same operations as the CLI through MCP tools, sharing the adapter layer.
+The MCP server (`src/mcp/`) exposes Saguaro's capabilities to AI agents (Claude Code, etc.) over the Model Context Protocol via stdio transport. It provides the same operations as the CLI through MCP tools, sharing the adapter layer.
 
 ### Tools
 
 | Tool | Purpose | Maps to |
 |------|---------|---------|
-| `mesa_review` | Run code review | `adapter/review.runReview()` |
-| `mesa_generate_rules` | Bulk rule generation | `generator/generateRules()` |
-| `mesa_generate_rule` | Single rule generation | `adapter/rules.generateRuleAdapter()` |
-| `mesa_create_rule` | Manual rule creation | `adapter/rules.createRuleAdapter()` |
-| `mesa_write_accepted_rules` | Persist generated rules | `adapter/rules.writeGeneratedRules()` |
-| `mesa_list_rules` | List rules | `adapter/rules.listRulesAdapter()` |
-| `mesa_explain_rule` | Show rule details | `adapter/rules.explainRuleAdapter()` |
-| `mesa_delete_rule` | Delete a rule | `adapter/rules.deleteRuleAdapter()` |
-| `mesa_validate_rules` | Validate rule structure | `adapter/rules.validateRulesAdapter()` |
-| `mesa_sync_rules` | Regenerate agent skills from rules | `adapter/rules.syncSkillsFromRules()` |
+| `saguaro_review` | Run code review | `adapter/review.runReview()` |
+| `saguaro_generate_rules` | Bulk rule generation | `generator/generateRules()` |
+| `saguaro_generate_rule` | Single rule generation | `adapter/rules.generateRuleAdapter()` |
+| `saguaro_create_rule` | Manual rule creation | `adapter/rules.createRuleAdapter()` |
+| `saguaro_write_accepted_rules` | Persist generated rules | `adapter/rules.writeGeneratedRules()` |
+| `saguaro_list_rules` | List rules | `adapter/rules.listRulesAdapter()` |
+| `saguaro_explain_rule` | Show rule details | `adapter/rules.explainRuleAdapter()` |
+| `saguaro_delete_rule` | Delete a rule | `adapter/rules.deleteRuleAdapter()` |
+| `saguaro_validate_rules` | Validate rule structure | `adapter/rules.validateRulesAdapter()` |
+| `saguaro_sync_rules` | Regenerate agent skills from rules | `adapter/rules.syncSkillsFromRules()` |
 
 ### Session State
 
 The MCP handler maintains a module-level `lastGeneratedRules: RulePolicy[]` that survives across tool calls within a session. This enables a two-phase generate → write flow:
 
-1. `mesa_generate_rules` runs the pipeline, stores full `RulePolicy[]` in session state, and returns the generated rules to the client.
+1. `saguaro_generate_rules` runs the pipeline, stores full `RulePolicy[]` in session state, and returns the generated rules to the client.
 
 2. The client reviews the rules and decides which to accept.
 
-3. The client calls `mesa_write_accepted_rules(rule_ids)` to persist accepted rules. This filters from session state and writes via `writeGeneratedRules()`.
+3. The client calls `saguaro_write_accepted_rules(rule_ids)` to persist accepted rules. This filters from session state and writes via `writeGeneratedRules()`.
 
 ### MCP Skill Definitions
 
-The MCP server installs workflow skill files (`src/templates/mcp-skills.ts`) into agent skills directories during `mesa init`. These guide AI agents through the correct tool-call sequences:
+The MCP server installs workflow skill files (`src/templates/mcp-skills.ts`) into agent skills directories during `sag init`. These guide AI agents through the correct tool-call sequences:
 
-- `mesa-review/SKILL.md` — Review workflow
-- `mesa-createrule/SKILL.md` — Single rule generation workflow
-- `mesa-generaterules/SKILL.md` — Bulk generation workflow (accept all / bulk review / individual review / skip all → `mesa_write_accepted_rules`)
+- `saguaro-review/SKILL.md` — Review workflow
+- `saguaro-createrule/SKILL.md` — Single rule generation workflow
+- `saguaro-generaterules/SKILL.md` — Bulk generation workflow (accept all / bulk review / individual review / skip all → `saguaro_write_accepted_rules`)
 
-Additionally, `mesa rules sync` installs the rule-discovery skill:
+Additionally, `sag rules sync` installs the rule-discovery skill:
 
-- `mesa-rules/SKILL.md` — Instructs agents to run `mesa rules for <paths>` before editing files
+- `saguaro-rules/SKILL.md` — Instructs agents to run `sag rules for <paths>` before editing files
 
 ---
 
 ## Claude Code Hooks
 
-Mesa installs two **Claude Code hooks** that integrate reviews into the coding workflow.
+Saguaro installs two **Claude Code hooks** that integrate reviews into the coding workflow.
 
 ### PreToolUse Hook
 
@@ -641,7 +641,7 @@ The Stop hook is the only Claude Code hook type that fires after every file writ
 
 ### Why Not MCP
 
-An MCP-based approach (having Claude call `mesa_review` after each turn) was considered but rejected:
+An MCP-based approach (having Claude call `saguaro_review` after each turn) was considered but rejected:
 
 - **Requires user approval** — MCP tool calls prompt the user with "do you want to run this?", adding friction to every turn
 - **Extra server process** — MCP adds another long-running server on the developer's machine
@@ -695,7 +695,7 @@ Claude Code finishes a turn (file edit / creation)
 
 ### Installation
 
-The hook is installed automatically during `mesa init`. It writes hook entries to `.claude/settings.json`:
+The hook is installed automatically during `sag init`. It writes hook entries to `.claude/settings.json`:
 
 ```json
 {
@@ -704,15 +704,15 @@ The hook is installed automatically during `mesa init`. It writes hook entries t
       "matcher": "Edit|Write",
       "hooks": [{
         "type": "command",
-        "command": "mesa hook pre-tool"
+        "command": "sag hook pre-tool"
       }]
     }],
     "Stop": [{
       "hooks": [{
         "type": "command",
-        "command": "mesa hook run",
+        "command": "sag hook run",
         "timeout": 120,
-        "statusMessage": "Running mesa code review..."
+        "statusMessage": "Running Saguaro code review..."
       }]
     }]
   }
@@ -721,10 +721,10 @@ The hook is installed automatically during `mesa init`. It writes hook entries t
 
 | Command | Purpose |
 |---------|---------|
-| `mesa hook install` | Add hooks to `.claude/settings.json` |
-| `mesa hook uninstall` | Remove hook entries |
-| `mesa hook run` | Internal — invoked by the Stop hook, not by users |
-| `mesa hook pre-tool` | Internal — invoked by the PreToolUse hook, not by users |
+| `sag hook install` | Add hooks to `.claude/settings.json` |
+| `sag hook uninstall` | Remove hook entries |
+| `sag hook run` | Internal — invoked by the Stop hook, not by users |
+| `sag hook pre-tool` | Internal — invoked by the PreToolUse hook, not by users |
 
 ### Design Decisions
 
@@ -736,10 +736,10 @@ The hook is installed automatically during `mesa init`. It writes hook entries t
 
 ### Daemon Mode in the Stop Hook
 
-When `daemon.enabled: true` in `.mesa/config.yaml`, the stop hook delegates to the daemon instead of running the rules engine:
+When `daemon.enabled: true` in `.saguaro/config.yaml`, the stop hook delegates to the daemon instead of running the rules engine:
 
 1. **Loop prevention** — Same `stop_hook_active` check as rules engine
-2. **Ensure daemon is running** — Read `~/.mesa/daemon.pid`; if stale or missing, auto-start in background
+2. **Ensure daemon is running** — Read `~/.saguaro/daemon.pid`; if stale or missing, auto-start in background
 3. **Check for previous findings** — `GET /check?session={id}`, poll up to 30s for results from the previous review
 4. **Queue new review** — `POST /review` with session_id, changed_files, diff_hashes (returns immediately)
 5. **Decision** — Previous findings exist → exit 2 (block with soft guidance); no findings → exit 0
@@ -758,8 +758,8 @@ For detailed architecture, data model, known issues, and future considerations, 
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **MesaDaemon** | `daemon/server.ts` | HTTP server on `127.0.0.1:7474`, endpoint routing, idle timeout, PID/lock file management |
-| **DaemonStore** | `daemon/store.ts` | SQLite (`~/.mesa/reviews.db`): job queue, review storage, diff-hash deduplication |
+| **SaguaroDaemon** | `daemon/server.ts` | HTTP server on `127.0.0.1:7474`, endpoint routing, idle timeout, PID/lock file management |
+| **DaemonStore** | `daemon/store.ts` | SQLite (`~/.saguaro/reviews.db`): job queue, review storage, diff-hash deduplication |
 | **Worker** | `daemon/worker.ts` | Polls queue every 2s, claims FIFO jobs, invokes agent, parses findings |
 | **Agent CLI** | `daemon/agent-cli.ts` | Detects installed agent (claude > codex > gemini > opencode > copilot > cursor), read-only tools, 5min timeout |
 | **Hook Client** | `daemon/hook-client.ts` | HTTP client for stop hook → daemon communication |
@@ -768,7 +768,7 @@ For detailed architecture, data model, known issues, and future considerations, 
 
 - **Diff-hash deduplication** — Each file's diff is hashed (`sha256`). Files with unchanged hashes since the last review in the same session are skipped.
 - **Atomic job claiming** — Workers claim via `UPDATE ... WHERE id = (SELECT ... WHERE status = 'queued' LIMIT 1) RETURNING *`. SQLite's write lock prevents double-claiming.
-- **Agent invocation** — Spawns `claude -p` (or codex, gemini, etc.) with `--allowedTools Read,Glob,Grep` (read-only). Environment stripped of `CLAUDECODE*` vars, `MESA_REVIEW_AGENT=1` set to prevent loops.
+- **Agent invocation** — Spawns `claude -p` (or codex, gemini, etc.) with `--allowedTools Read,Glob,Grep` (read-only). Environment stripped of `CLAUDECODE*` vars, `SAGUARO_REVIEW_AGENT=1` set to prevent loops.
 - **Soft guidance** — Findings injected as recommendations, not blocking rules.
 - **Prompt size limits** — Jobs exceeding 125KB diff+context are skipped.
 - **Idle timeout** — Auto-shuts down after 30 minutes of inactivity (configurable).
@@ -780,14 +780,14 @@ For detailed architecture, data model, known issues, and future considerations, 
 ### Review Flow
 
 ```
-$ mesa review --base main
+$ sag review --base main
         |
         v
 +---------------------------------------------------------------+
 |  1. CONTEXT GATHERING (parallel)                              |
 |                                                               |
 |     getChangedFiles()          loadRules()                    |
-|     git diff --name-only      Load .mesa/rules/*.md           |
+|     git diff --name-only      Load .saguaro/rules/*.md        |
 |     --diff-filter=ACMR        Parse YAML frontmatter          |
 +---------------------------------------------------------------+
                         |
@@ -942,7 +942,7 @@ The indexer builds an import graph of the codebase, computes an importers-only "
 ### Pipeline
 
 ```
-File Discovery (skip: node_modules, dist, .git, .mesa, etc.)
+File Discovery (skip: node_modules, dist, .git, .saguaro, etc.)
         |
         v
 Parser Dispatch (SWC for TS/JS, tree-sitter for others)
@@ -957,7 +957,7 @@ oxc-resolver (resolve import specifiers to repo-relative paths)
 Reverse Index (importedBy edges)
         |
         v
-JSON Persistence (.mesa/cache/index.json)
+JSON Persistence (.saguaro/cache/index.json)
         |
         v
 Blast Radius BFS (importers-only, barrel-aware, configurable depth)
@@ -968,7 +968,7 @@ Lightweight Context Map (exports + importers for changed files, connections for 
 
 ### Incremental Updates
 
-Files are hashed (SHA-256). On subsequent runs, only changed files are re-parsed. The index is stored at `.mesa/cache/index.json` (gitignored).
+Files are hashed (SHA-256). On subsequent runs, only changed files are re-parsed. The index is stored at `.saguaro/cache/index.json` (gitignored).
 
 ### Blast Radius
 
@@ -980,7 +980,7 @@ Each file in the radius is classified:
 
 **Barrel file detection:** Index/barrel files (e.g. `index.ts`, `mod.rs`, `__init__.py`) that primarily re-export (>50% of exports are re-exports) get one extra level of `importedBy` traversal. This ensures the real consumers behind a barrel file are included without increasing the default depth for all files.
 
-Default depth is **1** (configurable via `index.blast_radius_depth` in `.mesa/config.yaml`).
+Default depth is **1** (configurable via `index.blast_radius_depth` in `.saguaro/config.yaml`).
 
 ### Context Format
 
@@ -990,7 +990,7 @@ For **changed files**, the context shows exports and importers:
 
 ```markdown
 ### src/lib/config.ts (changed)
-Exports: loadConfig(): MesaConfig, resolveModel(): LanguageModel
+Exports: loadConfig(): SaguaroConfig, resolveModel(): LanguageModel
 Imported by: src/lib/runner.ts, src/cli/review.ts
 ```
 
@@ -1019,10 +1019,10 @@ If indexing fails for any reason, the review continues without codebase context.
 If no rules are violated, output is minimal. Violations are displayed in a styled box:
 
 ```
-$ mesa review --base main
+$ sag review --base main
 
   +-----------------------------------------------------+
-  |  Mesa Code Review Results                            |
+  |  Saguaro Code Review Results                         |
   |                                                      |
   |  X src/api/handler.rs:47 [error]                     |
   |    Rule: no-wall-clock                               |
@@ -1041,7 +1041,7 @@ $ mesa review --base main
 
 ### Cursor Deeplink
 
-When `output.cursor_deeplink: true` in `.mesa/config.yaml`, the output includes a clickable terminal link that opens Cursor with a pre-filled prompt containing all violations for quick fixing.
+When `output.cursor_deeplink: true` in `.saguaro/config.yaml`, the output includes a clickable terminal link that opens Cursor with a pre-filled prompt containing all violations for quick fixing.
 
 ### Exit Codes
 
@@ -1059,7 +1059,7 @@ When `output.cursor_deeplink: true` in `.mesa/config.yaml`, the output includes 
 // Severity levels
 type Severity = 'error' | 'warning' | 'info';
 
-// Rule policy (from .mesa/rules/*.md frontmatter + body)
+// Rule policy (from .saguaro/rules/*.md frontmatter + body)
 interface RulePolicy {
   id: string;
   title: string;
@@ -1177,7 +1177,7 @@ interface ExportRef {
 
 ## Configuration
 
-### `.mesa/config.yaml`
+### `.saguaro/config.yaml`
 
 ```yaml
 # Model Configuration
@@ -1215,15 +1215,15 @@ daemon:
 
 API keys are loaded from environment variables (`.env.local`, `.env`, or shell export). The config file does **not** contain API keys. The daemon does **not** require API keys — it uses the agent CLI's own subscription.
 
-### `.mesa/rules/`
+### `.saguaro/rules/`
 
-Centralized directory at the repo root. Each rule is a self-contained `.md` file with YAML frontmatter. Loaded by `loadMesaRules()` in `rules/mesa-rules.ts`.
+Centralized directory at the repo root. Each rule is a self-contained `.md` file with YAML frontmatter. Loaded by `loadSaguaroRules()` in `rules/saguaro-rules.ts`.
 
-### `.mesa/cache/`
+### `.saguaro/cache/`
 
 Auto-generated, gitignored. Contains `index.json` (persisted codebase index).
 
-### `~/.mesa/` (daemon state)
+### `~/.saguaro/` (daemon state)
 
 Global daemon state (not per-repo):
 
@@ -1278,23 +1278,23 @@ The TypeScript orchestration layer runs in microseconds. The bottleneck is the L
 
 | Command | Description |
 |---------|-------------|
-| `mesa init` | Initialize Mesa: create `.mesa/config.yaml`, `.mesa/rules/`, install agent skills, optionally install starter rules and generate initial rules |
-| `mesa review` | Run review against changed files. `--base`, `--head`, `--output`, `--verbose`, `--debug` |
-| `mesa rules generate` | Bulk rule generation: scan codebase → zone analysis → synthesis → interactive review → write |
-| `mesa rules list` | List all loaded rules with globs and severity |
-| `mesa rules create` | LLM-powered interactive single rule creation |
-| `mesa rules delete` | Delete a rule by ID |
-| `mesa rules explain <id>` | Show full rule details |
-| `mesa rules validate` | Validate all rules for correct structure |
-| `mesa rules for <paths..>` | Show rules matching the given file/directory paths (used by agents via SKILL.md) |
-| `mesa rules sync` | Sync agent skill files from current `.mesa/rules/` state |
-| `mesa rules locate` | Print the path to the `.mesa/rules/` directory |
-| `mesa hook install` | Add agent hooks |
-| `mesa hook uninstall` | Remove agent hooks |
-| `mesa daemon start` | Start the background review daemon (also auto-started by stop hook when `daemon.enabled`) |
-| `mesa daemon stop` | Stop the daemon (sends SIGTERM) |
-| `mesa daemon status` | Check if daemon is running, show port/PID |
-| `mesa index` | Build/rebuild the codebase index |
-| `mesa model` | Switch AI provider and model interactively |
-| `mesa stats` | Show review history and cost analytics |
-| `mesa serve` | Start MCP server in stdio mode for AI agent integration |
+| `sag init` | Initialize Saguaro: create `.saguaro/config.yaml`, `.saguaro/rules/`, install agent skills, optionally install starter rules and generate initial rules |
+| `sag review` | Run review against changed files. `--base`, `--head`, `--output`, `--verbose`, `--debug` |
+| `sag rules generate` | Bulk rule generation: scan codebase → zone analysis → synthesis → interactive review → write |
+| `sag rules list` | List all loaded rules with globs and severity |
+| `sag rules create` | LLM-powered interactive single rule creation |
+| `sag rules delete` | Delete a rule by ID |
+| `sag rules explain <id>` | Show full rule details |
+| `sag rules validate` | Validate all rules for correct structure |
+| `sag rules for <paths..>` | Show rules matching the given file/directory paths (used by agents via SKILL.md) |
+| `sag rules sync` | Sync agent skill files from current `.saguaro/rules/` state |
+| `sag rules locate` | Print the path to the `.saguaro/rules/` directory |
+| `sag hook install` | Add agent hooks |
+| `sag hook uninstall` | Remove agent hooks |
+| `sag daemon start` | Start the background review daemon (also auto-started by stop hook when `daemon.enabled`) |
+| `sag daemon stop` | Stop the daemon (sends SIGTERM) |
+| `sag daemon status` | Check if daemon is running, show port/PID |
+| `sag index` | Build/rebuild the codebase index |
+| `sag model` | Switch AI provider and model interactively |
+| `sag stats` | Show review history and cost analytics |
+| `sag serve` | Start MCP server in stdio mode for AI agent integration |

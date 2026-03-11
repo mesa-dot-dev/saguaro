@@ -128,7 +128,7 @@ export function ReviewScreen({ baseRef, headRef, mode = 'rules' }: ReviewScreenP
     if (result.findings.length === 0) {
       return (
         <box flexDirection="column" paddingLeft={2} paddingTop={1}>
-          <text fg={theme.success}>Mesa review: No issues found</text>
+          <text fg={theme.success}>Saguaro review: No issues found</text>
           <text fg={theme.textDim}>Model: {result.model}</text>
           <text fg={theme.textDim}>Press ESC to go back</text>
         </box>
@@ -136,7 +136,7 @@ export function ReviewScreen({ baseRef, headRef, mode = 'rules' }: ReviewScreenP
     }
     return (
       <box flexDirection="column" paddingLeft={2} paddingTop={1}>
-        <text fg={theme.error}>Mesa review: {result.findings.length} issue(s) found</text>
+        <text fg={theme.error}>Saguaro review: {result.findings.length} issue(s) found</text>
         <text fg={theme.textDim}>Model: {result.model}</text>
         <box flexDirection="column" paddingTop={1}>
           {result.findings.map((f, i) => (

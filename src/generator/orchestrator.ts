@@ -82,8 +82,8 @@ export async function orchestrate(options: GenerateRulesOptions): Promise<Genera
   const model = resolveModelFromResolvedConfig(modelConfig);
   options.onProgress?.({ type: 'indexing' });
   const repoRoot = findRepoRoot(cwd);
-  const mesaCacheDir = path.join(repoRoot, '.mesa', 'cache');
-  const store = new JsonIndexStore(mesaCacheDir);
+  const saguaroCacheDir = path.join(repoRoot, '.saguaro', 'cache');
+  const store = new JsonIndexStore(saguaroCacheDir);
   let index: CodebaseIndex | null = null;
   try {
     index = await buildIndex({ rootDir: cwd, store });

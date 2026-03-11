@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "mesa hook pre-tool",
+            "command": "sag hook pre-tool",
             "timeout": 10
           }
         ]
@@ -17,9 +17,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "mesa hook run",
+            "command": "sag hook run",
             "timeout": 120,
-            "statusMessage": "Mesa: reviewing changes..."
+            "statusMessage": "Saguaro: reviewing changes..."
           }
         ]
       }

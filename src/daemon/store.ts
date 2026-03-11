@@ -111,7 +111,7 @@ function mapReviewRow(row: ReviewRow): Review {
   };
 }
 
-const DEFAULT_DB_PATH = path.join(os.homedir(), '.mesa', 'reviews.db');
+const DEFAULT_DB_PATH = path.join(os.homedir(), '.saguaro', 'reviews.db');
 
 export class DaemonStore {
   private db: SqliteDatabase;

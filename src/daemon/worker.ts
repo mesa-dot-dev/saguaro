@@ -51,8 +51,8 @@ export async function runWorker(store: DaemonStore, workerId: number, config: Wo
     // Load classic_prompt from config if available
     let customCriteria: string | undefined;
     try {
-      const mesaConfig = loadValidatedConfig();
-      customCriteria = mesaConfig.review.classic_prompt;
+      const saguaroConfig = loadValidatedConfig();
+      customCriteria = saguaroConfig.review.classic_prompt;
     } catch {
       // Config loading failure should not block daemon reviews
     }
@@ -61,7 +61,7 @@ export async function runWorker(store: DaemonStore, workerId: number, config: Wo
 
     if (prompt.length > MAX_PROMPT_CHARS) {
       console.warn(
-        `[mesa-daemon] Worker ${workerId} skipping job ${job.id}: prompt too large (${(prompt.length / 1024).toFixed(0)}KB > ${MAX_PROMPT_CHARS / 1024}KB)`
+        `[saguaro-daemon] Worker ${workerId} skipping job ${job.id}: prompt too large (${(prompt.length / 1024).toFixed(0)}KB > ${MAX_PROMPT_CHARS / 1024}KB)`
       );
       store.completeJob(job.id, 'done', config.model ?? config.agent);
       store.insertReview({ jobId: job.id, verdict: 'pass', findings: null });
@@ -76,7 +76,7 @@ export async function runWorker(store: DaemonStore, workerId: number, config: Wo
     store.insertReview({ jobId: job.id, verdict, findings: findings.length > 0 ? findings : null });
     return true;
   } catch (error) {
-    console.error(`[mesa-daemon] Worker ${workerId} failed job ${job.id}:`, error);
+    console.error(`[saguaro-daemon] Worker ${workerId} failed job ${job.id}:`, error);
     store.completeJob(job.id, 'failed', config.model ?? config.agent);
     store.insertReview({ jobId: job.id, verdict: 'pass', findings: null });
     return true;

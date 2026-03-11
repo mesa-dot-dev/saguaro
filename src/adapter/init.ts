@@ -6,15 +6,15 @@ import type { ModelProvider } from '../config/model-config.js';
 import { findRepoRoot } from '../git/git.js';
 import { getMcpJsonConfig } from '../mcp/config.js';
 import { anyFileMatchesGlob, detectEcosystems } from '../rules/detect-ecosystems.js';
-import { writeMesaRuleFile } from '../rules/mesa-rules.js';
+import { writeSaguaroRuleFile } from '../rules/saguaro-rules.js';
 import { selectStarterRules } from '../rules/starter.js';
 import { getMcpSkillFiles } from '../templates/mcp-skills.js';
 import { STARTER_RULES } from '../templates/starter-rules.js';
 import { getDetectedAdapters } from './agents/index.js';
 import { runInstallHook } from './hook.js';
 
-const MESA_DIR = '.mesa';
-const CONFIG_PATH = path.join(MESA_DIR, 'config.yaml');
+const SAGUARO_DIR = '.saguaro';
+const CONFIG_PATH = path.join(SAGUARO_DIR, 'config.yaml');
 const ENV_LOCAL_PATH = '.env.local';
 const MCP_JSON_PATH = '.mcp.json';
 
@@ -52,9 +52,9 @@ function writeMcpJson(repoRoot: string): void {
   fs.writeFileSync(fullPath, `${content}\n`);
 }
 
-function ensureMesaGitignore(repoRoot: string): void {
+function ensureSaguaroGitignore(repoRoot: string): void {
   const gitignorePath = path.join(repoRoot, '.gitignore');
-  const entries = ['.mesa/config.yaml', '.mesa/history/', '.mcp.json'];
+  const entries = ['.saguaro/config.yaml', '.saguaro/history/', '.mcp.json'];
   let content = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8') : '';
 
   const missing = entries.filter((e) => !content.includes(e));
@@ -72,10 +72,10 @@ function ensureMesaGitignore(repoRoot: string): void {
 export async function initProject(options: InitProjectOptions): Promise<InitProjectResult> {
   const { provider, model, apiKey, ruleStrategy, daemon, force } = options;
   const repoRoot = findRepoRoot();
-  const rootMesaDir = path.join(repoRoot, MESA_DIR);
-  const rulesDir = path.join(repoRoot, MESA_DIR, 'rules');
+  const rootSaguaroDir = path.join(repoRoot, SAGUARO_DIR);
+  const rulesDir = path.join(repoRoot, SAGUARO_DIR, 'rules');
 
-  if (fs.existsSync(rootMesaDir) && !force) {
+  if (fs.existsSync(rootSaguaroDir) && !force) {
     return {
       configPath: path.join(repoRoot, CONFIG_PATH),
       rulesDir,
@@ -89,13 +89,13 @@ export async function initProject(options: InitProjectOptions): Promise<InitProj
   }
 
   // Create directories
-  fs.mkdirSync(rootMesaDir, { recursive: true });
+  fs.mkdirSync(rootSaguaroDir, { recursive: true });
 
   // Write config
   fs.writeFileSync(path.join(repoRoot, CONFIG_PATH), buildConfigContent({ provider, model, daemon: daemon ?? false }));
 
-  // Ensure .mesa/history/ is gitignored
-  ensureMesaGitignore(repoRoot);
+  // Ensure .saguaro/history/ is gitignored
+  ensureSaguaroGitignore(repoRoot);
 
   // Write API key if provided
   const envUpdated = !!apiKey;
@@ -131,7 +131,7 @@ export async function initProject(options: InitProjectOptions): Promise<InitProj
       anyFileMatchesGlob(repoRoot, globs)
     );
     for (const rule of selected) {
-      writeMesaRuleFile(repoRoot, rule);
+      writeSaguaroRuleFile(repoRoot, rule);
       rulesCreated.push(rule.id);
     }
   }

@@ -1,4 +1,4 @@
-<!-- This file is managed by Mesa. Edit only if you know what you're doing. -->
+<!-- This file is managed by Saguaro. Edit only if you know what you're doing. -->
 ---
 id: no-silent-error-handling
 title: No silent error handling

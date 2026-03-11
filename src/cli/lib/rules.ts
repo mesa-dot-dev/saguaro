@@ -47,7 +47,7 @@ const listRules = () => {
   const result = listRulesAdapter();
   const rules = result.rules;
   if (!rules.length) {
-    console.log(chalk.gray('No rules found. Use "mesa rules create" to add one.'));
+    console.log(chalk.gray('No rules found. Use "sag rules create" to add one.'));
     return;
   }
 
@@ -168,7 +168,7 @@ const createRule = async (argv: CreateRuleArgv): Promise<number> => {
     }
 
     if (!targetPath) {
-      console.log(chalk.red('No target specified. Use: mesa rules create <target>'));
+      console.log(chalk.red('No target specified. Use: sag rules create <target>'));
       return 1;
     }
 
@@ -179,7 +179,7 @@ const createRule = async (argv: CreateRuleArgv): Promise<number> => {
     }
 
     if (!intent) {
-      console.log(chalk.red('No intent specified. Use: mesa rules create <target> --intent "..."'));
+      console.log(chalk.red('No intent specified. Use: sag rules create <target> --intent "..."'));
       return 1;
     }
 
@@ -191,9 +191,9 @@ const createRule = async (argv: CreateRuleArgv): Promise<number> => {
     let debugLogPath: string | undefined;
     if (argv.debug) {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      debugLogPath = path.resolve(findRepoRoot(), '.mesa', '.tmp', `rule-create-${timestamp}.txt`);
+      debugLogPath = path.resolve(findRepoRoot(), '.saguaro', '.tmp', `rule-create-${timestamp}.txt`);
       fs.mkdirSync(path.dirname(debugLogPath), { recursive: true });
-      fs.writeFileSync(debugLogPath, `=== Mesa Rule Create Debug ${new Date().toISOString()} ===\n\n`);
+      fs.writeFileSync(debugLogPath, `=== Saguaro Rule Create Debug ${new Date().toISOString()} ===\n\n`);
       debugLog = (label: string, content: string) => {
         const entry = `--- ${label} [${new Date().toISOString()}] ---\n${content}\n\n`;
         fs.appendFileSync(debugLogPath!, entry);

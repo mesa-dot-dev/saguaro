@@ -7,10 +7,10 @@ import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createRuleAdapter } from '../../adapter/rules.js';
-import { createMesaMcpServer } from '../server.js';
+import { createSaguaroMcpServer } from '../server.js';
 
 async function withTempRepo(run: (root: string) => Promise<void>): Promise<void> {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-mcp-handler-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'saguaro-mcp-handler-'));
   const originalCwd = process.cwd();
   try {
     fs.mkdirSync(path.join(root, '.git'));
@@ -23,7 +23,7 @@ async function withTempRepo(run: (root: string) => Promise<void>): Promise<void>
 }
 
 async function createTestClient() {
-  const server = createMesaMcpServer();
+  const server = createSaguaroMcpServer();
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   const client = new Client({ name: 'test-client', version: '1.0.0' });
@@ -45,11 +45,11 @@ function textContent(result: Awaited<ReturnType<typeof callTool>>): string {
   return content[0].text;
 }
 
-describe('mesa_validate_rules', () => {
+describe('saguaro_validate_rules', () => {
   test('returns empty validated list when no rules directory exists', async () => {
     await withTempRepo(async () => {
       const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_validate_rules');
+      const result = await callTool(client, 'saguaro_validate_rules');
       const data = parseContent(result) as { valid: boolean; validated: string[]; errors: unknown[] };
 
       expect(result.isError).toBeFalsy();
@@ -69,7 +69,7 @@ describe('mesa_validate_rules', () => {
       });
 
       const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_validate_rules');
+      const result = await callTool(client, 'saguaro_validate_rules');
       const data = parseContent(result) as { valid: boolean; validated: string[]; errors: unknown[] };
 
       expect(result.isError).toBeFalsy();
@@ -80,11 +80,11 @@ describe('mesa_validate_rules', () => {
   });
 });
 
-describe('mesa_create_rule', () => {
+describe('saguaro_create_rule', () => {
   test('creates a rule and returns id, title, path', async () => {
     await withTempRepo(async () => {
       const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_create_rule', {
+      const result = await callTool(client, 'saguaro_create_rule', {
         title: 'No Any Type',
         severity: 'error',
         globs: ['**/*.ts'],
@@ -105,7 +105,7 @@ describe('mesa_create_rule', () => {
   test('returns error when required fields are missing', async () => {
     await withTempRepo(async () => {
       const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_create_rule', {
+      const result = await callTool(client, 'saguaro_create_rule', {
         title: 'Missing Fields',
       });
 
@@ -114,7 +114,7 @@ describe('mesa_create_rule', () => {
   });
 });
 
-describe('mesa_delete_rule', () => {
+describe('saguaro_delete_rule', () => {
   test('deletes an existing rule', async () => {
     await withTempRepo(async (root) => {
       createRuleAdapter({
@@ -127,7 +127,7 @@ describe('mesa_delete_rule', () => {
       });
 
       const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_delete_rule', { rule_id: 'to-delete' });
+      const result = await callTool(client, 'saguaro_delete_rule', { rule_id: 'to-delete' });
       const data = parseContent(result) as { deleted: boolean; id: string };
 
       expect(result.isError).toBeFalsy();
@@ -135,7 +135,7 @@ describe('mesa_delete_rule', () => {
       expect(data.id).toBe('to-delete');
 
       // Verify the rule file is gone
-      const ruleFile = path.join(root, '.mesa', 'rules', 'to-delete.md');
+      const ruleFile = path.join(root, '.saguaro', 'rules', 'to-delete.md');
       expect(fs.existsSync(ruleFile)).toBe(false);
     });
   });
@@ -143,7 +143,7 @@ describe('mesa_delete_rule', () => {
   test('returns error for nonexistent rule', async () => {
     await withTempRepo(async () => {
       const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_delete_rule', { rule_id: 'ghost-rule' });
+      const result = await callTool(client, 'saguaro_delete_rule', { rule_id: 'ghost-rule' });
 
       expect(result.isError).toBe(true);
       expect(textContent(result)).toContain('Rule not found');
@@ -151,11 +151,11 @@ describe('mesa_delete_rule', () => {
   });
 });
 
-describe('mesa_get_generated_rule_details', () => {
+describe('saguaro_get_generated_rule_details', () => {
   test('returns error when no rules have been generated', async () => {
     await withTempRepo(async () => {
       const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_get_generated_rule_details', {
+      const result = await callTool(client, 'saguaro_get_generated_rule_details', {
         rule_ids: ['some-rule'],
       });
 
@@ -167,7 +167,7 @@ describe('mesa_get_generated_rule_details', () => {
   test('returns error when called with no args and no session', async () => {
     await withTempRepo(async () => {
       const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_get_generated_rule_details', {});
+      const result = await callTool(client, 'saguaro_get_generated_rule_details', {});
 
       expect(result.isError).toBe(true);
       expect(textContent(result)).toContain('No generated rules in session');
@@ -175,11 +175,11 @@ describe('mesa_get_generated_rule_details', () => {
   });
 });
 
-describe('mesa_get_models', () => {
+describe('saguaro_get_models', () => {
   test('returns providers and models', async () => {
     await withTempRepo(async () => {
       const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_get_models', {});
+      const result = await callTool(client, 'saguaro_get_models', {});
       const data = parseContent(result) as { providers: unknown[]; current: unknown };
 
       expect(result.isError).toBeFalsy();
@@ -190,12 +190,15 @@ describe('mesa_get_models', () => {
 
   test('returns current model when config exists', async () => {
     await withTempRepo(async (root) => {
-      const mesaDir = path.join(root, '.mesa');
-      fs.mkdirSync(mesaDir, { recursive: true });
-      fs.writeFileSync(path.join(mesaDir, 'config.yaml'), 'model:\n  provider: anthropic\n  name: claude-opus-4-6\n');
+      const saguaroDir = path.join(root, '.saguaro');
+      fs.mkdirSync(saguaroDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(saguaroDir, 'config.yaml'),
+        'model:\n  provider: anthropic\n  name: claude-opus-4-6\n'
+      );
 
       const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_get_models', {});
+      const result = await callTool(client, 'saguaro_get_models', {});
       const data = parseContent(result) as { current: { provider: string; model: string } };
 
       expect(data.current).toEqual({ provider: 'anthropic', model: 'claude-opus-4-6' });
@@ -205,7 +208,7 @@ describe('mesa_get_models', () => {
   test('filters by provider when specified', async () => {
     await withTempRepo(async () => {
       const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_get_models', { provider: 'anthropic' });
+      const result = await callTool(client, 'saguaro_get_models', { provider: 'anthropic' });
       const data = parseContent(result) as { providers: { id: string }[] };
 
       expect(data.providers).toHaveLength(1);
@@ -214,15 +217,18 @@ describe('mesa_get_models', () => {
   });
 });
 
-describe('mesa_set_model', () => {
+describe('saguaro_set_model', () => {
   test('updates config with new provider and model', async () => {
     await withTempRepo(async (root) => {
-      const mesaDir = path.join(root, '.mesa');
-      fs.mkdirSync(mesaDir, { recursive: true });
-      fs.writeFileSync(path.join(mesaDir, 'config.yaml'), 'model:\n  provider: anthropic\n  name: claude-opus-4-6\n');
+      const saguaroDir = path.join(root, '.saguaro');
+      fs.mkdirSync(saguaroDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(saguaroDir, 'config.yaml'),
+        'model:\n  provider: anthropic\n  name: claude-opus-4-6\n'
+      );
 
       const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_set_model', {
+      const result = await callTool(client, 'saguaro_set_model', {
         provider: 'openai',
         model: 'gpt-5.2-codex',
       });
@@ -233,7 +239,7 @@ describe('mesa_set_model', () => {
       expect(data.provider).toBe('openai');
       expect(data.model).toBe('gpt-5.2-codex');
 
-      const config = fs.readFileSync(path.join(mesaDir, 'config.yaml'), 'utf8');
+      const config = fs.readFileSync(path.join(saguaroDir, 'config.yaml'), 'utf8');
       expect(config).toContain('provider: openai');
       expect(config).toContain('name: gpt-5.2-codex');
     });
@@ -241,12 +247,15 @@ describe('mesa_set_model', () => {
 
   test('saves API key to .env.local when provided', async () => {
     await withTempRepo(async (root) => {
-      const mesaDir = path.join(root, '.mesa');
-      fs.mkdirSync(mesaDir, { recursive: true });
-      fs.writeFileSync(path.join(mesaDir, 'config.yaml'), 'model:\n  provider: anthropic\n  name: claude-opus-4-6\n');
+      const saguaroDir = path.join(root, '.saguaro');
+      fs.mkdirSync(saguaroDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(saguaroDir, 'config.yaml'),
+        'model:\n  provider: anthropic\n  name: claude-opus-4-6\n'
+      );
 
       const { client } = await createTestClient();
-      await callTool(client, 'mesa_set_model', {
+      await callTool(client, 'saguaro_set_model', {
         provider: 'openai',
         model: 'gpt-5.2-codex',
         api_key: 'sk-test-key-123',
@@ -258,11 +267,11 @@ describe('mesa_set_model', () => {
   });
 });
 
-describe('mesa_review', () => {
+describe('saguaro_review', () => {
   test('returns error gracefully when called without proper git context', async () => {
     await withTempRepo(async () => {
       const { client } = await createTestClient();
-      const result = await callTool(client, 'mesa_review', { base_branch: 'main' });
+      const result = await callTool(client, 'saguaro_review', { base_branch: 'main' });
 
       // The review will fail because there is no real git history in the temp dir.
       // It should return an error result rather than crashing the server.
@@ -274,11 +283,11 @@ describe('mesa_review', () => {
   });
 });
 
-describe('mesa_review mode parameter', () => {
-  test('lists mode in mesa_review tool schema', async () => {
+describe('saguaro_review mode parameter', () => {
+  test('lists mode in saguaro_review tool schema', async () => {
     const { client } = await createTestClient();
     const tools = await client.listTools();
-    const reviewTool = tools.tools.find((t) => t.name === 'mesa_review');
+    const reviewTool = tools.tools.find((t) => t.name === 'saguaro_review');
     expect(reviewTool).toBeDefined();
     const schema = reviewTool!.inputSchema as Record<string, unknown>;
     const properties = schema.properties as Record<string, unknown>;
