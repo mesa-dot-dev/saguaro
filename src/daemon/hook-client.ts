@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { isMesaOnPath, resolveDistBin } from '../util/resolve-bin.js';
-import { MesaDaemon } from './server.js';
+import { isSaguaroOnPath, resolveDistBin } from '../util/resolve-bin.js';
+import { SaguaroDaemon } from './server.js';
 import type { Finding, QueueJobInput } from './store.js';
 
 export interface CheckResult {
@@ -49,13 +49,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const LOCK_FILE_PATH = path.join(os.homedir(), '.mesa', 'daemon.lock');
+const LOCK_FILE_PATH = path.join(os.homedir(), '.saguaro', 'daemon.lock');
 
 function pollForPidFile(maxWaitMs: number, intervalMs: number): Promise<{ port: number } | null> {
   return new Promise((resolve) => {
     let waited = 0;
     const check = () => {
-      const pf = MesaDaemon.readPidFile();
+      const pf = SaguaroDaemon.readPidFile();
       if (pf) {
         resolve({ port: pf.port });
         return;
@@ -72,7 +72,7 @@ function pollForPidFile(maxWaitMs: number, intervalMs: number): Promise<{ port: 
 }
 
 async function ensureDaemonRunning(): Promise<{ port: number } | null> {
-  const pidFile = MesaDaemon.readPidFile();
+  const pidFile = SaguaroDaemon.readPidFile();
   if (pidFile) {
     return { port: pidFile.port };
   }
@@ -104,8 +104,8 @@ async function ensureDaemonRunning(): Promise<{ port: number } | null> {
   try {
     let command: string;
     let args: string[];
-    if (isMesaOnPath()) {
-      command = 'mesa';
+    if (isSaguaroOnPath()) {
+      command = 'sag';
       args = ['daemon', 'start'];
     } else {
       const distBin = resolveDistBin(import.meta.url);
@@ -201,7 +201,7 @@ export async function checkDaemonWithPolling(
 }
 
 async function checkDaemon(sessionId: string): Promise<CheckResult> {
-  const pidFile = MesaDaemon.readPidFile();
+  const pidFile = SaguaroDaemon.readPidFile();
   if (!pidFile) {
     return { status: 'clear' };
   }
@@ -231,7 +231,7 @@ export function formatFindingsForAgent(checkResult: CheckResult): string {
   const allFindings = checkResult.findings.flatMap((r) => r.findings);
   if (allFindings.length === 0) return '';
 
-  const parts: string[] = ['Mesa review — fix valid issues, dismiss the rest.'];
+  const parts: string[] = ['Saguaro review — fix valid issues, dismiss the rest.'];
   for (const f of allFindings) {
     const short = path.basename(f.file);
     const loc = f.line ? `${short}:${f.line}` : short;

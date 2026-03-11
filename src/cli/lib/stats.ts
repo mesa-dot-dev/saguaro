@@ -94,7 +94,7 @@ export function statsCommand(options: StatsOptions): number {
   const entries = readReviewHistory();
 
   if (entries.length === 0) {
-    console.log(chalk.gray('No review history found. Run "mesa review" to start collecting data.'));
+    console.log(chalk.gray('No review history found. Run "sag review" to start collecting data.'));
     return 0;
   }
 

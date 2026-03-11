@@ -5,8 +5,9 @@ import chalk from 'chalk';
 import type { Argv } from 'yargs';
 import yargs from 'yargs';
 import { findRepoRoot, requireGitRepo } from '../../git/git.js';
-import { MesaError } from '../../util/errors.js';
+import { SaguaroError } from '../../util/errors.js';
 import { logger } from '../../util/logger.js';
+import { migrateMesaToSaguaro } from '../../util/migrate.js';
 import { generateRulesCommand } from '../lib/generate.js';
 import { installHook, runHook, runNotify, runPreTool, uninstallHook } from '../lib/hook.js';
 import indexCmdHandler from '../lib/index-cmd.js';
@@ -20,18 +21,18 @@ import { reviewCommand } from './review.js';
 
 const secondary = chalk.hex('#be3c00');
 
-const MESA_BANNER = `  __  __
- |  \\/  |
- | \\  / |  ___  ___   __ _
- | |\\/| | / _ \\/ __| / _\` |
- | |  | ||  __/\\__ \\| (_| |
- |_|  |_| \\___||___/ \\__,_|`;
+const SAGUARO_BANNER = `  ____
+ / ___|  __ _  __ _ _   _  __ _ _ __ ___
+ \\___ \\ / _\` |/ _\` | | | |/ _\` | '__/ _ \\
+  ___) | (_| | (_| | |_| | (_| | | | (_) |
+ |____/ \\__,_|\\__, |\\__,_|\\__,_|_|  \\___/
+              |___/`;
 
-declare const __MESA_VERSION__: string | undefined;
+declare const __SAGUARO_VERSION__: string | undefined;
 
 function resolveVersion(): string {
-  if (typeof __MESA_VERSION__ === 'string' && __MESA_VERSION__.length > 0) {
-    return __MESA_VERSION__;
+  if (typeof __SAGUARO_VERSION__ === 'string' && __SAGUARO_VERSION__.length > 0) {
+    return __SAGUARO_VERSION__;
   }
   try {
     const pkgPath = path.resolve(import.meta.dirname ?? '.', '..', '..', 'package.json');
@@ -45,8 +46,8 @@ function resolveVersion(): string {
 }
 
 function printError(error: unknown): void {
-  if (error instanceof MesaError) {
-    console.error(chalk.red(`\n[Mesa] ${error.message}`));
+  if (error instanceof SaguaroError) {
+    console.error(chalk.red(`\n[Saguaro] ${error.message}`));
     if (error.suggestion) {
       console.error(chalk.yellow(`  ${error.suggestion}`));
     }
@@ -60,7 +61,7 @@ function printError(error: unknown): void {
   }
 
   const message = error instanceof Error ? error.message : String(error);
-  console.error(chalk.red(`\n[Mesa] ${message}`));
+  console.error(chalk.red(`\n[Saguaro] ${message}`));
 
   if (error instanceof Error && error.stack) {
     const level = logger.getLevel();
@@ -79,7 +80,7 @@ const wrapHandler = <T>(handler: (argv: T) => Promise<number | undefined | void>
       }
     } catch (error) {
       printError(error);
-      const exitCode = error instanceof MesaError ? error.exitCode : 1;
+      const exitCode = error instanceof SaguaroError ? error.exitCode : 1;
       process.exit(exitCode);
     }
   };
@@ -88,7 +89,7 @@ const wrapHandler = <T>(handler: (argv: T) => Promise<number | undefined | void>
 function enableDebugCapture(filePath: string): string {
   const resolvedPath = path.resolve(filePath);
   fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
-  fs.appendFileSync(resolvedPath, `\n=== Mesa Debug Session ${new Date().toISOString()} ===\n`, 'utf8');
+  fs.appendFileSync(resolvedPath, `\n=== Saguaro Debug Session ${new Date().toISOString()} ===\n`, 'utf8');
 
   const format = (args: unknown[]) =>
     args
@@ -131,9 +132,11 @@ interface ReviewArgv {
  * Returns true if a CLI command was handled, false if no command matched (→ launch TUI).
  */
 export async function cli(argv: string[]): Promise<boolean> {
+  migrateMesaToSaguaro();
+
   process.on('unhandledRejection', (reason) => {
     const message = reason instanceof Error ? reason.message : String(reason);
-    console.error(chalk.red(`\n[Mesa] Unexpected error: ${message}`));
+    console.error(chalk.red(`\n[Saguaro] Unexpected error: ${message}`));
     process.exitCode = 1;
   });
 
@@ -155,12 +158,12 @@ export async function cli(argv: string[]): Promise<boolean> {
 
   const isHelp = argv.includes('--help') || argv.includes('-h');
   if (isHelp) {
-    console.log(secondary(MESA_BANNER));
+    console.log(secondary(SAGUARO_BANNER));
   }
 
   // eslint-disable-next-line -- yargs v18 overload resolution requires explicit any
   await (yargs(argv) as any)
-    .scriptName(secondary('mesa'))
+    .scriptName(secondary('sag'))
     .usage(`\n${"No-noise code review that enforces your team's rules and patterns."}`)
     .version(resolveVersion())
     .demandCommand(1, 'Please specify a command')
@@ -173,10 +176,10 @@ export async function cli(argv: string[]): Promise<boolean> {
       'Run an agentic code review on your changes',
       (y: Argv) => {
         y.usage(
-          `${secondary('mesa review')} [options]\n\n` +
+          `${secondary('sag review')} [options]\n\n` +
             'Modes:\n' +
             '  rules    Optimized for bug and codebase violations. Maximum signal, lowest noise.\n' +
-            "  classic  Permissive senior-level review, inspired by Mesa's GitHub review product.\n" +
+            "  classic  Permissive senior-level review, inspired by Saguaro's GitHub review product.\n" +
             '  full     Run both rules and classic reviews together.'
         )
           .option('b', {
@@ -204,13 +207,13 @@ export async function cli(argv: string[]): Promise<boolean> {
             default: false,
           })
           .option('debug', {
-            describe: 'Write debug logs to .mesa/.tmp/',
+            describe: 'Write debug logs to .saguaro/.tmp/',
             type: 'boolean',
             default: false,
           })
           .option('c', {
             alias: 'config',
-            describe: 'Path to Mesa config file',
+            describe: 'Path to Saguaro config file',
             type: 'string',
           })
           .option('rules', {
@@ -229,7 +232,7 @@ export async function cli(argv: string[]): Promise<boolean> {
         if (argv.debug) {
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
           const debugLogPath = enableDebugCapture(
-            path.resolve(findRepoRoot(), '.mesa', '.tmp', `logfile-${timestamp}.txt`)
+            path.resolve(findRepoRoot(), '.saguaro', '.tmp', `logfile-${timestamp}.txt`)
           );
           logger.setLevel('debug');
           logger.info(chalk.gray(`[debug] Writing debug logs to ${debugLogPath}`));
@@ -254,7 +257,7 @@ export async function cli(argv: string[]): Promise<boolean> {
 
     .command(
       'init',
-      'Set up Mesa in your repo (config, rules, hooks, agent integration)',
+      'Set up Saguaro in your repo (config, rules, hooks, agent integration)',
       (y: Argv) => {
         y.option('force', {
           describe: 'Overwrite existing configuration',
@@ -269,14 +272,14 @@ export async function cli(argv: string[]): Promise<boolean> {
       'Switch the AI model used for code reviews',
       (y: Argv) => {
         y.usage(
-          `${secondary('mesa model')}\n\nInteractive prompt to switch the AI provider and model used\nfor code reviews. Updates .mesa/config.yaml.`
+          `${secondary('sag model')}\n\nInteractive prompt to switch the AI provider and model used\nfor code reviews. Updates .saguaro/config.yaml.`
         );
       },
       wrapHandler(modelHandler as (argv: unknown) => Promise<number>)
     )
 
     .command('rules <command>', 'Create, list, and manage review rules', (y: Argv) => {
-      y.demandCommand(1, 'Please specify a rules subcommand. Run "mesa rules --help" for options.')
+      y.demandCommand(1, 'Please specify a rules subcommand. Run "sag rules --help" for options.')
         .command(
           'list',
           'List all rules with their IDs, titles, and severity',
@@ -363,7 +366,7 @@ export async function cli(argv: string[]): Promise<boolean> {
               })
               .option('c', {
                 alias: 'config',
-                describe: 'Path to Mesa config file',
+                describe: 'Path to Saguaro config file',
                 type: 'string',
               });
           },
@@ -398,7 +401,7 @@ export async function cli(argv: string[]): Promise<boolean> {
     )
 
     .command('hook <command>', 'Enable or disable automatic reviews in coding agents', (y: Argv) => {
-      y.demandCommand(1, 'Please specify a hook subcommand. Run "mesa hook --help" for options.')
+      y.demandCommand(1, 'Please specify a hook subcommand. Run "sag hook --help" for options.')
         .command(
           'install',
           'Enable automatic reviews after agents write code',

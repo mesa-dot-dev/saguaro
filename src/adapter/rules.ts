@@ -8,9 +8,14 @@ import {
 } from '../config/model-config.js';
 import { findRepoRoot } from '../git/git.js';
 import { generateRule } from '../rules/generator.js';
-import { deleteMesaRuleFile, getMesaRulesDir, loadMesaRules, writeMesaRuleFile } from '../rules/mesa-rules.js';
 import type { PreviewRuleResult } from '../rules/preview.js';
 import { previewRule } from '../rules/preview.js';
+import {
+  deleteSaguaroRuleFile,
+  getSaguaroRulesDir,
+  loadSaguaroRules,
+  writeSaguaroRuleFile,
+} from '../rules/saguaro-rules.js';
 import { analyzeTarget } from '../rules/target-analysis.js';
 import type { RulePolicy, Severity } from '../types/types.js';
 import { toKebabCase } from '../util/constants.js';
@@ -89,7 +94,7 @@ export interface WriteGeneratedRulesResult {
 
 export function listRulesAdapter(): ListRulesAdapterResult {
   const repoRoot = findRepoRoot();
-  const { rules } = loadMesaRules(repoRoot);
+  const { rules } = loadSaguaroRules(repoRoot);
   return { rules: rules.map((rule) => rule.policy) };
 }
 
@@ -102,17 +107,17 @@ export function explainRuleAdapter(request: { ruleId: string }): ExplainRuleAdap
 
 export function deleteRuleAdapter(request: { ruleId: string }): DeleteRuleAdapterResult {
   const repoRoot = findRepoRoot();
-  const ruleFile = path.join(getMesaRulesDir(repoRoot), `${request.ruleId}.md`);
+  const ruleFile = path.join(getSaguaroRulesDir(repoRoot), `${request.ruleId}.md`);
   if (!fs.existsSync(ruleFile)) {
     return { deleted: false };
   }
-  deleteMesaRuleFile(repoRoot, request.ruleId);
+  deleteSaguaroRuleFile(repoRoot, request.ruleId);
   return { deleted: true };
 }
 
 export function validateRulesAdapter(): ValidateRulesAdapterResult {
   const repoRoot = findRepoRoot();
-  const { rules, errors: parseErrors } = loadMesaRules(repoRoot);
+  const { rules, errors: parseErrors } = loadSaguaroRules(repoRoot);
 
   const errors: ValidateRuleError[] = parseErrors.map((e) => ({
     file: e.filePath,
@@ -129,7 +134,7 @@ export function createRuleAdapter(request: CreateRuleAdapterRequest): CreateRule
   const repoRoot = request.repoRoot ?? findRepoRoot();
 
   // Determine a unique ID
-  const { rules } = loadMesaRules(repoRoot);
+  const { rules } = loadSaguaroRules(repoRoot);
   const existingIds = new Set(rules.map((r) => r.policy.id));
   const id = request.id ? request.id : toKebabCase(request.title);
   const uniqueId = existingIds.has(id) ? findUniqueRuleId(existingIds, id) : id;
@@ -143,8 +148,8 @@ export function createRuleAdapter(request: CreateRuleAdapterRequest): CreateRule
     ...(request.examples && { examples: request.examples }),
   };
 
-  // Write to .mesa/rules/
-  const policyFilePath = writeMesaRuleFile(repoRoot, policy);
+  // Write to .saguaro/rules/
+  const policyFilePath = writeSaguaroRuleFile(repoRoot, policy);
 
   return {
     policyFilePath,
@@ -157,7 +162,7 @@ export function writeGeneratedRules(rules: RulePolicy[]): WriteGeneratedRulesRes
   const written: WrittenRule[] = [];
 
   for (const rule of rules) {
-    const filePath = writeMesaRuleFile(repoRoot, rule);
+    const filePath = writeSaguaroRuleFile(repoRoot, rule);
     written.push({
       id: rule.id,
       title: rule.title,
@@ -227,7 +232,7 @@ export async function generateRuleAdapter(request: GenerateRuleAdapterRequest): 
 
 export function locateRulesDirectoryAdapter(): { rulesDir: string } {
   const repoRoot = findRepoRoot();
-  return { rulesDir: getMesaRulesDir(repoRoot) };
+  return { rulesDir: getSaguaroRulesDir(repoRoot) };
 }
 
 function findUniqueRuleId(existingIds: Set<string>, baseId: string): string {

@@ -57,7 +57,7 @@ export {
 } from './daemon/hook-client.js';
 export type { StaffEngineerPromptOptions } from './daemon/prompt.js';
 export { buildStaffEngineerPrompt, parseFindings, stripDiffContext } from './daemon/prompt.js';
-export { MesaDaemon } from './daemon/server.js';
+export { SaguaroDaemon } from './daemon/server.js';
 export { DaemonStore } from './daemon/store.js';
 // ---------------------------------------------------------------------------
 // Git
@@ -66,18 +66,18 @@ export { findRepoRoot, getCurrentBranch, getDefaultBranch, getRepoRoot, requireG
 // ---------------------------------------------------------------------------
 // MCP
 // ---------------------------------------------------------------------------
-export { createMesaMcpServer, startMcpServer } from './mcp/server.js';
+export { createSaguaroMcpServer, startMcpServer } from './mcp/server.js';
 // ---------------------------------------------------------------------------
 // Rules
 // ---------------------------------------------------------------------------
-export type { MesaRuleFile, MesaRuleParseError, MesaRulesResult } from './rules/mesa-rules.js';
+export type { SaguaroRuleFile, SaguaroRuleParseError, SaguaroRulesResult } from './rules/saguaro-rules.js';
 export {
-  buildMesaRuleMarkdown,
-  deleteMesaRuleFile,
-  getMesaRulesDir,
-  loadMesaRules,
-  writeMesaRuleFile,
-} from './rules/mesa-rules.js';
+  buildSaguaroRuleMarkdown,
+  deleteSaguaroRuleFile,
+  getSaguaroRulesDir,
+  loadSaguaroRules,
+  writeSaguaroRuleFile,
+} from './rules/saguaro-rules.js';
 // ---------------------------------------------------------------------------
 // Stats / History
 // ---------------------------------------------------------------------------
@@ -95,7 +95,7 @@ export type {
 // ---------------------------------------------------------------------------
 // Errors and logging
 // ---------------------------------------------------------------------------
-export type { MesaErrorCode } from './util/errors.js';
-export { MesaError } from './util/errors.js';
+export type { SaguaroErrorCode } from './util/errors.js';
+export { SaguaroError } from './util/errors.js';
 export type { LogLevel } from './util/logger.js';
 export { logger } from './util/logger.js';

@@ -10,7 +10,7 @@ const SKIP_DIRS = new Set([
   '.git',
   'dist',
   'build',
-  '.mesa',
+  '.saguaro',
   'coverage',
   '.next',
   '.nuxt',

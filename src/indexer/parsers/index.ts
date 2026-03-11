@@ -36,7 +36,7 @@ async function getSwcParser(): Promise<SwcParserLike | null> {
     swcParser = false;
     const message = error instanceof Error ? error.message : String(error);
     logger.verbose(
-      `[Mesa] Codebase indexing unavailable: @swc/core failed to load (${message}). Reviews will work without cross-file context.`
+      `[Saguaro] Codebase indexing unavailable: @swc/core failed to load (${message}). Reviews will work without cross-file context.`
     );
     return null;
   }
@@ -53,7 +53,7 @@ async function getTreeSitterParser(): Promise<TreeSitterParser | null> {
     treeSitterParser = false;
     const message = error instanceof Error ? error.message : String(error);
     logger.verbose(
-      `[Mesa] Tree-sitter indexing unavailable: ${message}. Reviews will work without cross-file context for Python/Go/Rust.`
+      `[Saguaro] Tree-sitter indexing unavailable: ${message}. Reviews will work without cross-file context for Python/Go/Rust.`
     );
     return null;
   }

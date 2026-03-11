@@ -1,0 +1,36 @@
+class ${FORMULA_CLASS_NAME} < Formula
+  desc "Saguaro code review CLI"
+  homepage "https://mesa.dev"
+  version "${VERSION}"
+  license "Apache-2.0"
+
+  on_macos do
+    if Hardware::CPU.arm?
+      url "${URL_DARWIN_ARM64}"
+      sha256 "${SHA256_DARWIN_ARM64}"
+    end
+  end
+
+  on_linux do
+    if Hardware::CPU.intel?
+      url "${URL_LINUX_X64}"
+      sha256 "${SHA256_LINUX_X64}"
+    end
+    if Hardware::CPU.arm?
+      url "${URL_LINUX_ARM64}"
+      sha256 "${SHA256_LINUX_ARM64}"
+    end
+  end
+
+  skip_clean "libexec"
+
+  def install
+    libexec.install "sag"
+    (libexec/"wasm").install Dir["wasm/*"]
+    bin.install_symlink libexec/"sag"
+  end
+
+  test do
+    assert_match "sag", shell_output("#{bin}/sag --help")
+  end
+end

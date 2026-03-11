@@ -23,7 +23,7 @@ import type { RulePolicy, Severity } from '../../types/types.js';
 let lastGeneratedRules: RulePolicy[] = [];
 let detailsCursor = 0;
 
-const LOG_FILE = path.join(os.tmpdir(), 'mesa-mcp-debug.log');
+const LOG_FILE = path.join(os.tmpdir(), 'saguaro-mcp-debug.log');
 
 /** Debug log to file + stderr — stdout is MCP protocol, never touch it */
 function debug(msg: string, data?: unknown): void {
@@ -54,9 +54,9 @@ function errorResult(message: string): CallToolResult {
 }
 
 function handleValidateRules(): CallToolResult {
-  debug('mesa_validate_rules called');
+  debug('saguaro_validate_rules called');
   const { validated, errors } = validateRulesAdapter();
-  debug(`mesa_validate_rules: ${validated.length} validated, ${errors.length} errors`);
+  debug(`saguaro_validate_rules: ${validated.length} validated, ${errors.length} errors`);
   return jsonResult({
     valid: errors.length === 0,
     validated,
@@ -65,7 +65,7 @@ function handleValidateRules(): CallToolResult {
 }
 
 function handleCreateRule(args: Record<string, unknown>): CallToolResult {
-  debug('mesa_create_rule called', args);
+  debug('saguaro_create_rule called', args);
   const title = args.title as string;
   const severity = args.severity as Severity;
   const globs = args.globs as string[];
@@ -86,12 +86,12 @@ function handleCreateRule(args: Record<string, unknown>): CallToolResult {
     examples,
   });
 
-  debug('mesa_create_rule created', { id: result.rule.id, path: result.policyFilePath });
+  debug('saguaro_create_rule created', { id: result.rule.id, path: result.policyFilePath });
   return textResult(`Rule created: ${result.rule.id}\nFile: ${result.policyFilePath}`);
 }
 
 function handleDeleteRule(args: Record<string, unknown>): CallToolResult {
-  debug('mesa_delete_rule called', args);
+  debug('saguaro_delete_rule called', args);
   const ruleId = args.rule_id as string;
   if (!ruleId) {
     return errorResult('rule_id is required');
@@ -106,11 +106,11 @@ function handleDeleteRule(args: Record<string, unknown>): CallToolResult {
 }
 
 async function handleGenerateRules(): Promise<CallToolResult> {
-  debug('mesa_generate_rules called');
+  debug('saguaro_generate_rules called');
   const result = await generateRules({ cwd: process.cwd() });
   lastGeneratedRules = result.rules;
   detailsCursor = 0;
-  debug(`mesa_generate_rules returning ${result.rules.length} rules (stored in session state)`);
+  debug(`saguaro_generate_rules returning ${result.rules.length} rules (stored in session state)`);
   return jsonResult({
     rules: result.rules.map((r) => ({
       id: r.id,
@@ -129,10 +129,10 @@ async function handleGenerateRules(): Promise<CallToolResult> {
 const DETAILS_BATCH_SIZE = 10;
 
 function handleGetGeneratedRuleDetails(args: Record<string, unknown>): CallToolResult {
-  debug('mesa_get_generated_rule_details called', args);
+  debug('saguaro_get_generated_rule_details called', args);
 
   if (lastGeneratedRules.length === 0) {
-    return errorResult('No generated rules in session. Run mesa_generate_rules first.');
+    return errorResult('No generated rules in session. Run saguaro_generate_rules first.');
   }
 
   const ruleIds = args.rule_ids as string[] | undefined;
@@ -141,7 +141,7 @@ function handleGetGeneratedRuleDetails(args: Record<string, unknown>): CallToolR
   if (ruleIds && Array.isArray(ruleIds) && ruleIds.length > 0) {
     const requestedSet = new Set(ruleIds);
     const found = lastGeneratedRules.filter((r) => requestedSet.has(r.id));
-    debug(`mesa_get_generated_rule_details: ${found.length} found by ID`);
+    debug(`saguaro_get_generated_rule_details: ${found.length} found by ID`);
     return jsonResult({ rules: found });
   }
 
@@ -149,14 +149,14 @@ function handleGetGeneratedRuleDetails(args: Record<string, unknown>): CallToolR
   const slice = lastGeneratedRules.slice(detailsCursor, detailsCursor + DETAILS_BATCH_SIZE);
   const result = jsonResult({ rules: slice, total: lastGeneratedRules.length, offset: detailsCursor });
   debug(
-    `mesa_get_generated_rule_details: cursor=${detailsCursor} returning ${slice.length}/${lastGeneratedRules.length}`
+    `saguaro_get_generated_rule_details: cursor=${detailsCursor} returning ${slice.length}/${lastGeneratedRules.length}`
   );
   detailsCursor += slice.length;
   return result;
 }
 
 async function handleGenerateRule(args: Record<string, unknown>): Promise<CallToolResult> {
-  debug('mesa_generate_rule called', args);
+  debug('saguaro_generate_rule called', args);
   const target = args.target as string;
   const intent = args.intent as string;
 
@@ -168,12 +168,12 @@ async function handleGenerateRule(args: Record<string, unknown>): Promise<CallTo
   const severity = args.severity as 'error' | 'warning' | 'info' | undefined;
 
   const result = await generateRuleAdapter({ target, intent, title, severity });
-  debug('mesa_generate_rule returning', { ruleId: result.rule.id });
+  debug('saguaro_generate_rule returning', { ruleId: result.rule.id });
   return textResult(`Rule generated: ${result.rule.id}`);
 }
 
 function handleWriteAcceptedRules(args: Record<string, unknown>): CallToolResult {
-  debug('mesa_write_accepted_rules called', args);
+  debug('saguaro_write_accepted_rules called', args);
   const ruleIds = args.rule_ids as string[];
 
   if (!ruleIds || !Array.isArray(ruleIds) || ruleIds.length === 0) {
@@ -181,7 +181,7 @@ function handleWriteAcceptedRules(args: Record<string, unknown>): CallToolResult
   }
 
   if (lastGeneratedRules.length === 0) {
-    return errorResult('No generated rules in session. Run mesa_generate_rules first.');
+    return errorResult('No generated rules in session. Run saguaro_generate_rules first.');
   }
 
   const acceptedSet = new Set(ruleIds);
@@ -190,7 +190,7 @@ function handleWriteAcceptedRules(args: Record<string, unknown>): CallToolResult
 
   const result = writeGeneratedRules(accepted);
 
-  debug('mesa_write_accepted_rules done', {
+  debug('saguaro_write_accepted_rules done', {
     written: result.written.length,
     skipped: skippedIds.length,
   });
@@ -199,7 +199,7 @@ function handleWriteAcceptedRules(args: Record<string, unknown>): CallToolResult
 }
 
 async function handleGetModels(args: Record<string, unknown>): Promise<CallToolResult> {
-  debug('mesa_get_models called', args);
+  debug('saguaro_get_models called', args);
   const providerFilter = args.provider as string | undefined;
   const catalog = await getModelCatalog();
   const providers = providerFilter ? catalog.filter((p) => p.id === providerFilter) : catalog;
@@ -225,7 +225,7 @@ async function handleGetModels(args: Record<string, unknown>): Promise<CallToolR
 }
 
 async function handleSetModel(args: Record<string, unknown>): Promise<CallToolResult> {
-  debug('mesa_set_model called', args);
+  debug('saguaro_set_model called', args);
   const provider = args.provider as 'anthropic' | 'openai' | 'google';
   const model = args.model as string;
   const apiKey = args.api_key as string | undefined;
@@ -242,7 +242,7 @@ async function handleSetModel(args: Record<string, unknown>): Promise<CallToolRe
   if (!modelExists) {
     const available = providerEntry?.models.slice(0, 5).map((m) => m.id) ?? [];
     return errorResult(
-      `Model "${model}" not found in ${provider} catalog. Available: ${available.join(', ')}. Use an exact model ID from mesa_get_models.`
+      `Model "${model}" not found in ${provider} catalog. Available: ${available.join(', ')}. Use an exact model ID from saguaro_get_models.`
     );
   }
 
@@ -261,8 +261,8 @@ async function handleReview(args: Record<string, unknown>): Promise<CallToolResu
   const headRef = (args.head_branch as string) ?? 'HEAD';
   const mode = (args.mode as string) ?? 'rules';
 
-  const configExists = fs.existsSync(path.resolve(process.cwd(), '.mesa', 'config.yaml'));
-  debug('mesa_review called', { baseRef, headRef, mode, cwd: process.cwd(), configExists });
+  const configExists = fs.existsSync(path.resolve(process.cwd(), '.saguaro', 'config.yaml'));
+  debug('saguaro_review called', { baseRef, headRef, mode, cwd: process.cwd(), configExists });
 
   const startMs = Date.now();
 
@@ -289,7 +289,7 @@ async function handleRulesReview(baseRef: string, headRef: string, startMs: numb
     source: 'mcp',
   });
   const durationMs = Date.now() - startMs;
-  debug(`mesa_review (rules) completed in ${durationMs}ms, outcome: ${outcome.kind}`);
+  debug(`saguaro_review (rules) completed in ${durationMs}ms, outcome: ${outcome.kind}`);
 
   switch (outcome.kind) {
     case 'no-changed-files':
@@ -324,7 +324,7 @@ async function handleRulesReview(baseRef: string, headRef: string, startMs: numb
 async function handleClassicOnlyReview(baseRef: string, headRef: string, startMs: number): Promise<CallToolResult> {
   const result = await runClassicReview({ baseRef, headRef });
   const durationMs = Date.now() - startMs;
-  debug(`mesa_review (classic) completed in ${durationMs}ms`, {
+  debug(`saguaro_review (classic) completed in ${durationMs}ms`, {
     findings: result.findings.length,
     verdict: result.verdict,
   });
@@ -354,7 +354,7 @@ async function handleFullReview(baseRef: string, headRef: string, startMs: numbe
     runClassicReview({ baseRef, headRef }),
   ]);
   const durationMs = Date.now() - startMs;
-  debug(`mesa_review (full) completed in ${durationMs}ms`);
+  debug(`saguaro_review (full) completed in ${durationMs}ms`);
 
   // If both failed, surface the errors
   if (rulesSettled.status === 'rejected' && classicSettled.status === 'rejected') {
@@ -416,51 +416,57 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
   debug(`handleToolCall: ${name}`);
   let result: CallToolResult;
   switch (name) {
-    case 'mesa_validate_rules':
+    case 'saguaro_validate_rules':
       result = handleValidateRules();
       break;
-    case 'mesa_create_rule':
+    case 'saguaro_create_rule':
       result = handleCreateRule(args);
       break;
-    case 'mesa_delete_rule':
+    case 'saguaro_delete_rule':
       result = handleDeleteRule(args);
       break;
-    case 'mesa_generate_rules':
+    case 'saguaro_generate_rules':
       try {
         result = await handleGenerateRules();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        debug('mesa_generate_rules EXCEPTION', { error: message, stack: err instanceof Error ? err.stack : undefined });
+        debug('saguaro_generate_rules EXCEPTION', {
+          error: message,
+          stack: err instanceof Error ? err.stack : undefined,
+        });
         result = errorResult(`Rule generation failed: ${message}`);
       }
       break;
-    case 'mesa_generate_rule':
+    case 'saguaro_generate_rule':
       try {
         result = await handleGenerateRule(args);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        debug('mesa_generate_rule EXCEPTION', { error: message, stack: err instanceof Error ? err.stack : undefined });
+        debug('saguaro_generate_rule EXCEPTION', {
+          error: message,
+          stack: err instanceof Error ? err.stack : undefined,
+        });
         result = errorResult(`Rule generation failed: ${message}`);
       }
       break;
-    case 'mesa_get_generated_rule_details':
+    case 'saguaro_get_generated_rule_details':
       result = handleGetGeneratedRuleDetails(args);
       break;
-    case 'mesa_get_models':
+    case 'saguaro_get_models':
       result = await handleGetModels(args);
       break;
-    case 'mesa_set_model':
+    case 'saguaro_set_model':
       result = await handleSetModel(args);
       break;
-    case 'mesa_write_accepted_rules':
+    case 'saguaro_write_accepted_rules':
       result = handleWriteAcceptedRules(args);
       break;
-    case 'mesa_review':
+    case 'saguaro_review':
       try {
         result = await handleReview(args);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        debug('mesa_review EXCEPTION', { error: message, stack: err instanceof Error ? err.stack : undefined });
+        debug('saguaro_review EXCEPTION', { error: message, stack: err instanceof Error ? err.stack : undefined });
         result = errorResult(`Review failed: ${message}`);
       }
       break;

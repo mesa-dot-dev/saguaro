@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Report a bug in Mesa Code Review
+about: Report a bug in Saguaro
 labels: bug
 ---
 
@@ -24,6 +24,6 @@ A clear description of the bug.
 
 ## Environment
 
-- `mesa --version`:
+- `sag --version`:
 - OS:
 - Node.js/Bun version:

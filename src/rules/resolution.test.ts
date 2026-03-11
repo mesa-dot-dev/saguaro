@@ -7,7 +7,7 @@ import path from 'node:path';
 import { resolveRulesForFiles } from './resolution.js';
 
 function withTempRepo(run: (root: string) => void): void {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-rules-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'saguaro-rules-'));
   try {
     fs.mkdirSync(path.join(root, '.git'));
     run(root);
@@ -16,7 +16,7 @@ function withTempRepo(run: (root: string) => void): void {
   }
 }
 
-function writeMesaRule(
+function writeSaguaroRule(
   root: string,
   options: {
     id: string;
@@ -27,7 +27,7 @@ function writeMesaRule(
     priority?: number;
   }
 ): void {
-  const rulesDir = path.join(root, '.mesa', 'rules');
+  const rulesDir = path.join(root, '.saguaro', 'rules');
   fs.mkdirSync(rulesDir, { recursive: true });
 
   const globLines = options.globs.map((g) => `  - ${JSON.stringify(g)}`).join('\n');
@@ -46,9 +46,9 @@ function writeMesaRule(
 }
 
 describe('rule resolution', () => {
-  test('resolves rules from .mesa/rules/ and matches files by glob', () => {
+  test('resolves rules from .saguaro/rules/ and matches files by glob', () => {
     withTempRepo((root) => {
-      writeMesaRule(root, {
+      writeSaguaroRule(root, {
         id: 'no-console-log',
         title: 'No console.log',
         severity: 'warning',
@@ -69,7 +69,7 @@ describe('rule resolution', () => {
 
   test('handles include and exclude globs for matching', () => {
     withTempRepo((root) => {
-      writeMesaRule(root, {
+      writeSaguaroRule(root, {
         id: 'no-tests',
         title: 'No tests policy',
         severity: 'warning',
@@ -87,7 +87,7 @@ describe('rule resolution', () => {
 
   test('sorts matched rules by priority (higher first)', () => {
     withTempRepo((root) => {
-      writeMesaRule(root, {
+      writeSaguaroRule(root, {
         id: 'low-priority',
         title: 'Low priority rule',
         severity: 'info',
@@ -96,7 +96,7 @@ describe('rule resolution', () => {
         priority: 1,
       });
 
-      writeMesaRule(root, {
+      writeSaguaroRule(root, {
         id: 'high-priority',
         title: 'High priority rule',
         severity: 'error',
@@ -114,7 +114,7 @@ describe('rule resolution', () => {
     });
   });
 
-  test('returns empty when no .mesa/rules/ directory exists', () => {
+  test('returns empty when no .saguaro/rules/ directory exists', () => {
     withTempRepo((root) => {
       const result = resolveRulesForFiles(['src/app.ts'], { startDir: root });
       expect(result.rulesLoaded).toBe(0);

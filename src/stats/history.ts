@@ -4,7 +4,7 @@ import { findRepoRoot } from '../git/git.js';
 import type { ReviewHistoryEntry } from '../types/types.js';
 
 export function getDefaultHistoryPath(): string {
-  return path.join(findRepoRoot(), '.mesa', 'history', 'reviews.jsonl');
+  return path.join(findRepoRoot(), '.saguaro', 'history', 'reviews.jsonl');
 }
 
 export function appendReviewEntry(entry: ReviewHistoryEntry, filePath?: string): void {

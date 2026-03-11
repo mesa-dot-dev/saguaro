@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest an idea for Mesa Code Review
+about: Suggest an idea for Saguaro
 labels: enhancement
 ---
 

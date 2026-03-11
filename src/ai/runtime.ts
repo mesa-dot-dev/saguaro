@@ -1,4 +1,4 @@
-import type { MesaConfig, ModelProvider } from '../config/model-config.js';
+import type { ModelProvider, SaguaroConfig } from '../config/model-config.js';
 import { loadValidatedConfig, resolveModelForReview } from '../config/model-config.js';
 import type { AgentRunner, ModelInfo, Reviewer, ReviewRuntime } from '../core/types.js';
 import { getFileAtRef, getRepoRoot, listChangedFilesFromGit } from '../git/git.js';
@@ -21,7 +21,7 @@ export function createNodeReviewRuntime(options?: { rulesDir?: string }): Review
       return resolveRulesForFiles(changedFiles, { explicitRulesDir: options?.rulesDir });
     },
     createReviewer(configPath) {
-      let config: MesaConfig | undefined;
+      let config: SaguaroConfig | undefined;
       try {
         config = loadValidatedConfig(configPath);
       } catch (error) {
@@ -76,7 +76,7 @@ function resolveCliRunner(provider: ModelProvider): AgentRunner {
 }
 
 function createCliReviewer(
-  config?: MesaConfig,
+  config?: SaguaroConfig,
   runner?: AgentRunner,
   modelOverride?: string
 ): { reviewer: Reviewer; modelInfo: ModelInfo } {

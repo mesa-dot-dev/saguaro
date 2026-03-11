@@ -5,8 +5,8 @@ dist/
 .DS_Store
 *.tgz
 .release/
-.mesa/.tmp/
+.saguaro/.tmp/
 bun.lockb
-.mesa/history/
-.mesa/config.yaml
+.saguaro/history/
+.saguaro/config.yaml
 .mcp.json

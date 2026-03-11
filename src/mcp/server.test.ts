@@ -3,10 +3,10 @@
 import { describe, expect, test } from 'bun:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createMesaMcpServer } from './server.js';
+import { createSaguaroMcpServer } from './server.js';
 
 async function createTestClient() {
-  const mcpServer = createMesaMcpServer();
+  const mcpServer = createSaguaroMcpServer();
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await mcpServer.connect(serverTransport);
   const client = new Client({ name: 'test-client', version: '1.0.0' });
@@ -21,16 +21,16 @@ describe('MCP server', () => {
     const toolNames = result.tools.map((t) => t.name).sort();
 
     expect(toolNames).toEqual([
-      'mesa_create_rule',
-      'mesa_delete_rule',
-      'mesa_generate_rule',
-      'mesa_generate_rules',
-      'mesa_get_generated_rule_details',
-      'mesa_get_models',
-      'mesa_review',
-      'mesa_set_model',
-      'mesa_validate_rules',
-      'mesa_write_accepted_rules',
+      'saguaro_create_rule',
+      'saguaro_delete_rule',
+      'saguaro_generate_rule',
+      'saguaro_generate_rules',
+      'saguaro_get_generated_rule_details',
+      'saguaro_get_models',
+      'saguaro_review',
+      'saguaro_set_model',
+      'saguaro_validate_rules',
+      'saguaro_write_accepted_rules',
     ]);
   });
 });

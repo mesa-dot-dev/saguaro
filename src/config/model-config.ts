@@ -57,7 +57,7 @@ const DaemonSchema = z.object({
   model: z.string().optional(),
 });
 
-export const MesaConfigSchema = z
+export const SaguaroConfigSchema = z
   .object({
     model: z.object({
       provider: ModelProviderSchema,
@@ -71,12 +71,12 @@ export const MesaConfigSchema = z
   })
   .strict();
 
-export type MesaConfig = z.infer<typeof MesaConfigSchema>;
+export type SaguaroConfig = z.infer<typeof SaguaroConfigSchema>;
 export type ModelProvider = z.infer<typeof ModelProviderSchema>;
 
 export type ReviewKind = 'rules' | 'classic' | 'daemon';
 
-export function resolveModelForReview(config: MesaConfig, kind: ReviewKind): string {
+export function resolveModelForReview(config: SaguaroConfig, kind: ReviewKind): string {
   switch (kind) {
     case 'rules':
       return config.review.rules?.model ?? config.model.name;
@@ -128,8 +128,8 @@ export interface LoadedReviewAdapterConfig {
   classicPrompt?: string;
 }
 
-export function loadValidatedConfig(configPath?: string): MesaConfig {
-  const resolvedPath = resolveMesaConfigPath(configPath);
+export function loadValidatedConfig(configPath?: string): SaguaroConfig {
+  const resolvedPath = resolveSaguaroConfigPath(configPath);
   if (!resolvedPath) {
     throw new ConfigMissingError();
   }
@@ -140,7 +140,7 @@ export function loadValidatedConfig(configPath?: string): MesaConfig {
     throw new ConfigInvalidError(`File at ${resolvedPath} is not a valid YAML object.`);
   }
 
-  const result = MesaConfigSchema.safeParse(raw);
+  const result = SaguaroConfigSchema.safeParse(raw);
   if (!result.success) {
     const issues = result.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');
     throw new ConfigInvalidError(`\n${issues}`);
@@ -158,7 +158,7 @@ export function loadValidatedConfig(configPath?: string): MesaConfig {
   return result.data;
 }
 
-export function resolveApiKey(config: MesaConfig): string {
+export function resolveApiKey(config: SaguaroConfig): string {
   loadLocalEnvFiles();
 
   const provider = config.model.provider;
@@ -223,7 +223,7 @@ export function loadReviewAdapterConfig(configPath?: string): LoadedReviewAdapte
   };
 }
 
-function resolveMesaConfigPath(configPath?: string): string | null {
+function resolveSaguaroConfigPath(configPath?: string): string | null {
   if (configPath) {
     if (fs.existsSync(configPath)) {
       return configPath;
@@ -231,11 +231,11 @@ function resolveMesaConfigPath(configPath?: string): string | null {
     throw new ConfigInvalidError(`Config file not found: ${configPath}`);
   }
 
-  const envPath = process.env.MESA_CONFIG;
+  const envPath = process.env.SAGUARO_CONFIG;
   if (envPath && fs.existsSync(envPath)) return envPath;
 
   const repoRoot = findRepoRoot();
-  const defaultPath = path.resolve(repoRoot, '.mesa', 'config.yaml');
+  const defaultPath = path.resolve(repoRoot, '.saguaro', 'config.yaml');
   if (fs.existsSync(defaultPath)) return defaultPath;
 
   return null;

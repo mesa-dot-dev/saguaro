@@ -1,5 +1,5 @@
 export interface McpSkillFile {
-  /** Relative path from .claude/skills/ (e.g., "mesa-review/SKILL.md") */
+  /** Relative path from .claude/skills/ (e.g., "saguaro-review/SKILL.md") */
   skillFilePath: string;
   /** Markdown content for the SKILL.md file */
   content: string;
@@ -8,10 +8,10 @@ export interface McpSkillFile {
 export function getMcpSkillFiles(): McpSkillFile[] {
   return [
     {
-      skillFilePath: 'mesa-review/SKILL.md',
+      skillFilePath: 'saguaro-review/SKILL.md',
       content: `---
-name: mesa-review
-description: Run Mesa code review on current changes
+name: saguaro-review
+description: Run Saguaro code review on current changes
 ---
 ## Flow
 
@@ -25,7 +25,7 @@ description: Run Mesa code review on current changes
        options: [
          { label: "Both (Recommended)", description: "Run both rules and classic reviews together for maximum coverage" },
          { label: "Rules only", description: "Optimized for bug and codebase violations — maximum signal, lowest noise" },
-         { label: "Classic only", description: "Senior-level review where the agent is more permissive in its analysis, borrowing the best elements from Mesa's GitHub review product" }
+         { label: "Classic only", description: "Senior-level review where the agent is more permissive in its analysis, borrowing the best elements from Saguaro's GitHub review product" }
        ],
        multiSelect: false
      }]
@@ -34,7 +34,7 @@ description: Run Mesa code review on current changes
 
    Map the user's selection: "Both" → mode "full", "Rules only" → mode "rules", "Classic only" → mode "classic".
 
-2. **Run the review** — Call the \`mesa_review\` MCP tool with:
+2. **Run the review** — Call the \`saguaro_review\` MCP tool with:
    - \`mode\`: "rules", "classic", or "full" based on the user's choice
    - \`base_branch\`: defaults to "main" (ask only if the user specifies a different branch)
    - \`head_branch\`: defaults to "HEAD"
@@ -47,10 +47,10 @@ description: Run Mesa code review on current changes
 `,
     },
     {
-      skillFilePath: 'mesa-createrule/SKILL.md',
+      skillFilePath: 'saguaro-createrule/SKILL.md',
       content: `---
-name: mesa-createrule
-description: Generate a single Mesa review rule using the AI pipeline with preview and approval
+name: saguaro-createrule
+description: Generate a single Saguaro review rule using the AI pipeline with preview and approval
 ---
 ## Flow
 
@@ -59,7 +59,7 @@ description: Generate a single Mesa review rule using the AI pipeline with previ
    - **Intent** — what convention or pattern the rule should enforce
    - Optionally: a title and severity
 
-2. **Generate proposal** — Call the \`mesa_generate_rule\` MCP tool with the target and intent.
+2. **Generate proposal** — Call the \`saguaro_generate_rule\` MCP tool with the target and intent.
    Tell the user this may take 15-30 seconds while the pipeline analyzes their code.
 
 3. **Present the proposal** — Show the user:
@@ -87,28 +87,28 @@ description: Generate a single Mesa review rule using the AI pipeline with previ
 
 5. **Choose placement** — If the user accepts, use \`AskUserQuestion\` to present the placement options from the proposal and ask which scope to use.
 
-6. **Write the rule** — Call \`mesa_create_rule\` with the final rule fields and the selected scope.
+6. **Write the rule** — Call \`saguaro_create_rule\` with the final rule fields and the selected scope.
    Report the created rule ID and file path.
 `,
     },
     {
-      skillFilePath: 'mesa-generaterules/SKILL.md',
+      skillFilePath: 'saguaro-generaterules/SKILL.md',
       content: `---
-name: mesa-generaterules
-description: Auto-generate Mesa review rules using the full AI pipeline with approval before writing
+name: saguaro-generaterules
+description: Auto-generate Saguaro review rules using the full AI pipeline with approval before writing
 ---
 ## Important — Two-Phase Data Model
 
-\`mesa_generate_rules\` returns **compact summaries only** (id, title, severity, globs) to stay within tool output limits. Full rule details (instructions, examples) are held in server session state.
+\`saguaro_generate_rules\` returns **compact summaries only** (id, title, severity, globs) to stay within tool output limits. Full rule details (instructions, examples) are held in server session state.
 
-- To inspect full rule details, call \`mesa_get_generated_rule_details\` with an array of rule IDs.
-- To write rules to disk, call \`mesa_write_accepted_rules\` with an array of rule IDs.
+- To inspect full rule details, call \`saguaro_get_generated_rule_details\` with an array of rule IDs.
+- To write rules to disk, call \`saguaro_write_accepted_rules\` with an array of rule IDs.
 
-Both tools read from the same session state populated by \`mesa_generate_rules\`. Do NOT call \`mesa_generate_rules\` again — it would overwrite the session.
+Both tools read from the same session state populated by \`saguaro_generate_rules\`. Do NOT call \`saguaro_generate_rules\` again — it would overwrite the session.
 
 ## Flow
 
-1. **Start the pipeline** — Call the \`mesa_generate_rules\` MCP tool.
+1. **Start the pipeline** — Call the \`saguaro_generate_rules\` MCP tool.
    Tell the user this runs a multi-stage pipeline (codebase scanning, import graph indexing, LLM analysis, consolidation/dedup) and takes a few minutes depending on the size of the codebase.
 
 2. **Present summary** — When the tool returns, show:
@@ -142,7 +142,7 @@ Both tools read from the same session state populated by \`mesa_generate_rules\`
    **If "Bulk review by group":** Group rules by their target area based on glob patterns (e.g., all rules with \`packages/web/**\` globs form a "Web Package" group). Present a single compact table with one row per group showing: group name and rule count. Do NOT list individual rules within each group. Then use \`AskUserQuestion\` with \`multiSelect: true\` to let the user select which groups to accept. All rules in non-selected groups are skipped.
 
    **If "Review individually":**
-   - Call \`mesa_get_generated_rule_details\` with no arguments to get the next batch of 10 rules. The server tracks position automatically — just keep calling it for each batch.
+   - Call \`saguaro_get_generated_rule_details\` with no arguments to get the next batch of 10 rules. The server tracks position automatically — just keep calling it for each batch.
    - For each rule in the batch, present: **Title**, **ID**, **severity**, **Globs**, **Instructions** (the full rule body), **Examples** (if present).
    - Then use \`AskUserQuestion\` with structured options:
 
@@ -165,20 +165,20 @@ Both tools read from the same session state populated by \`mesa_generate_rules\`
 
    **If "Skip all":** Discard everything and confirm.
 
-5. **Write accepted rules** — Collect the IDs of all accepted rules, then call \`mesa_write_accepted_rules\` once with the full list of accepted rule IDs. The server writes them using the same deterministic codepath as the CLI (scope computed from globs, skill files created). Do NOT call \`mesa_create_rule\` individually — use \`mesa_write_accepted_rules\` for batch generation results.
+5. **Write accepted rules** — Collect the IDs of all accepted rules, then call \`saguaro_write_accepted_rules\` once with the full list of accepted rule IDs. The server writes them using the same deterministic codepath as the CLI (scope computed from globs, skill files created). Do NOT call \`saguaro_create_rule\` individually — use \`saguaro_write_accepted_rules\` for batch generation results.
 
 6. **Final summary** — Report how many rules were written vs. skipped, with their IDs and file paths (from the tool response).
 `,
     },
     {
-      skillFilePath: 'mesa-model/SKILL.md',
+      skillFilePath: 'saguaro-model/SKILL.md',
       content: `---
-name: mesa-model
-description: Switch the AI model used for Mesa code reviews
+name: saguaro-model
+description: Switch the AI model used for Saguaro code reviews
 ---
 ## Flow
 
-1. **Fetch catalog** — Call \`mesa_get_models\` once (no arguments). This returns all providers with their models (sorted newest-first, recommended flagged), the current model, and \`api_key_configured\` per provider.
+1. **Fetch catalog** — Call \`saguaro_get_models\` once (no arguments). This returns all providers with their models (sorted newest-first, recommended flagged), the current model, and \`api_key_configured\` per provider.
 
 2. **Show current model** — If \`current\` is set, display: "Current model: {provider} / {model}". Otherwise: "No model configured."
 
@@ -190,7 +190,7 @@ description: Switch the AI model used for Mesa code reviews
        question: "Which provider would you like to use?",
        header: "Provider",
        options: [
-         // Build these from the providers array returned by mesa_get_models
+         // Build these from the providers array returned by saguaro_get_models
          { label: "Anthropic", description: "Claude models" },
          { label: "OpenAI", description: "GPT models" },
          { label: "Google", description: "Gemini models" }
@@ -212,11 +212,11 @@ Then ask: "Pick a number, or type a model ID directly."
 
 IMPORTANT: Use the exact \`id\` field from the catalog as the model identifier. Do NOT modify, reformat, or abbreviate model IDs.
 
-5. **Set the model** — Call \`mesa_set_model\` with the exact \`provider\` and \`model\` id. If \`mesa_set_model\` returns an error, show the error and do NOT retry with a modified model ID.
+5. **Set the model** — Call \`saguaro_set_model\` with the exact \`provider\` and \`model\` id. If \`saguaro_set_model\` returns an error, show the error and do NOT retry with a modified model ID.
 
-6. **API key** — Check \`api_key_configured\` from the \`mesa_set_model\` response. If \`false\`, tell the user: "No {envKey} found. Paste your key or type 'n' to skip." If they provide a key, call \`mesa_set_model\` again with the \`api_key\` field.
+6. **API key** — Check \`api_key_configured\` from the \`saguaro_set_model\` response. If \`false\`, tell the user: "No {envKey} found. Paste your key or type 'n' to skip." If they provide a key, call \`saguaro_set_model\` again with the \`api_key\` field.
 
-7. **Confirm** — Say the model was updated. If the \`overrides\` field is present in the \`mesa_get_models\` response, also list any active per-review-kind overrides. Always end with: "You can set per-review-kind model overrides directly in .mesa/config.yaml under review.rules.model, review.classic.model, and daemon.model."
+7. **Confirm** — Say the model was updated. If the \`overrides\` field is present in the \`saguaro_get_models\` response, also list any active per-review-kind overrides. Always end with: "You can set per-review-kind model overrides directly in .saguaro/config.yaml under review.rules.model, review.classic.model, and daemon.model."
 `,
     },
   ];

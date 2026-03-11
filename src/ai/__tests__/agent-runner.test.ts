@@ -100,9 +100,9 @@ describe('buildClaudeEnv', () => {
     expect(env.CLAUDECODEOTHER).toBeUndefined();
   });
 
-  test('sets MESA_REVIEW_AGENT=1', () => {
+  test('sets SAGUARO_REVIEW_AGENT=1', () => {
     const env = buildClaudeEnv({ PATH: '/usr/bin' });
-    expect(env.MESA_REVIEW_AGENT).toBe('1');
+    expect(env.SAGUARO_REVIEW_AGENT).toBe('1');
   });
 
   test('sets CLAUDE_NO_SOUND=1', () => {
@@ -174,9 +174,9 @@ describe('buildCodexEnv', () => {
     expect(env.HOME).toBe('/home/test');
   });
 
-  test('sets MESA_REVIEW_AGENT=1', () => {
+  test('sets SAGUARO_REVIEW_AGENT=1', () => {
     const env = buildCodexEnv({ PATH: '/usr/bin' });
-    expect(env.MESA_REVIEW_AGENT).toBe('1');
+    expect(env.SAGUARO_REVIEW_AGENT).toBe('1');
   });
 });
 
@@ -215,9 +215,9 @@ describe('buildGeminiEnv', () => {
     expect(env.HOME).toBe('/home/test');
   });
 
-  test('sets MESA_REVIEW_AGENT=1', () => {
+  test('sets SAGUARO_REVIEW_AGENT=1', () => {
     const env = buildGeminiEnv({ PATH: '/usr/bin' });
-    expect(env.MESA_REVIEW_AGENT).toBe('1');
+    expect(env.SAGUARO_REVIEW_AGENT).toBe('1');
   });
 });
 
@@ -227,6 +227,6 @@ describe('buildGeminiEnv', () => {
 
 describe('isCliAvailable', () => {
   test('returns false for a nonexistent command', () => {
-    expect(isCliAvailable('__mesa_nonexistent_cli_test__')).toBe(false);
+    expect(isCliAvailable('__saguaro_nonexistent_cli_test__')).toBe(false);
   });
 });

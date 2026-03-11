@@ -187,7 +187,7 @@ export async function getProviderCatalog(provider: ModelProvider): Promise<Provi
 
 export function getCurrentModel(): CurrentModel | null {
   const repoRoot = findRepoRoot();
-  const configPath = path.resolve(repoRoot, '.mesa', 'config.yaml');
+  const configPath = path.resolve(repoRoot, '.saguaro', 'config.yaml');
 
   if (!fs.existsSync(configPath)) return null;
 
@@ -210,7 +210,7 @@ export function getCurrentModel(): CurrentModel | null {
 
 export function setModel(provider: ModelProvider, modelName: string, options?: { apiKey?: string }): void {
   const repoRoot = findRepoRoot();
-  const configPath = path.resolve(repoRoot, '.mesa', 'config.yaml');
+  const configPath = path.resolve(repoRoot, '.saguaro', 'config.yaml');
 
   if (fs.existsSync(configPath)) {
     const doc = parseDocument(fs.readFileSync(configPath, 'utf8'));

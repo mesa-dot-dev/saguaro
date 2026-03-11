@@ -106,7 +106,7 @@ const modelHandler = async (): Promise<number> => {
     }
   }
 
-  console.log(chalk.gray('\n  You can always set this directly in .mesa/config.yaml'));
+  console.log(chalk.gray('\n  You can always set this directly in .saguaro/config.yaml'));
 
   return 0;
 };

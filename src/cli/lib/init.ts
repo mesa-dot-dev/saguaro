@@ -9,7 +9,7 @@ import type { ModelProvider } from '../../config/model-config.js';
 import { findRepoRoot } from '../../git/git.js';
 import { getMcpJsonConfig } from '../../mcp/config.js';
 import { anyFileMatchesGlob, detectEcosystems } from '../../rules/detect-ecosystems.js';
-import { writeMesaRuleFile } from '../../rules/mesa-rules.js';
+import { writeSaguaroRuleFile } from '../../rules/saguaro-rules.js';
 import { selectStarterRules } from '../../rules/starter.js';
 import { ECOSYSTEM_REGISTRY } from '../../templates/ecosystems.js';
 import { STARTER_RULES } from '../../templates/starter-rules.js';
@@ -17,8 +17,8 @@ import { generateRulesCommand } from './generate.js';
 import { installHook } from './hook.js';
 import { ask, askChoice, askYesNo, createReadline } from './prompt.js';
 
-const mesaDir = '.mesa';
-const configPath = path.join(mesaDir, 'config.yaml');
+const saguaroDir = '.saguaro';
+const configPath = path.join(saguaroDir, 'config.yaml');
 const envLocalPath = '.env.local';
 const secondary = chalk.hex('#be3c00');
 const tertiary = chalk.hex('#ffecba');
@@ -40,9 +40,9 @@ function writeMcpJson(): void {
   fs.writeFileSync(fullPath, `${content}\n`);
 }
 
-function ensureMesaGitignore(repoRoot: string): void {
+function ensureSaguaroGitignore(repoRoot: string): void {
   const gitignorePath = path.join(repoRoot, '.gitignore');
-  const entries = ['.mesa/config.yaml', '.mesa/history/', '.mcp.json'];
+  const entries = ['.saguaro/config.yaml', '.saguaro/history/', '.mcp.json'];
   let content = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8') : '';
 
   const missing = entries.filter((e) => !content.includes(e));
@@ -56,14 +56,14 @@ function ensureMesaGitignore(repoRoot: string): void {
 const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   const { force } = argv;
   const repoRoot = findRepoRoot();
-  const rootMesaDir = path.join(repoRoot, mesaDir);
+  const rootSaguaroDir = path.join(repoRoot, saguaroDir);
 
-  if (fs.existsSync(rootMesaDir) && !force) {
-    console.log(chalk.red(`Mesa already initialized in this directory. Use ${secondary('--force')} to overwrite.`));
+  if (fs.existsSync(rootSaguaroDir) && !force) {
+    console.log(chalk.red(`Saguaro already initialized in this directory. Use ${secondary('--force')} to overwrite.`));
     return 1;
   }
 
-  fs.mkdirSync(rootMesaDir, { recursive: true });
+  fs.mkdirSync(rootSaguaroDir, { recursive: true });
 
   // Detect all authenticated coding agents (single source of truth, ordered by priority)
   const detected = getDetectedAdapters();
@@ -75,13 +75,13 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   if (detected.length > 0) {
     const agentNames = detected.map((a) => a.label).join(', ');
     console.log(secondary(`  Detected ${detected.length} agent${detected.length > 1 ? 's' : ''}: ${agentNames}`));
-    console.log(chalk.gray('  Mesa will integrate with all detected agents.\n'));
+    console.log(chalk.gray('  Saguaro will integrate with all detected agents.\n'));
 
     // Auto-pick provider from the highest-priority detected agent
     const chosen = AGENT_PROVIDER_MAP[detected[0].id];
     selectedProvider = chosen.provider;
     selectedModel = CLI_DEFAULT_MODELS[chosen.provider];
-    console.log(chalk.gray(`  Using ${chosen.label} for AI reviews. Change anytime with ${tertiary('mesa model')}.\n`));
+    console.log(chalk.gray(`  Using ${chosen.label} for AI reviews. Change anytime with ${tertiary('sag model')}.\n`));
   } else {
     // No CLI auth detected, then ask for provider and API key
     console.log(chalk.gray('  No coding agents detected (Claude Code, Codex, Gemini).\n'));
@@ -132,7 +132,7 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
       secondary('How would you like to set up review rules? (you can always add rules later)'),
       [
         { id: 'generate', label: 'Generate rules from your codebase' },
-        { id: 'default', label: 'Use Mesa starter rules' },
+        { id: 'default', label: 'Use Saguaro starter rules' },
         { id: 'skip', label: 'Skip and create rules manually' },
       ] as const
     );
@@ -144,7 +144,7 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   const rl5 = createReadline();
   let enableDaemon = false;
   try {
-    enableDaemon = await askYesNo(rl5, chalk.bold(secondary('\nRun Mesa reviews in the background?')));
+    enableDaemon = await askYesNo(rl5, chalk.bold(secondary('\nRun Saguaro reviews in the background?')));
   } finally {
     rl5.close();
   }
@@ -155,8 +155,8 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
     buildConfigContent({ provider: selectedProvider, model: selectedModel, daemon: enableDaemon })
   );
 
-  // Ensure .mesa/history/ is gitignored
-  ensureMesaGitignore(repoRoot);
+  // Ensure .saguaro/history/ is gitignored
+  ensureSaguaroGitignore(repoRoot);
 
   // Write .mcp.json (agent-agnostic, read by Claude/Gemini/Codex)
   writeMcpJson();
@@ -168,7 +168,7 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
     );
 
     for (const rule of selected) {
-      writeMesaRuleFile(repoRoot, rule);
+      writeSaguaroRuleFile(repoRoot, rule);
     }
 
     const ecoLabels = ECOSYSTEM_REGISTRY.filter((e) => detectedEcosystems.has(e.id))
@@ -178,23 +178,23 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
     const ecoSuffix = ecoLabels ? ` (${ecoLabels})` : '';
     console.log(
       chalk.gray(
-        `  Applied ${selected.length} starter rules${ecoSuffix}. Add more with ${tertiary('mesa rules create')}.`
+        `  Applied ${selected.length} starter rules${ecoSuffix}. Add more with ${tertiary('sag rules create')}.`
       )
     );
   } else if (skillSetupChoice === 'generate') {
     await generateRulesCommand({ config: path.join(repoRoot, configPath) });
   } else {
-    console.log(chalk.gray(`Specify your rules with ${secondary('mesa rules create')}.`));
+    console.log(chalk.gray(`Specify your rules with ${secondary('sag rules create')}.`));
   }
 
   await installHook();
-  const relMesaDir = path.relative(process.cwd(), rootMesaDir) || mesaDir;
+  const relSaguaroDir = path.relative(process.cwd(), rootSaguaroDir) || saguaroDir;
   const relEnvPath = path.relative(process.cwd(), path.join(repoRoot, envLocalPath)) || envLocalPath;
 
-  const relRulesDir = path.relative(process.cwd(), path.join(repoRoot, '.mesa', 'rules')) || '.mesa/rules';
+  const relRulesDir = path.relative(process.cwd(), path.join(repoRoot, '.saguaro', 'rules')) || '.saguaro/rules';
 
-  console.log(secondary('\nMesa initialized successfully!'));
-  console.log(chalk.gray(`  Created: ${relMesaDir}/config.yaml`));
+  console.log(secondary('\nSaguaro initialized successfully!'));
+  console.log(chalk.gray(`  Created: ${relSaguaroDir}/config.yaml`));
   console.log(chalk.gray(`  Created: ${relRulesDir}/`));
   console.log(chalk.gray(`  Created: ${mcpJsonPath}`));
   for (const adapter of detected) {
@@ -211,7 +211,7 @@ const initHandler = async (argv: { force?: boolean }): Promise<number> => {
   if (wroteApiKey) {
     console.log(chalk.gray(`  Updated: ${relEnvPath}`));
   }
-  console.log(secondary(`\nRun ${tertiary('mesa review')} to review your changes.`));
+  console.log(secondary(`\nRun ${tertiary('sag review')} to review your changes.`));
 
   return 0;
 };

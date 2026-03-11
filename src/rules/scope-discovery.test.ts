@@ -7,7 +7,7 @@ import path from 'node:path';
 import { discoverScopeOptions } from './scope-discovery.js';
 
 function withTempRepo(run: (root: string) => void): void {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-scope-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'saguaro-scope-'));
   try {
     fs.mkdirSync(path.join(root, '.git'));
     run(root);

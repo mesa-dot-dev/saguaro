@@ -17,7 +17,7 @@ describe('getDiffs with HEAD includes working tree', () => {
 
   beforeEach(() => {
     originalCwd = process.cwd();
-    repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-git-test-'));
+    repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'saguaro-git-test-'));
     git(['init', '-b', 'main'], repoDir);
     git(['config', 'user.email', 'test@test.com'], repoDir);
     git(['config', 'user.name', 'Test'], repoDir);
@@ -86,7 +86,7 @@ describe('listChangedFilesFromGit with HEAD includes working tree', () => {
 
   beforeEach(() => {
     originalCwd = process.cwd();
-    repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-git-test-'));
+    repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'saguaro-git-test-'));
     git(['init', '-b', 'main'], repoDir);
     git(['config', 'user.email', 'test@test.com'], repoDir);
     git(['config', 'user.name', 'Test'], repoDir);

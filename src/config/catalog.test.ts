@@ -9,7 +9,7 @@ import { getCurrentModel, getModelCatalog, getProviderCatalog, setModel } from '
 import { upsertEnvValue } from './env.js';
 
 function withTempRepo(run: (root: string) => void | Promise<void>) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-catalog-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'saguaro-catalog-'));
   const originalCwd = process.cwd();
   try {
     fs.mkdirSync(path.join(root, '.git'));
@@ -99,10 +99,10 @@ describe('getCurrentModel', () => {
 
   test('returns current model from config', () => {
     withTempRepo((root) => {
-      const mesaDir = path.join(root, '.mesa');
-      fs.mkdirSync(mesaDir, { recursive: true });
+      const saguaroDir = path.join(root, '.saguaro');
+      fs.mkdirSync(saguaroDir, { recursive: true });
       fs.writeFileSync(
-        path.join(mesaDir, 'config.yaml'),
+        path.join(saguaroDir, 'config.yaml'),
         yaml.dump({
           model: { provider: 'openai', name: 'gpt-5.2-codex' },
           review: { max_steps: 10, files_per_batch: 2 },
@@ -116,9 +116,9 @@ describe('getCurrentModel', () => {
 
   test('returns null when config has no model section', () => {
     withTempRepo((root) => {
-      const mesaDir = path.join(root, '.mesa');
-      fs.mkdirSync(mesaDir, { recursive: true });
-      fs.writeFileSync(path.join(mesaDir, 'config.yaml'), yaml.dump({ review: { max_steps: 10 } }));
+      const saguaroDir = path.join(root, '.saguaro');
+      fs.mkdirSync(saguaroDir, { recursive: true });
+      fs.writeFileSync(path.join(saguaroDir, 'config.yaml'), yaml.dump({ review: { max_steps: 10 } }));
 
       const result = getCurrentModel();
       expect(result).toBeNull();
@@ -135,7 +135,7 @@ describe('setModel', () => {
     withTempRepo((root) => {
       setModel('anthropic', 'claude-opus-4-6');
 
-      const configPath = path.join(root, '.mesa', 'config.yaml');
+      const configPath = path.join(root, '.saguaro', 'config.yaml');
       expect(fs.existsSync(configPath)).toBe(true);
 
       const parsed = yaml.load(fs.readFileSync(configPath, 'utf8')) as Record<string, unknown>;
@@ -147,11 +147,11 @@ describe('setModel', () => {
 
   test('updates config preserving other fields and comments', () => {
     withTempRepo((root) => {
-      const mesaDir = path.join(root, '.mesa');
-      fs.mkdirSync(mesaDir, { recursive: true });
-      const configPath = path.join(mesaDir, 'config.yaml');
+      const saguaroDir = path.join(root, '.saguaro');
+      fs.mkdirSync(saguaroDir, { recursive: true });
+      const configPath = path.join(saguaroDir, 'config.yaml');
       const original = [
-        '# Mesa Configuration',
+        '# Saguaro Configuration',
         'model:',
         '  provider: anthropic',
         '  name: claude-opus-4-6',
@@ -168,7 +168,7 @@ describe('setModel', () => {
       const raw = fs.readFileSync(configPath, 'utf8');
 
       // Comments must survive
-      expect(raw).toContain('# Mesa Configuration');
+      expect(raw).toContain('# Saguaro Configuration');
       expect(raw).toContain('# Review settings');
 
       // Values must be updated
@@ -185,10 +185,10 @@ describe('setModel', () => {
 
   test('saves API key to .env.local when provided', () => {
     withTempRepo((root) => {
-      const mesaDir = path.join(root, '.mesa');
-      fs.mkdirSync(mesaDir, { recursive: true });
+      const saguaroDir = path.join(root, '.saguaro');
+      fs.mkdirSync(saguaroDir, { recursive: true });
       fs.writeFileSync(
-        path.join(mesaDir, 'config.yaml'),
+        path.join(saguaroDir, 'config.yaml'),
         yaml.dump({ model: { provider: 'anthropic', name: 'claude-opus-4-6' } })
       );
 

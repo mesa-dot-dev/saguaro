@@ -22,13 +22,13 @@ interface PidFile {
   startedAt: string;
 }
 
-const PID_DIR = path.join(os.homedir(), '.mesa');
+const PID_DIR = path.join(os.homedir(), '.saguaro');
 const PID_FILE_PATH = path.join(PID_DIR, 'daemon.pid');
 const DEFAULT_PORT = 7474;
 const WORKER_POLL_MS = 2000;
 const IDLE_CHECK_MS = 60_000;
 
-export class MesaDaemon {
+export class SaguaroDaemon {
   private server: http.Server | null = null;
   private store: DaemonStore;
   private config: DaemonConfig;
@@ -47,17 +47,17 @@ export class MesaDaemon {
   async start(): Promise<number> {
     if (!this.detectedAgent) {
       throw new Error(
-        `[mesa-daemon] ${this.config.agent} CLI not found. Install it or change model.provider in .mesa/config.yaml`
+        `[saguaro-daemon] ${this.config.agent} CLI not found. Install it or change model.provider in .saguaro/config.yaml`
       );
     }
 
     // Clean up zombie daemons (stale PID files where process died)
-    MesaDaemon.cleanupStalePidFile();
+    SaguaroDaemon.cleanupStalePidFile();
 
     // Reset jobs stuck in 'running' from a crashed daemon
     const reset = this.store.resetStaleJobs();
     if (reset > 0) {
-      console.log(`[mesa-daemon] Reset ${reset} stale jobs to queued`);
+      console.log(`[saguaro-daemon] Reset ${reset} stale jobs to queued`);
     }
 
     const port = await this.findAvailablePort(this.config.port ?? DEFAULT_PORT);
@@ -71,7 +71,7 @@ export class MesaDaemon {
         this.startWorkers();
         this.startIdleWatcher();
         console.log(
-          `[mesa-daemon] Started on port ${port} with ${this.config.workers} workers (agent: ${this.detectedAgent})`
+          `[saguaro-daemon] Started on port ${port} with ${this.config.workers} workers (agent: ${this.detectedAgent})`
         );
         resolve(port);
       });
@@ -100,7 +100,7 @@ export class MesaDaemon {
 
     this.store.close();
     this.removePidFile();
-    console.log('[mesa-daemon] Stopped');
+    console.log('[saguaro-daemon] Stopped');
   }
 
   private handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -136,7 +136,7 @@ export class MesaDaemon {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'queued', job_id: jobId }));
       } catch (error) {
-        console.error('[mesa-daemon] Error handling /review:', error);
+        console.error('[saguaro-daemon] Error handling /review:', error);
         res.writeHead(400);
         res.end(JSON.stringify({ error: 'Invalid request' }));
       }
@@ -203,7 +203,7 @@ export class MesaDaemon {
         try {
           await runWorker(this.store, workerId, workerConfig);
         } catch (error) {
-          console.error(`[mesa-daemon] Worker ${workerId} error:`, error);
+          console.error(`[saguaro-daemon] Worker ${workerId} error:`, error);
         }
         if (this.running) {
           this.workerTimers[workerId] = setTimeout(poll, WORKER_POLL_MS);
@@ -217,7 +217,7 @@ export class MesaDaemon {
     this.idleTimer = setInterval(() => {
       const idleMs = Date.now() - this.lastActivity;
       if (idleMs > this.config.idleTimeout * 1000) {
-        console.log('[mesa-daemon] Idle timeout reached, shutting down');
+        console.log('[saguaro-daemon] Idle timeout reached, shutting down');
         this.stop();
         process.exit(0);
       }
@@ -227,7 +227,7 @@ export class MesaDaemon {
   private findAvailablePort(preferred: number, maxAttempts = 50): Promise<number> {
     return new Promise((resolve, reject) => {
       if (maxAttempts <= 0) {
-        reject(new Error(`[mesa-daemon] Could not find an available port after scanning from ${DEFAULT_PORT}`));
+        reject(new Error(`[saguaro-daemon] Could not find an available port after scanning from ${DEFAULT_PORT}`));
         return;
       }
       const testServer = http.createServer();
@@ -281,7 +281,7 @@ export class MesaDaemon {
     try {
       pidFile = JSON.parse(raw) as PidFile;
     } catch {
-      MesaDaemon.cleanupStalePidFile();
+      SaguaroDaemon.cleanupStalePidFile();
       return null;
     }
 
@@ -294,7 +294,7 @@ export class MesaDaemon {
         return pidFile;
       }
       // ESRCH or other errors mean process is dead
-      MesaDaemon.cleanupStalePidFile();
+      SaguaroDaemon.cleanupStalePidFile();
       return null;
     }
   }
@@ -314,6 +314,6 @@ export class MesaDaemon {
    * Convenience: check if a daemon is currently running.
    */
   static isRunning(): boolean {
-    return MesaDaemon.readPidFile() !== null;
+    return SaguaroDaemon.readPidFile() !== null;
   }
 }

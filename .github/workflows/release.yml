@@ -80,10 +80,10 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ needs.detect.outputs.version }}"
-          tarball="mesa-code-review-${version}.tgz"
+          tarball="saguaro-${version}.tgz"
 
           npm pack
-          mv mesadev-code-review-*.tgz "$tarball"
+          mv mesadev-saguaro-*.tgz "$tarball"
 
           echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
 
@@ -117,7 +117,7 @@ jobs:
           done
           echo "All WASM files present."
 
-          echo "Running mesa --help..."
+          echo "Running sag --help..."
           node dist/cli/bin.js --help > /dev/null
 
           rm -rf "$smoke_dir"
@@ -167,9 +167,9 @@ jobs:
           version="${{ needs.detect.outputs.version }}"
 
           bun build src/cli/bin.tsx --compile --minify \
-            --define "__MESA_VERSION__=\"$version\"" \
+            --define "__SAGUARO_VERSION__=\"$version\"" \
             --external @swc/wasm \
-            --outfile mesa
+            --outfile sag
 
       - name: Package binary + WASM
         shell: bash
@@ -177,9 +177,9 @@ jobs:
           set -euo pipefail
           version="${{ needs.detect.outputs.version }}"
           target="${{ matrix.target }}"
-          tarball="mesa-review-${version}-${target}.tar.gz"
+          tarball="saguaro-${version}-${target}.tar.gz"
 
-          chmod +x mesa
+          chmod +x sag
 
           mkdir -p wasm
           cp node_modules/web-tree-sitter/tree-sitter.wasm wasm/
@@ -187,18 +187,18 @@ jobs:
             cp "node_modules/tree-sitter-wasms/out/tree-sitter-${lang}.wasm" wasm/
           done
 
-          tar -czf "$tarball" mesa wasm/
+          tar -czf "$tarball" sag wasm/
 
       - name: Smoke test binary
         shell: bash
         run: |
-          ./mesa --help > /dev/null
+          ./sag --help > /dev/null
           echo "Binary smoke test passed."
 
       - uses: actions/upload-artifact@v4
         with:
           name: binary-${{ matrix.target }}
-          path: mesa-review-*.tar.gz
+          path: saguaro-*.tar.gz
 
   # ── Publish binaries to Homebrew tap ──────────────────────────────────
   publish-homebrew:
@@ -220,7 +220,7 @@ jobs:
           version="${{ needs.detect.outputs.version }}"
 
           for target in darwin-arm64 linux-x64 linux-arm64; do
-            tarball="mesa-review-${version}-${target}.tar.gz"
+            tarball="saguaro-${version}-${target}.tar.gz"
             sha256=$(shasum -a 256 "$tarball" | awk '{print $1}')
             key=$(echo "$target" | tr '-' '_')
             echo "sha256_${key}=$sha256" >> "$GITHUB_OUTPUT"
@@ -233,7 +233,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ needs.detect.outputs.version }}"
-          release_tag="mesa-code-review-v$version"
+          release_tag="saguaro-v$version"
 
           if gh release view "$release_tag" -R "mesa-dot-dev/homebrew-tap" >/dev/null 2>&1; then
             echo "Release $release_tag already exists in homebrew-tap." >&2
@@ -241,8 +241,8 @@ jobs:
           fi
 
           gh release create "$release_tag" \
-            mesa-review-*.tar.gz \
-            --title "Mesa Code Review CLI v$version" \
+            saguaro-*.tar.gz \
+            --title "Saguaro v$version" \
             --notes "Binary release for Homebrew" \
             -R "mesa-dot-dev/homebrew-tap"
 
@@ -257,14 +257,14 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ needs.detect.outputs.version }}"
-          release_tag="mesa-code-review-v$version"
+          release_tag="saguaro-v$version"
           base_url="https://github.com/mesa-dot-dev/homebrew-tap/releases/download/$release_tag"
 
           sha256_darwin_arm64="${{ steps.checksums.outputs.sha256_darwin_arm64 }}"
           sha256_linux_x64="${{ steps.checksums.outputs.sha256_linux_x64 }}"
           sha256_linux_arm64="${{ steps.checksums.outputs.sha256_linux_arm64 }}"
 
-          template="$GITHUB_WORKSPACE/source/formula-code-review.rb.tmpl"
+          template="$GITHUB_WORKSPACE/source/formula-saguaro.rb.tmpl"
 
           # Generate a formula from the template with the given class name
           render_formula() {
@@ -272,11 +272,11 @@ jobs:
             sed \
               -e "s|\${FORMULA_CLASS_NAME}|${class_name}|g" \
               -e "s|\${VERSION}|${version}|g" \
-              -e "s|\${URL_DARWIN_ARM64}|${base_url}/mesa-review-${version}-darwin-arm64.tar.gz|g" \
+              -e "s|\${URL_DARWIN_ARM64}|${base_url}/saguaro-${version}-darwin-arm64.tar.gz|g" \
               -e "s|\${SHA256_DARWIN_ARM64}|${sha256_darwin_arm64}|g" \
-              -e "s|\${URL_LINUX_X64}|${base_url}/mesa-review-${version}-linux-x64.tar.gz|g" \
+              -e "s|\${URL_LINUX_X64}|${base_url}/saguaro-${version}-linux-x64.tar.gz|g" \
               -e "s|\${SHA256_LINUX_X64}|${sha256_linux_x64}|g" \
-              -e "s|\${URL_LINUX_ARM64}|${base_url}/mesa-review-${version}-linux-arm64.tar.gz|g" \
+              -e "s|\${URL_LINUX_ARM64}|${base_url}/saguaro-${version}-linux-arm64.tar.gz|g" \
               -e "s|\${SHA256_LINUX_ARM64}|${sha256_linux_arm64}|g" \
               "$template"
           }
@@ -291,11 +291,11 @@ jobs:
 
           mkdir -p Formula
 
-          render_formula "CodeReview" > "Formula/code-review.rb"
-          render_formula "CodeReviewAT${version//.}" > "Formula/code-review@${version}.rb"
+          render_formula "Saguaro" > "Formula/saguaro.rb"
+          render_formula "SaguaroAT${version//.}" > "Formula/saguaro@${version}.rb"
 
-          git config user.name "mesa-ci[bot]"
+          git config user.name "saguaro-ci[bot]"
           git config user.email "ci-bot@mesa.dev"
           git add Formula/
-          git commit -m "Update code-review formula to ${version}"
+          git commit -m "Update saguaro formula to ${version}"
           git push --force-with-lease origin staged

@@ -112,7 +112,7 @@ export async function invokeAgent(agent: AgentName, prompt: string, cwd: string,
     default: {
       return execFileAsync(command, ['-p', prompt], {
         cwd,
-        env: { ...process.env, MESA_REVIEW_AGENT: '1' },
+        env: { ...process.env, SAGUARO_REVIEW_AGENT: '1' },
         encoding: 'utf8',
         maxBuffer: TEN_MB,
         timeout: FIVE_MINUTES_MS,

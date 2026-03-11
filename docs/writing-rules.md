@@ -1,6 +1,6 @@
 # Writing Rules
 
-Rules are the core of Mesa. A rule is a markdown file in `.mesa/rules/` that tells the AI reviewer what to check for. This guide covers how to create, generate, and manage rules effectively.
+Rules are the core of Saguaro. A rule is a markdown file in `.saguaro/rules/` that tells the AI reviewer what to check for. This guide covers how to create, generate, and manage rules effectively.
 
 ## Rule Format
 
@@ -59,7 +59,7 @@ The body is the instructions the AI reviewer uses to evaluate the rule. It shoul
 3. **`### Violations` section** — Code examples showing what should be flagged
 4. **`### Compliant` section** — Code examples showing acceptable alternatives
 
-The `### Violations` and `### Compliant` sections with fenced code blocks are parsed by Mesa and provided to the AI as concrete examples.
+The `### Violations` and `### Compliant` sections with fenced code blocks are parsed by Saguaro and provided to the AI as concrete examples.
 
 ## Getting Rules Into Your Repo
 
@@ -68,7 +68,7 @@ There are three ways, and you can mix them.
 ### 1. Auto-generate rules from your codebase
 
 ```bash
-mesa rules generate
+sag rules generate
 ```
 
 This scans your entire codebase:
@@ -84,18 +84,18 @@ Always double check the AI-generated rules, this is a Work In Progress feature. 
 ### 2. Create a rule with AI assistance
 
 ```bash
-mesa rules create
+sag rules create
 ```
 
 ### 3. Write a rule by hand
 
-Create a `.md` file in `.mesa/rules/`:
+Create a `.md` file in `.saguaro/rules/`:
 
 ```bash
-touch .mesa/rules/my-rule.md
+touch .saguaro/rules/my-rule.md
 ```
 
-Fill it in with the frontmatter and body. Run `mesa rules validate` to check structure.
+Fill it in with the frontmatter and body. Run `sag rules validate` to check structure.
 
 Use this when you have a very specific rule in mind and know exactly how to describe it.
 
@@ -166,7 +166,7 @@ app.get('/users', async (c) => {
 
 ### Choose the right severity
 
-- **`error`** — This must be fixed. Causes `mesa review` to exit 1. Use for security issues, correctness bugs, architectural violations.
+- **`error`** — This must be fixed. Causes `sag review` to exit 1. Use for security issues, correctness bugs, architectural violations.
 - **`warning`** — Should be fixed but won't block CI. Use for code quality, style consistency, minor concerns.
 
 ## What Makes a Bad Rule
@@ -181,7 +181,7 @@ A single rule that tries to check 10 different things. Split it into focused rul
 
 ### Rules that duplicate linters
 
-If ESLint, Biome, or your type checker already catches it, don't add a Mesa rule for it. Mesa's value is in catching things that static analysis can't — patterns that require understanding intent, architecture, or cross-file context.
+If ESLint, Biome, or your type checker already catches it, don't add a Saguaro rule for it. Saguaro's value is in catching things that static analysis can't — patterns that require understanding intent, architecture, or cross-file context.
 
 **Bad:** "Variables must use camelCase" (your linter handles this)
 
@@ -211,27 +211,27 @@ The AI performs better with concrete examples. Always include at least one viola
 
 ```bash
 # List all rules
-mesa rules list
+sag rules list
 
 # See full details for a rule
-mesa rules explain no-raw-sql-interpolation
+sag rules explain no-raw-sql-interpolation
 
 # Check all rules for structural errors
-mesa rules validate
+sag rules validate
 
 # Delete a rule
-mesa rules delete no-raw-sql-interpolation
+sag rules delete no-raw-sql-interpolation
 
 # See which rules apply to specific files
-mesa rules for src/api/routes/users.ts
+sag rules for src/api/routes/users.ts
 
 # Regenerate Claude Code skills from rules
-mesa rules sync
+sag rules sync
 ```
 
 ## Tips
 
-### Start with `mesa rules generate`, then edit
+### Start with `sag rules generate`, then edit
 
 Auto-generation gives you a solid baseline. Review the generated rules, delete the ones that don't apply, and edit the ones that are close but not quite right.
 
@@ -240,7 +240,7 @@ Auto-generation gives you a solid baseline. Review the generated rules, delete t
 Easier to review in PRs, clearer ownership, simpler to enable/disable.
 
 ```
-.mesa/rules/
+.saguaro/rules/
   no-console-log.md
   no-raw-sql-interpolation.md
   require-error-boundary.md
@@ -252,7 +252,7 @@ Rules define your team's standards. Protect them the same way you'd protect CI c
 
 ```
 # CODEOWNERS
-.mesa/ @platform-team @tech-leads
+.saguaro/ @platform-team @tech-leads
 ```
 
 ### Version control your rules
@@ -261,8 +261,8 @@ Rules are just files. They show up in diffs, go through code review, and have hi
 
 ### Test your rules
 
-After writing a rule, run `mesa review` against a branch that you know contains violations. Verify it catches what you expect and doesn't flag things it shouldn't.
+After writing a rule, run `sag review` against a branch that you know contains violations. Verify it catches what you expect and doesn't flag things it shouldn't.
 
 ## Example Rules
 
-Run `mesa init` and choose "Use Mesa starter rules" to get a set of battle-tested rules covering security (hardcoded credentials, SQL injection, timing attacks), correctness (division by zero, React hook deps), database safety (migration failures, cascade deletes), and more. These are a good starting point to read, edit, and learn the format from.
+Run `sag init` and choose "Use Saguaro starter rules" to get a set of battle-tested rules covering security (hardcoded credentials, SQL injection, timing attacks), correctness (division by zero, React hook deps), database safety (migration failures, cascade deletes), and more. These are a good starting point to read, edit, and learn the format from.

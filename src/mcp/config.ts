@@ -1,4 +1,4 @@
-import { isMesaOnPath, resolveDistBin } from '../util/resolve-bin.js';
+import { isSaguaroOnPath, resolveDistBin } from '../util/resolve-bin.js';
 
 export interface McpServerEntry {
   type: 'stdio';
@@ -8,7 +8,7 @@ export interface McpServerEntry {
 
 export interface McpJsonConfig {
   mcpServers: {
-    mesa: McpServerEntry;
+    saguaro: McpServerEntry;
   };
 }
 
@@ -20,14 +20,14 @@ function isCompiledBinary(): boolean {
  * Generate the MCP server configuration for .mcp.json.
  *
  * Resolution order:
- * 1. Compiled Bun binary or mesa on PATH -> { command: "mesa", args: ["serve"] }
+ * 1. Compiled Bun binary or sag on PATH -> { command: "sag", args: ["serve"] }
  * 2. Dev mode / npm local -> { command: "node", args: ["<bin.js>", "serve"] }
  */
 export function getMcpJsonConfig(): McpJsonConfig {
-  if (isCompiledBinary() || isMesaOnPath()) {
+  if (isCompiledBinary() || isSaguaroOnPath()) {
     return {
       mcpServers: {
-        mesa: { type: 'stdio', command: 'mesa', args: ['serve'] },
+        saguaro: { type: 'stdio', command: 'sag', args: ['serve'] },
       },
     };
   }
@@ -37,7 +37,7 @@ export function getMcpJsonConfig(): McpJsonConfig {
 
   return {
     mcpServers: {
-      mesa: { type: 'stdio', command: 'node', args: [distBin, 'serve'] },
+      saguaro: { type: 'stdio', command: 'node', args: [distBin, 'serve'] },
     },
   };
 }

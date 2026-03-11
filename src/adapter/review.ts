@@ -104,7 +104,7 @@ async function resolveCodebaseContext(options: {
     const repoRoot = getRepoRoot();
     return await getCodebaseContext({
       rootDir: repoRoot,
-      cacheDir: path.join(repoRoot, '.mesa', 'cache'),
+      cacheDir: path.join(repoRoot, '.saguaro', 'cache'),
       changedFiles,
       blastRadiusDepth: config.index.blast_radius_depth,
       maxBlastRadiusFiles: config.index.max_blast_radius_files,

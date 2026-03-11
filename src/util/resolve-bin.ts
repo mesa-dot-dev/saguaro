@@ -3,11 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * Check whether `mesa` is available on the system PATH.
+ * Check whether `sag` is available on the system PATH.
  */
-export function isMesaOnPath(): boolean {
+export function isSaguaroOnPath(): boolean {
   try {
-    execFileSync('which', ['mesa'], { stdio: 'ignore' });
+    execFileSync('which', ['sag'], { stdio: 'ignore' });
     return true;
   } catch {
     return false;

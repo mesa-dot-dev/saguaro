@@ -138,7 +138,7 @@ export function RulesGenerateScreen() {
     return (
       <box flexDirection="column" paddingLeft={2} paddingTop={1}>
         <text fg={state.written > 0 ? theme.success : theme.warning}>
-          {state.written > 0 ? `${state.written} rule(s) saved to .mesa/rules/` : 'No rules generated.'}
+          {state.written > 0 ? `${state.written} rule(s) saved to .saguaro/rules/` : 'No rules generated.'}
         </text>
         <box paddingTop={1}>
           <text fg={theme.textDim}>ESC back to rules</text>

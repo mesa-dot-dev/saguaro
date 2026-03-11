@@ -7,7 +7,7 @@ import path from 'node:path';
 import { previewRule } from './preview.js';
 
 function withTempDir(run: (dir: string) => void): void {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-preview-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'saguaro-preview-'));
   try {
     run(dir);
   } finally {

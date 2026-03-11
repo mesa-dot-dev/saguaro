@@ -20,7 +20,7 @@ export interface ConfigOptions {
 }
 
 export function buildConfigContent(opts: ConfigOptions): string {
-  let content = `# Mesa Configuration
+  let content = `# Saguaro Configuration
 # =============================================================================
 # Model Configuration
 # =============================================================================
@@ -60,10 +60,10 @@ review:
 # =============================================================================
 
 hook:
-  # Master switch for all Mesa hooks (PreToolUse rule injection + stop hook reviews)
+  # Master switch for all Saguaro hooks (PreToolUse rule injection + stop hook reviews)
   enabled: true
 
-  # Rules review: runs after each code change, evaluates diffs against .mesa/rules/*.md,
+  # Rules review: runs after each code change, evaluates diffs against .saguaro/rules/*.md,
   # and blocks the agent until all violations are fixed (fix-loop).
   stop:
     enabled: true

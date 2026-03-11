@@ -14,7 +14,7 @@ const SKIP_DIRS = new Set([
   '.venv',
   'target',
   'vendor',
-  '.mesa',
+  '.saguaro',
   '.cache',
 ]);
 const MAX_WALK_DEPTH = 5;

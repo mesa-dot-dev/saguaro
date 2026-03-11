@@ -3,19 +3,19 @@ import path from 'node:path';
 import { findRepoRoot } from '../git/git.js';
 import type { RulePolicy } from '../types/types.js';
 import { matchesGlobs } from '../util/constants.js';
-import type { MesaRulesResult } from './mesa-rules.js';
-import { loadMesaRules, loadMesaRulesFromDir } from './mesa-rules.js';
+import type { SaguaroRulesResult } from './saguaro-rules.js';
+import { loadSaguaroRules, loadSaguaroRulesFromDir } from './saguaro-rules.js';
 
 export interface RuleResolutionResult {
   filesWithRules: Map<string, RulePolicy[]>;
   rulesLoaded: number;
 }
 
-export function resolveRulesFromMesaDir(changedFiles: string[], repoRoot: string): RuleResolutionResult {
-  return resolveRulesFromLoadResult(changedFiles, loadMesaRules(repoRoot));
+export function resolveRulesFromSaguaroDir(changedFiles: string[], repoRoot: string): RuleResolutionResult {
+  return resolveRulesFromLoadResult(changedFiles, loadSaguaroRules(repoRoot));
 }
 
-function resolveRulesFromLoadResult(changedFiles: string[], loadResult: MesaRulesResult): RuleResolutionResult {
+function resolveRulesFromLoadResult(changedFiles: string[], loadResult: SaguaroRulesResult): RuleResolutionResult {
   const { rules, errors } = loadResult;
 
   // Log parse errors but continue with valid rules — one bad file should not
@@ -59,12 +59,12 @@ export function resolveRulesForFiles(
     if (!fs.existsSync(resolved)) {
       throw new Error(`Rules directory not found: ${options.explicitRulesDir}`);
     }
-    return resolveRulesFromLoadResult(changedFiles, loadMesaRulesFromDir(resolved));
+    return resolveRulesFromLoadResult(changedFiles, loadSaguaroRulesFromDir(resolved));
   }
 
   const startDir = options?.startDir ?? process.cwd();
   const repoRoot = findRepoRoot(startDir);
-  return resolveRulesFromMesaDir(changedFiles, repoRoot);
+  return resolveRulesFromSaguaroDir(changedFiles, repoRoot);
 }
 
 /**

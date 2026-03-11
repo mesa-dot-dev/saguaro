@@ -1,4 +1,4 @@
-# Releasing Mesa Code Review CLI
+# Releasing Saguaro Code Review CLI
 
 This document covers the release flow for publishing new versions.
 
@@ -17,8 +17,8 @@ Before releasing, verify the compiled binary locally:
 This compiles a binary with `bun build --compile`, copies WASM sidecar files,
 and runs smoke tests. Then run the verified build:
 
-    .release/mesa --help
-    .release/mesa review
+    .release/sag --help
+    .release/sag review
 
 ## Automated Release
 
@@ -35,7 +35,7 @@ Two independent paths run in parallel:
 
 **npm** (ubuntu):
 - Builds and packs the npm tarball
-- Runs smoke tests (WASM files via npm deps, `mesa --help`)
+- Runs smoke tests (WASM files via npm deps, `sag --help`)
 - Publishes to npm registry
 
 **Homebrew** (per-platform matrix):
@@ -43,8 +43,8 @@ Two independent paths run in parallel:
   linux-arm64
 - Packages each binary with sidecar WASM files
 - Uploads tarballs to `mesa-dot-dev/homebrew-tap` releases
-- Generates and pushes `Formula/code-review.rb` and
-  `Formula/code-review@<version>.rb` to the `staged` branch
+- Generates and pushes `Formula/saguaro.rb` and
+  `Formula/saguaro@<version>.rb` to the `staged` branch
 - The tap's `test-and-merge` workflow validates (`brew audit`, `brew style`,
   `brew install`) and promotes `staged -> main`
 
@@ -55,12 +55,12 @@ publishing to npm, creating releases, or updating Homebrew.
 
 ## Post-release verification
 
-    brew upgrade mesa-dot-dev/homebrew-tap/code-review
-    mesa --help
+    brew upgrade mesa-dot-dev/homebrew-tap/saguaro
+    sag --help
 
 Clean-slate test:
 
-    brew uninstall --force code-review || true
+    brew uninstall --force saguaro || true
     brew untap mesa-dot-dev/homebrew-tap || true
-    brew install mesa-dot-dev/homebrew-tap/code-review
-    mesa --help
+    brew install mesa-dot-dev/homebrew-tap/saguaro
+    sag --help

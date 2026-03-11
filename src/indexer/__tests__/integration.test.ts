@@ -12,8 +12,8 @@ function setupFixture(structure: Record<string, string>): string {
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     fs.writeFileSync(abs, content);
   }
-  // Create .mesa/cache dir
-  fs.mkdirSync(path.join(root, '.mesa', 'cache'), { recursive: true });
+  // Create .saguaro/cache dir
+  fs.mkdirSync(path.join(root, '.saguaro', 'cache'), { recursive: true });
   return root;
 }
 
@@ -84,7 +84,7 @@ fun main() {}
 `,
     });
 
-    const cacheDir = path.join(root, '.mesa', 'cache');
+    const cacheDir = path.join(root, '.saguaro', 'cache');
     const context = await getCodebaseContext({
       rootDir: root,
       cacheDir,
@@ -155,7 +155,7 @@ fun main() {}
       'main.py': 'def hello(): pass\n',
     });
 
-    const cacheDir = path.join(root, '.mesa', 'cache');
+    const cacheDir = path.join(root, '.saguaro', 'cache');
 
     // First build
     await getCodebaseContext({

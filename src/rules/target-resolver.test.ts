@@ -7,7 +7,7 @@ import path from 'node:path';
 import { resolveTargetInput } from './target-resolver.js';
 
 function withTempRepo(setup: (root: string) => void, run: (root: string) => void): void {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-resolver-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'saguaro-resolver-'));
   try {
     fs.mkdirSync(path.join(root, '.git'));
     setup(root);

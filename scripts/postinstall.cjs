@@ -13,9 +13,9 @@ try {
 }
 
 if (warnings.length > 0) {
-  console.warn("\n  Mesa post-install warnings:\n");
+  console.warn("\n  Saguaro post-install warnings:\n");
   console.warn(warnings.join("\n"));
   console.warn(
-    "\nMesa will still work for reviews — only the background daemon is affected.\n",
+    "\nSaguaro will still work for reviews — only the background daemon is affected.\n",
   );
 }

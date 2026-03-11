@@ -1,4 +1,4 @@
-export type MesaErrorCode =
+export type SaguaroErrorCode =
   | 'CONFIG_INVALID'
   | 'CONFIG_MISSING'
   | 'API_KEY_MISSING'
@@ -7,63 +7,63 @@ export type MesaErrorCode =
   | 'RULES_NOT_LOADED'
   | 'AGENT_EXECUTION_FAILED';
 
-export class MesaError extends Error {
-  readonly code: MesaErrorCode;
+export class SaguaroError extends Error {
+  readonly code: SaguaroErrorCode;
   readonly suggestion?: string;
   /** Process exit code — defaults to 1 */
   readonly exitCode: number;
 
   constructor(
-    code: MesaErrorCode,
+    code: SaguaroErrorCode,
     message: string,
     options?: { suggestion?: string; cause?: unknown; exitCode?: number }
   ) {
     super(message, options?.cause === undefined ? undefined : { cause: options.cause });
-    this.name = 'MesaError';
+    this.name = 'SaguaroError';
     this.code = code;
     this.suggestion = options?.suggestion;
     this.exitCode = options?.exitCode ?? 1;
   }
 }
 
-export class ConfigInvalidError extends MesaError {
+export class ConfigInvalidError extends SaguaroError {
   constructor(detail: string, options?: { cause?: unknown }) {
     super('CONFIG_INVALID', `Invalid config: ${detail}`, {
-      suggestion: 'Check .mesa/config.yaml for typos or run "mesa init" to regenerate.',
+      suggestion: 'Check .saguaro/config.yaml for typos or run "sag init" to regenerate.',
       cause: options?.cause,
     });
     this.name = 'ConfigInvalidError';
   }
 }
 
-export class ConfigMissingError extends MesaError {
+export class ConfigMissingError extends SaguaroError {
   constructor() {
-    super('CONFIG_MISSING', 'No Mesa config found.', {
-      suggestion: 'Run "mesa init" to set up, or pass --config.',
+    super('CONFIG_MISSING', 'No Saguaro config found.', {
+      suggestion: 'Run "sag init" to set up, or pass --config.',
     });
     this.name = 'ConfigMissingError';
   }
 }
 
-export class ApiKeyMissingError extends MesaError {
+export class ApiKeyMissingError extends SaguaroError {
   constructor(provider: string) {
     super('API_KEY_MISSING', `No API key found for provider "${provider}".`, {
-      suggestion: `Set ${provider.toUpperCase()}_API_KEY in your environment (.env.local, .env) or .mesa/config.yaml.`,
+      suggestion: `Set ${provider.toUpperCase()}_API_KEY in your environment (.env.local, .env) or .saguaro/config.yaml.`,
     });
     this.name = 'ApiKeyMissingError';
   }
 }
 
-export class GitNotFoundError extends MesaError {
+export class GitNotFoundError extends SaguaroError {
   constructor() {
     super('GIT_NOT_FOUND', 'Not a git repository.', {
-      suggestion: 'Run mesa from a git repo root.',
+      suggestion: 'Run sag from a git repo root.',
     });
     this.name = 'GitNotFoundError';
   }
 }
 
-export class GitDiffTooLargeError extends MesaError {
+export class GitDiffTooLargeError extends SaguaroError {
   constructor() {
     super('GIT_DIFF_TOO_LARGE', 'Diff too large for processing.', {
       suggestion: 'Try narrowing the range with --base to reduce the diff size.',
@@ -72,7 +72,7 @@ export class GitDiffTooLargeError extends MesaError {
   }
 }
 
-export class AgentExecutionError extends MesaError {
+export class AgentExecutionError extends SaguaroError {
   constructor(message: string, cause?: unknown) {
     super('AGENT_EXECUTION_FAILED', message, { cause, exitCode: 3 });
     this.name = 'AgentExecutionError';
