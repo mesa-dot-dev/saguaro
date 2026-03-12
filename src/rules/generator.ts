@@ -1,6 +1,5 @@
-import type { LanguageModel } from 'ai';
-import { generateText } from 'ai';
 import yaml from 'js-yaml';
+import type { GeneratorLlmBackend } from '../generator/llm-backend.js';
 import { STARTER_RULES } from '../templates/starter-rules.js';
 import type { RulePolicy, Severity } from '../types/types.js';
 import { type CodebaseSnippet, toKebabCase } from '../util/constants.js';
@@ -22,7 +21,7 @@ interface BuildPromptInput {
 export interface GenerateRuleRequest {
   intent: string;
   target: TargetAnalysis;
-  model: LanguageModel;
+  backend: GeneratorLlmBackend;
   title?: string;
   severity?: Severity;
   repoRoot: string;
@@ -284,8 +283,7 @@ export async function generateRule(request: GenerateRuleRequest): Promise<Genera
   log?.('System prompt', SYSTEM_PROMPT);
   log?.('User prompt', prompt);
 
-  const result = await generateText({
-    model: request.model,
+  const result = await request.backend.generatePlainText({
     system: SYSTEM_PROMPT,
     prompt,
   });
@@ -332,10 +330,20 @@ function tokenize(text: string): string[] {
 }
 
 function stripCodeFences(text: string): string {
-  // Remove opening fence (```yaml or ```)
-  let cleaned = text.replace(/^```(?:yaml|yml)?\s*\n/m, '');
-  // Remove closing fence
-  cleaned = cleaned.replace(/\n```\s*$/m, '');
+  let cleaned = text;
+
+  // Extract from code fences if present
+  const fenceMatch = cleaned.match(/```(?:yaml|yml)?\s*\n([\s\S]*?)\n\s*```/);
+  if (fenceMatch) {
+    return fenceMatch[1]!;
+  }
+
+  // Strip preamble: find the first YAML key (e.g. "id:" at start of line)
+  const yamlStart = cleaned.search(/^[a-z_]+\s*:/m);
+  if (yamlStart > 0) {
+    cleaned = cleaned.slice(yamlStart);
+  }
+
   return cleaned;
 }
 

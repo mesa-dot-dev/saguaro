@@ -1,17 +1,17 @@
 import path from 'node:path';
-import type { LanguageModel } from 'ai';
-import { generateObject } from 'ai';
 import yaml from 'js-yaml';
 import { Minimatch } from 'minimatch';
 import { z } from 'zod';
-import { loadReviewAdapterConfig, resolveModelFromResolvedConfig } from '../config/model-config.js';
 import { findRepoRoot } from '../git/git.js';
 import { buildIndex } from '../indexer/build.js';
 import { JsonIndexStore } from '../indexer/store.js';
 import type { CodebaseIndex } from '../indexer/types.js';
 import { STARTER_RULES } from '../templates/starter-rules.js';
 import type { RulePolicy } from '../types/types.js';
+import { logger } from '../util/logger.js';
 import { computeArchitecturalContext } from './architecture.js';
+import type { GeneratorLlmBackend } from './llm-backend.js';
+import { resolveGeneratorBackend } from './llm-backend.js';
 import { scanAndSelectFiles } from './scanner.js';
 import { RuleProposalSchema } from './schemas.js';
 import { synthesizeRules } from './synthesis.js';
@@ -78,8 +78,7 @@ const UNSCOPED_GLOB_PATTERNS = ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx', '*
 export async function orchestrate(options: GenerateRulesOptions): Promise<GeneratorResult> {
   const cwd = options.cwd ?? process.cwd();
   const startMs = Date.now();
-  const { modelConfig } = loadReviewAdapterConfig(options.configPath);
-  const model = resolveModelFromResolvedConfig(modelConfig);
+  const backend = resolveGeneratorBackend(options.configPath);
   options.onProgress?.({ type: 'indexing' });
   const repoRoot = findRepoRoot(cwd);
   const saguaroCacheDir = path.join(repoRoot, '.saguaro', 'cache');
@@ -102,7 +101,7 @@ export async function orchestrate(options: GenerateRulesOptions): Promise<Genera
   const cwdOffset = path.relative(repoRoot, cwd).replaceAll('\\', '/');
   const zoneResults = await analyzeZonesInParallel(
     scanResult,
-    model,
+    backend,
     index,
     cwdOffset,
     options.onProgress,
@@ -128,7 +127,7 @@ export async function orchestrate(options: GenerateRulesOptions): Promise<Genera
 
     const synthesisResult = await synthesizeRules({
       candidates: merged,
-      model,
+      backend,
       allSourceFilePaths,
       abortSignal: options.abortSignal,
     });
@@ -169,14 +168,14 @@ export async function orchestrate(options: GenerateRulesOptions): Promise<Genera
 
 async function analyzeZonesInParallel(
   scanResult: ScanResult,
-  model: LanguageModel,
+  backend: GeneratorLlmBackend,
   index: CodebaseIndex | null,
   cwdOffset: string,
   onProgress: GenerateRulesOptions['onProgress'],
   abortSignal?: AbortSignal
 ): Promise<ZoneAnalysisResult[]> {
   const promises = scanResult.zones.map((zone) =>
-    analyzeZone(zone, scanResult, model, index, cwdOffset, onProgress, abortSignal)
+    analyzeZone(zone, scanResult, backend, index, cwdOffset, onProgress, abortSignal)
   );
   return Promise.all(promises);
 }
@@ -184,7 +183,7 @@ async function analyzeZonesInParallel(
 async function analyzeZone(
   zone: ZoneConfig,
   scanResult: ScanResult,
-  model: LanguageModel,
+  backend: GeneratorLlmBackend,
   index: CodebaseIndex | null,
   cwdOffset: string,
   onProgress: GenerateRulesOptions['onProgress'],
@@ -202,32 +201,43 @@ async function analyzeZone(
 
   const prompt = buildZonePrompt(zone, scanResult, target, index, cwdOffset);
 
-  const result = await generateObject({
-    model,
-    schema: z.object({
-      rules: z.array(RuleProposalSchema),
-    }),
-    system: ZONE_ANALYSIS_SYSTEM,
-    prompt,
-    abortSignal,
-  });
+  try {
+    const result = await backend.generateStructured({
+      system: ZONE_ANALYSIS_SYSTEM,
+      prompt,
+      schema: z.object({
+        rules: z.array(RuleProposalSchema),
+      }),
+      abortSignal,
+    });
 
-  const rules = result.object.rules.slice(0, target + 5);
-  const durationMs = Date.now() - startMs;
+    const rules = result.object.rules.slice(0, target + 5);
+    const durationMs = Date.now() - startMs;
 
-  onProgress?.({
-    type: 'zone_completed',
-    zoneName: zone.name,
-    rulesProposed: rules.length,
-    durationMs,
-  });
+    onProgress?.({
+      type: 'zone_completed',
+      zoneName: zone.name,
+      rulesProposed: rules.length,
+      durationMs,
+    });
 
-  return {
-    zoneName: zone.name,
-    rules,
-    inputTokens: result.usage.inputTokens ?? 0,
-    outputTokens: result.usage.outputTokens ?? 0,
-  };
+    return {
+      zoneName: zone.name,
+      rules,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+    };
+  } catch (err) {
+    if (abortSignal?.aborted) throw err;
+    logger.debug(`Zone ${zone.name} analysis failed, skipping: ${err instanceof Error ? err.message : String(err)}`);
+    onProgress?.({
+      type: 'zone_completed',
+      zoneName: zone.name,
+      rulesProposed: 0,
+      durationMs: Date.now() - startMs,
+    });
+    return { zoneName: zone.name, rules: [], inputTokens: 0, outputTokens: 0 };
+  }
 }
 
 function buildZonePrompt(

@@ -3,7 +3,7 @@ import type { AgentRunner, AgentRunnerOptions, AgentRunnerResult } from '../core
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
 const TEN_MB = 10 * 1024 * 1024;
-const DEFAULT_MAX_TURNS = 10;
+const DEFAULT_MAX_TURNS = 30;
 
 interface SpawnCliOptions {
   command: string;
