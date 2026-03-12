@@ -1,11 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {
-  loadValidatedConfig,
-  resolveApiKey,
-  resolveModelForReview,
-  resolveModelFromResolvedConfig,
-} from '../config/model-config.js';
+import { resolveGeneratorBackend } from '../generator/llm-backend.js';
 import { findRepoRoot } from '../git/git.js';
 import { generateRule } from '../rules/generator.js';
 import type { PreviewRuleResult } from '../rules/preview.js';
@@ -176,20 +171,12 @@ export function writeGeneratedRules(rules: RulePolicy[]): WriteGeneratedRulesRes
 export async function generateRuleAdapter(request: GenerateRuleAdapterRequest): Promise<GenerateRuleAdapterResult> {
   const repoRoot = findRepoRoot();
   const target = analyzeTarget({ targetPath: request.target, repoRoot });
-
-  const config = loadValidatedConfig();
-  const apiKey = resolveApiKey(config);
-  const modelName = resolveModelForReview(config, 'rules');
-  const model = resolveModelFromResolvedConfig({
-    provider: config.model.provider,
-    model: modelName,
-    apiKey,
-  });
+  const backend = resolveGeneratorBackend();
 
   const result = await generateRule({
     intent: request.intent,
     target,
-    model,
+    backend,
     title: request.title,
     severity: request.severity,
     repoRoot,

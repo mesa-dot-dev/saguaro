@@ -1,9 +1,8 @@
-import type { LanguageModel } from 'ai';
-import { generateObject } from 'ai';
 import { Minimatch } from 'minimatch';
 import { z } from 'zod';
 import type { RulePolicy } from '../types/types.js';
 import { logger } from '../util/logger.js';
+import type { GeneratorLlmBackend } from './llm-backend.js';
 import { RuleProposalSchema, TriageDecisionSchema } from './schemas.js';
 
 const TRIAGE_PROMPT = `You are a senior engineering lead reviewing candidate code review rules generated from different zones of a codebase.
@@ -59,11 +58,11 @@ interface SynthesisResult {
 
 export async function synthesizeRules(options: {
   candidates: RulePolicy[];
-  model: LanguageModel;
+  backend: GeneratorLlmBackend;
   allSourceFilePaths: string[];
   abortSignal?: AbortSignal;
 }): Promise<SynthesisResult> {
-  const { candidates, model, allSourceFilePaths, abortSignal } = options;
+  const { candidates, backend, allSourceFilePaths, abortSignal } = options;
 
   if (candidates.length === 0) {
     return { rules: [], inputTokens: 0, outputTokens: 0 };
@@ -73,7 +72,7 @@ export async function synthesizeRules(options: {
 
   // Step 1: Triage — decisions only, tiny output
   const similarityClusters = computeGlobSimilarityClusters(candidates, allSourceFilePaths);
-  const triage = await triageRules({ candidates, model, similarityClusters, abortSignal });
+  const triage = await triageRules({ candidates, backend, similarityClusters, abortSignal });
   if (!triage) {
     // Fallback: triage failed, keep all candidates
     return { rules: candidates, inputTokens: 0, outputTokens: 0 };
@@ -100,7 +99,7 @@ export async function synthesizeRules(options: {
   const mergeResults = await mergeRulesInParallel({
     mergeGroups: triage.decisions.merge,
     candidatesByID,
-    model,
+    backend,
     abortSignal,
   });
 
@@ -222,11 +221,11 @@ interface TriageResult {
 
 async function triageRules(options: {
   candidates: RulePolicy[];
-  model: LanguageModel;
+  backend: GeneratorLlmBackend;
   similarityClusters: SimilarityCluster[];
   abortSignal?: AbortSignal;
 }): Promise<TriageResult | null> {
-  const { candidates, model, similarityClusters, abortSignal } = options;
+  const { candidates, backend, similarityClusters, abortSignal } = options;
 
   const candidatesSummary = formatCandidatesSummary(candidates);
   const allIDs = candidates.map((r) => r.id);
@@ -243,18 +242,17 @@ ${allIDs.join(', ')}
 Classify every candidate ID into exactly one bucket: keep, drop, or merge.`;
 
   try {
-    const result = await generateObject({
-      model,
-      schema: TriageDecisionSchema,
+    const result = await backend.generateStructured({
       system: TRIAGE_PROMPT,
       prompt: userPrompt,
+      schema: TriageDecisionSchema,
       abortSignal,
     });
 
     return {
       decisions: result.object,
-      inputTokens: result.usage.inputTokens ?? 0,
-      outputTokens: result.usage.outputTokens ?? 0,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
     };
   } catch (err) {
     if (abortSignal?.aborted) throw err;
@@ -274,17 +272,17 @@ interface MergeResults {
 async function mergeRulesInParallel(options: {
   mergeGroups: MergeGroup[];
   candidatesByID: Map<string, RulePolicy>;
-  model: LanguageModel;
+  backend: GeneratorLlmBackend;
   abortSignal?: AbortSignal;
 }): Promise<MergeResults> {
-  const { mergeGroups, candidatesByID, model, abortSignal } = options;
+  const { mergeGroups, candidatesByID, backend, abortSignal } = options;
 
   if (mergeGroups.length === 0) {
     return { rules: [], inputTokens: 0, outputTokens: 0 };
   }
 
   const results = await Promise.all(
-    mergeGroups.map((group) => mergeSingleGroup({ group, candidatesByID, model, abortSignal }))
+    mergeGroups.map((group) => mergeSingleGroup({ group, candidatesByID, backend, abortSignal }))
   );
 
   return {
@@ -297,10 +295,10 @@ async function mergeRulesInParallel(options: {
 async function mergeSingleGroup(options: {
   group: MergeGroup;
   candidatesByID: Map<string, RulePolicy>;
-  model: LanguageModel;
+  backend: GeneratorLlmBackend;
   abortSignal?: AbortSignal;
 }): Promise<{ rule: RulePolicy; inputTokens: number; outputTokens: number }> {
-  const { group, candidatesByID, model, abortSignal } = options;
+  const { group, candidatesByID, backend, abortSignal } = options;
 
   const target = candidatesByID.get(group.target);
   const sources = group.sources.map((id) => candidatesByID.get(id)).filter(Boolean) as RulePolicy[];
@@ -335,18 +333,17 @@ Merge reason: ${group.reason}
 Write one unified rule using the target's ID (${target.id}).`;
 
   try {
-    const result = await generateObject({
-      model,
-      schema: z.object({ rule: RuleProposalSchema }),
+    const result = await backend.generateStructured({
       system: MERGE_PROMPT,
       prompt: userPrompt,
+      schema: z.object({ rule: RuleProposalSchema }),
       abortSignal,
     });
 
     return {
       rule: result.object.rule,
-      inputTokens: result.usage.inputTokens ?? 0,
-      outputTokens: result.usage.outputTokens ?? 0,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
     };
   } catch (err) {
     if (abortSignal?.aborted) throw err;

@@ -10,12 +10,7 @@ import {
   locateRulesDirectoryAdapter,
   validateRulesAdapter,
 } from '../../adapter/rules.js';
-import {
-  loadValidatedConfig,
-  resolveApiKey,
-  resolveModelForReview,
-  resolveModelFromResolvedConfig,
-} from '../../config/model-config.js';
+import { resolveGeneratorBackend } from '../../generator/llm-backend.js';
 import { findRepoRoot } from '../../git/git.js';
 import { generateRule } from '../../rules/generator.js';
 import { previewRule } from '../../rules/preview.js';
@@ -231,19 +226,12 @@ const createRule = async (argv: CreateRuleArgv): Promise<number> => {
     spinner.start('Generating rule...');
 
     try {
-      const config = loadValidatedConfig();
-      const apiKey = resolveApiKey(config);
-      const modelName = resolveModelForReview(config, 'rules');
-      const model = resolveModelFromResolvedConfig({
-        provider: config.model.provider,
-        model: modelName,
-        apiKey,
-      });
+      const backend = resolveGeneratorBackend();
 
       const result = await generateRule({
         intent,
         target,
-        model,
+        backend,
         title: argv.title,
         severity: argv.severity as Severity | undefined,
         repoRoot,

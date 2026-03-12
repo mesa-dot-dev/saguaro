@@ -11,8 +11,12 @@ export const RuleProposalSchema = z.object({
       violations: z.array(z.string()).describe('Code snippets (10-120 chars) showing violations'),
       compliant: z.array(z.string()).describe('Code snippets (10-120 chars) showing correct code'),
     })
+    .optional()
     .describe('Concrete code examples of violations and compliant patterns'),
-  tags: z.array(z.string()).describe('Lowercase hyphenated tags for categorization (e.g., "architecture", "security")'),
+  tags: z
+    .array(z.string())
+    .optional()
+    .describe('Lowercase hyphenated tags for categorization (e.g., "architecture", "security")'),
 });
 
 export const TriageDecisionSchema = z.object({
