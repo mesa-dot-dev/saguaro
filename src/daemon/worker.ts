@@ -69,7 +69,7 @@ export async function runWorker(store: DaemonStore, workerId: number, config: Wo
     }
 
     const output = await invokeAgent(config.agent, prompt, job.repoPath, config.model);
-    const findings = parseFindings(output);
+    const findings = parseFindings(output.text);
     const verdict = findings.length > 0 ? 'fail' : 'pass';
 
     store.completeJob(job.id, 'done', config.model ?? config.agent);

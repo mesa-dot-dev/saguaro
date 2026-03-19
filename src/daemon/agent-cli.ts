@@ -7,8 +7,35 @@ import {
   buildGeminiArgs,
   buildGeminiEnv,
 } from '../ai/agent-runner.js';
+import type { AgentUsage } from './stats-types.js';
 
 export type AgentName = 'claude' | 'codex' | 'gemini' | 'copilot' | 'opencode' | 'cursor';
+
+export interface AgentOutput {
+  text: string;
+  usage?: AgentUsage;
+}
+
+export function parseAgentJsonOutput(raw: string): AgentOutput {
+  try {
+    const data = JSON.parse(raw);
+    if (typeof data !== 'object' || data === null || typeof data.result !== 'string') {
+      return { text: data?.result ?? '' };
+    }
+    const usage: AgentUsage | undefined =
+      typeof data.total_cost_usd === 'number'
+        ? {
+            costUsd: data.total_cost_usd,
+            inputTokens: data.usage?.input_tokens ?? 0,
+            outputTokens: data.usage?.output_tokens ?? 0,
+            numTurns: data.num_turns ?? 0,
+          }
+        : undefined;
+    return { text: data.result, usage };
+  } catch {
+    return { text: raw };
+  }
+}
 
 const AGENT_COMMANDS: Record<AgentName, string> = {
   claude: 'claude',
@@ -54,7 +81,8 @@ export function detectInstalledAgent(preference?: string): AgentName | null {
 }
 
 /**
- * Invokes the given agent CLI with a review prompt and returns the raw text output.
+ * Invokes the given agent CLI with a review prompt and returns an AgentOutput
+ * containing the text output and optional usage/cost data (for Claude JSON mode).
  * Async — does not block the Node.js event loop, allowing the HTTP server to stay responsive.
  *
  * Uses the same arg builders as the non-daemon reviewer to ensure consistent
@@ -64,7 +92,7 @@ export function detectInstalledAgent(preference?: string): AgentName | null {
  * runs in the background with no user waiting on it, so it can afford deeper
  * reasoning without impacting perceived latency.
  */
-export async function invokeAgent(agent: AgentName, prompt: string, cwd: string, model?: string): Promise<string> {
+export async function invokeAgent(agent: AgentName, prompt: string, cwd: string, model?: string): Promise<AgentOutput> {
   const command = AGENT_COMMANDS[agent];
 
   switch (agent) {
@@ -74,8 +102,9 @@ export async function invokeAgent(agent: AgentName, prompt: string, cwd: string,
         allowedTools: ['Read', 'Glob', 'Grep'],
         maxTurns: 15,
         effort: 'medium',
+        outputFormat: 'json',
       });
-      return spawnAsync(command, args, {
+      const raw = await spawnAsync(command, args, {
         cwd,
         input: prompt,
         env: buildClaudeEnv(process.env),
@@ -83,11 +112,12 @@ export async function invokeAgent(agent: AgentName, prompt: string, cwd: string,
         maxBuffer: TEN_MB,
         timeout: FIVE_MINUTES_MS,
       });
+      return parseAgentJsonOutput(raw);
     }
 
     case 'codex': {
       const args = buildCodexArgs({ cwd, model, reasoningEffort: 'medium' });
-      return spawnAsync(command, args, {
+      const raw = await spawnAsync(command, args, {
         cwd,
         input: prompt,
         env: buildCodexEnv(process.env),
@@ -95,11 +125,12 @@ export async function invokeAgent(agent: AgentName, prompt: string, cwd: string,
         maxBuffer: TEN_MB,
         timeout: FIVE_MINUTES_MS,
       });
+      return { text: raw };
     }
 
     case 'gemini': {
       const args = buildGeminiArgs({ model });
-      return spawnAsync(command, args, {
+      const raw = await spawnAsync(command, args, {
         cwd,
         input: prompt,
         env: buildGeminiEnv(process.env),
@@ -107,16 +138,18 @@ export async function invokeAgent(agent: AgentName, prompt: string, cwd: string,
         maxBuffer: TEN_MB,
         timeout: FIVE_MINUTES_MS,
       });
+      return { text: raw };
     }
 
     default: {
-      return execFileAsync(command, ['-p', prompt], {
+      const raw = await execFileAsync(command, ['-p', prompt], {
         cwd,
         env: { ...process.env, SAGUARO_REVIEW_AGENT: '1' },
         encoding: 'utf8',
         maxBuffer: TEN_MB,
         timeout: FIVE_MINUTES_MS,
       });
+      return { text: raw };
     }
   }
 }
