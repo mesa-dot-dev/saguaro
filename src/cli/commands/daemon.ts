@@ -1,5 +1,7 @@
 import { getCliForProvider, loadValidatedConfig, resolveModelForReview } from '../../config/model-config.js';
 import { SaguaroDaemon } from '../../daemon/server.js';
+import { daemonStatsCommand } from '../lib/daemon-stats.js';
+import type { TimeWindow } from '../../daemon/stats-types.js';
 
 export async function daemonStart(): Promise<number> {
   const existing = SaguaroDaemon.readPidFile();
@@ -61,4 +63,12 @@ export function daemonStatus(): number {
   console.log(`[sag] Daemon running on port ${pid.port} (PID: ${pid.pid})`);
   console.log(`[sag] Started at: ${pid.startedAt}`);
   return 0;
+}
+
+export function daemonStats(options: { window?: string }): number {
+  const validWindows = ['1h', '1d', '7d', '30d', 'all'];
+  const window: TimeWindow = validWindows.includes(options.window ?? '')
+    ? (options.window as TimeWindow)
+    : '7d';
+  return daemonStatsCommand({ window });
 }
