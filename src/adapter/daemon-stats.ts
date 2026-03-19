@@ -8,6 +8,8 @@ import type {
 } from '../daemon/stats-types.js';
 import { DaemonStore } from '../daemon/store.js';
 
+export type { DaemonFinding, DaemonFindingsFilter, TimeWindow };
+
 export interface DaemonStatsResult {
   stats: DaemonStatsAggregation;
   empty: boolean;

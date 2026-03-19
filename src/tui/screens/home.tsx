@@ -29,6 +29,7 @@ const menuOptions: (SelectOption & { route: Route })[] = [
   { name: 'Review', description: 'Run reviews and build index', route: { screen: 'review-hub' } },
   { name: 'Rules', description: 'Manage review rules', route: { screen: 'rules' } },
   { name: 'Stats', description: 'View review analytics', route: { screen: 'stats' } },
+  { name: 'Daemon', description: 'View daemon analytics', route: { screen: 'daemon-stats' } },
   { name: 'Model', description: 'Switch AI model', route: { screen: 'model' } },
   { name: 'Configure', description: 'Index, hooks, and project setup', route: { screen: 'configure' } },
   { name: 'Help', description: 'Show all commands and keybindings', route: { screen: 'help' } },

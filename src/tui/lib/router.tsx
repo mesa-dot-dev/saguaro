@@ -15,6 +15,7 @@ export type Route =
   | { screen: 'rules-delete'; ruleId: string }
   | { screen: 'model' }
   | { screen: 'stats' }
+  | { screen: 'daemon-stats' }
   | { screen: 'configure' }
   | { screen: 'init' }
   | { screen: 'index' }
