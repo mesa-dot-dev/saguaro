@@ -16,7 +16,7 @@ import modelHandler from '../lib/model.js';
 import { createRule, deleteRule, explainRule, listRules, locateRulesDirectory, validateRules } from '../lib/rules.js';
 import serveHandler from '../lib/serve.js';
 import { statsCommand } from '../lib/stats.js';
-import { daemonStart, daemonStatus, daemonStop } from './daemon.js';
+import { daemonStart, daemonStats, daemonStatus, daemonStop } from './daemon.js';
 import { reviewCommand } from './review.js';
 
 const secondary = chalk.hex('#be3c00');
@@ -460,7 +460,20 @@ export async function cli(argv: string[]): Promise<boolean> {
       y.demandCommand(1, 'Please specify a daemon command.')
         .command('start', 'Start the daemon', {}, wrapHandler(daemonStart))
         .command('stop', 'Stop the daemon', {}, wrapHandler(daemonStop))
-        .command('status', 'Check daemon status', {}, wrapHandler(daemonStatus));
+        .command('status', 'Check daemon status', {}, wrapHandler(daemonStatus))
+        .command(
+          'stats',
+          'Show daemon review analytics',
+          (yy: Argv) => {
+            yy.option('window', {
+              alias: 'w',
+              describe: 'Time window (1h, 1d, 7d, 30d, all)',
+              type: 'string',
+              default: '7d',
+            });
+          },
+          wrapHandler(daemonStats as (argv: unknown) => number)
+        );
     })
 
     .command(

@@ -143,13 +143,14 @@ export function buildClaudeArgs(options: {
   allowedTools?: string[];
   maxTurns?: number;
   effort?: 'low' | 'medium' | 'high';
+  outputFormat?: 'text' | 'json';
 }): string[] {
   const args: string[] = [
     '-p',
     '-',
     '--dangerously-skip-permissions',
     '--output-format',
-    'text',
+    options.outputFormat ?? 'text',
     '--verbose',
     '--no-session-persistence',
     '--disable-slash-commands',
