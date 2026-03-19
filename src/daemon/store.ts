@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { categorizeFinding } from './categorize.js';
 import { openDatabase, type SqliteDatabase } from './db.js';
-import type { AgentUsage } from './stats-types.js';
+import type { AgentUsage, DaemonFinding, DaemonFindingsFilter, DaemonStatsAggregation, TimeWindow } from './stats-types.js';
 
 // Logic inspired by and adapted from Roborev Storage
 
@@ -110,6 +111,16 @@ function mapReviewRow(row: ReviewRow): Review {
     shown: row.shown,
     createdAt: row.created_at,
   };
+}
+
+function windowToSql(window: TimeWindow): string {
+  switch (window) {
+    case '1h': return "datetime('now', '-1 hour')";
+    case '1d': return "datetime('now', '-1 day')";
+    case '7d': return "datetime('now', '-7 days')";
+    case '30d': return "datetime('now', '-30 days')";
+    case 'all': return "'1970-01-01'";
+  }
 }
 
 const DEFAULT_DB_PATH = path.join(os.homedir(), '.saguaro', 'reviews.db');
@@ -331,6 +342,161 @@ export class DaemonStore {
       for (const id of ids) stmt.run(id);
     });
     markMany(reviewIds);
+  }
+
+  getStats(window: TimeWindow): DaemonStatsAggregation {
+    const windowSql = windowToSql(window);
+
+    // 1. Overview counts
+    const overview = this.db.prepare(`
+      SELECT COUNT(*) as total,
+             SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+      FROM review_jobs WHERE created_at >= ${windowSql}
+    `).get() as { total: number; failed: number };
+
+    // 2. Average duration (exclude auto-pass jobs)
+    const duration = this.db.prepare(`
+      SELECT AVG(CAST((julianday(rj.completed_at) - julianday(rj.claimed_at)) * 86400 AS REAL)) as avg_secs
+      FROM review_jobs rj
+      JOIN reviews r ON r.job_id = rj.id
+      WHERE rj.created_at >= ${windowSql}
+        AND rj.completed_at IS NOT NULL AND rj.claimed_at IS NOT NULL
+        AND NOT (r.verdict = 'pass' AND (r.findings IS NULL OR r.findings = '[]'))
+    `).get() as { avg_secs: number | null };
+
+    // 3. Cost aggregation
+    const costRow = this.db.prepare(`
+      SELECT SUM(cost_usd) as total_cost, SUM(input_tokens) as total_in,
+             SUM(output_tokens) as total_out, COUNT(*) as with_cost
+      FROM review_jobs
+      WHERE created_at >= ${windowSql} AND cost_usd IS NOT NULL
+    `).get() as { total_cost: number | null; total_in: number | null; total_out: number | null; with_cost: number };
+
+    const cost = costRow.with_cost > 0
+      ? {
+          totalCostUsd: costRow.total_cost!,
+          totalInputTokens: costRow.total_in!,
+          totalOutputTokens: costRow.total_out!,
+          avgCostPerReview: costRow.total_cost! / costRow.with_cost,
+          reviewsWithCostData: costRow.with_cost,
+        }
+      : null;
+
+    // 4. By model
+    const byModelRows = this.db.prepare(`
+      SELECT model, COUNT(*) as count, COALESCE(SUM(cost_usd), 0) as cost
+      FROM review_jobs WHERE created_at >= ${windowSql} AND model IS NOT NULL
+      GROUP BY model ORDER BY count DESC
+    `).all() as Array<{ model: string; count: number; cost: number }>;
+
+    const byModel = byModelRows.map((r) => ({ model: r.model, count: r.count, costUsd: r.cost }));
+
+    // 5. By repo (review counts)
+    const byRepoRows = this.db.prepare(`
+      SELECT rj.repo_path, COUNT(DISTINCT rj.id) as reviews
+      FROM review_jobs rj
+      WHERE rj.created_at >= ${windowSql}
+      GROUP BY rj.repo_path ORDER BY reviews DESC
+    `).all() as Array<{ repo_path: string; reviews: number }>;
+
+    // 6. JS-side post-processing — load all findings in window
+    const findingsRows = this.db.prepare(`
+      SELECT r.findings, rj.repo_path FROM reviews r
+      JOIN review_jobs rj ON r.job_id = rj.id
+      WHERE rj.created_at >= ${windowSql} AND r.findings IS NOT NULL AND r.findings != '[]'
+    `).all() as Array<{ findings: string; repo_path: string }>;
+
+    let totalFindings = 0;
+    let totalErrors = 0;
+    let totalWarnings = 0;
+    let reviewsWithFindings = 0;
+    const repoFindingCounts = new Map<string, number>();
+    const categoryCounts = new Map<string, number>();
+
+    for (const row of findingsRows) {
+      const parsed: Finding[] = JSON.parse(row.findings);
+      if (parsed.length > 0) {
+        reviewsWithFindings++;
+      }
+      totalFindings += parsed.length;
+      repoFindingCounts.set(row.repo_path, (repoFindingCounts.get(row.repo_path) ?? 0) + parsed.length);
+
+      for (const f of parsed) {
+        if (f.severity === 'error') totalErrors++;
+        if (f.severity === 'warning') totalWarnings++;
+
+        const primaryCategory = categorizeFinding(f.message)[0];
+        categoryCounts.set(primaryCategory, (categoryCounts.get(primaryCategory) ?? 0) + 1);
+      }
+    }
+
+    const hitRate = overview.total > 0 ? (reviewsWithFindings / overview.total) * 100 : 0;
+
+    const byRepo = byRepoRows.map((r) => ({
+      repo: r.repo_path,
+      reviews: r.reviews,
+      findings: repoFindingCounts.get(r.repo_path) ?? 0,
+    }));
+
+    const byCategory = Array.from(categoryCounts.entries())
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      overview: {
+        totalReviews: overview.total,
+        findings: totalFindings,
+        hitRate,
+        errors: totalErrors,
+        warnings: totalWarnings,
+        failedJobs: overview.failed,
+        avgDurationSecs: duration.avg_secs ?? 0,
+      },
+      cost,
+      byModel,
+      byRepo,
+      byCategory,
+    };
+  }
+
+  getRecentFindings(window: TimeWindow, filters?: DaemonFindingsFilter): DaemonFinding[] {
+    const windowSql = windowToSql(window);
+
+    const rows = this.db.prepare(`
+      SELECT r.findings, rj.repo_path, r.created_at
+      FROM reviews r
+      JOIN review_jobs rj ON r.job_id = rj.id
+      WHERE rj.created_at >= ${windowSql}
+        AND r.verdict = 'fail' AND r.findings IS NOT NULL AND r.findings != '[]'
+      ORDER BY r.created_at DESC
+    `).all() as Array<{ findings: string; repo_path: string; created_at: string }>;
+
+    const results: DaemonFinding[] = [];
+
+    for (const row of rows) {
+      const parsed: Finding[] = JSON.parse(row.findings);
+
+      for (const f of parsed) {
+        const categories = categorizeFinding(f.message);
+
+        // Apply filters
+        if (filters?.severity && f.severity !== filters.severity) continue;
+        if (filters?.repo && row.repo_path !== filters.repo) continue;
+        if (filters?.category && !categories.includes(filters.category)) continue;
+
+        results.push({
+          file: f.file,
+          line: f.line,
+          message: f.message,
+          severity: f.severity,
+          categories,
+          repoPath: row.repo_path,
+          createdAt: row.created_at,
+        });
+      }
+    }
+
+    return results;
   }
 
   close(): void {
