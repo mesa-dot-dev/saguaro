@@ -170,7 +170,6 @@ export function DaemonStatsScreen() {
                   key={`${finding.file}-${finding.line}-${i}`}
                   flexDirection="column"
                   paddingBottom={1}
-                  onClick={() => handleFindingSelect(i)}
                 >
                   <text fg={severityColor(finding.severity)}>
                     [{finding.severity}] {locationStr}
