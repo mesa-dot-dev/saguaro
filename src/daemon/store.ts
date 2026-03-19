@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { openDatabase, type SqliteDatabase } from './db.js';
+import type { AgentUsage } from './stats-types.js';
 
 // Logic inspired by and adapted from Roborev Storage
 
@@ -150,6 +151,15 @@ export class DaemonStore {
       CREATE INDEX IF NOT EXISTS idx_jobs_session ON review_jobs(session_id);
       CREATE INDEX IF NOT EXISTS idx_reviews_job ON reviews(job_id);
     `);
+
+    // Incremental migration: add usage tracking columns (idempotent)
+    for (const col of ['cost_usd REAL', 'input_tokens INTEGER', 'output_tokens INTEGER', 'num_turns INTEGER']) {
+      try {
+        this.db.exec(`ALTER TABLE review_jobs ADD COLUMN ${col}`);
+      } catch {
+        // Column already exists — expected on subsequent runs
+      }
+    }
   }
 
   /**
@@ -205,8 +215,17 @@ export class DaemonStore {
     return row ? mapJobRow(row) : null;
   }
 
-  completeJob(jobId: number, status: 'done' | 'failed', model?: string): void {
-    if (model) {
+  completeJob(jobId: number, status: 'done' | 'failed', model?: string, usage?: AgentUsage): void {
+    if (usage) {
+      this.db
+        .prepare(`
+        UPDATE review_jobs
+        SET status = ?, model = ?, completed_at = datetime('now'),
+            cost_usd = ?, input_tokens = ?, output_tokens = ?, num_turns = ?
+        WHERE id = ?
+      `)
+        .run(status, model ?? null, usage.costUsd, usage.inputTokens, usage.outputTokens, usage.numTurns, jobId);
+    } else if (model) {
       this.db
         .prepare(`
         UPDATE review_jobs SET status = ?, model = ?, completed_at = datetime('now') WHERE id = ?
