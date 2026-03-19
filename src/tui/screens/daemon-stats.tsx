@@ -115,9 +115,7 @@ export function DaemonStatsScreen() {
       <box flexDirection="column" paddingLeft={2} paddingTop={1}>
         <text fg={theme.accent}>Daemon Stats</text>
         <box paddingTop={1}>
-          <text fg={theme.textDim}>
-            No daemon reviews found. The daemon runs automatically during coding sessions.
-          </text>
+          <text fg={theme.textDim}>No daemon reviews found. The daemon runs automatically during coding sessions.</text>
         </box>
         <box paddingTop={1}>
           <text fg={theme.textDim}>ESC back</text>
@@ -166,15 +164,11 @@ export function DaemonStatsScreen() {
               const msg = isExpanded ? finding.message : truncateMessage(finding.message, 2);
 
               return (
-                <box
-                  key={`${finding.file}-${finding.line}-${i}`}
-                  flexDirection="column"
-                  paddingBottom={1}
-                >
+                <box key={`${finding.file}-${finding.line}-${i}`} flexDirection="column" paddingBottom={1}>
                   <text fg={severityColor(finding.severity)}>
                     [{finding.severity}] {locationStr}
                   </text>
-                  <text fg={theme.textDim}>  {msg}</text>
+                  <text fg={theme.textDim}> {msg}</text>
                 </box>
               );
             })
@@ -187,7 +181,7 @@ export function DaemonStatsScreen() {
         <tab-select focused options={TIME_RANGES} {...selectColors} onSelect={handleTimeRange} />
       </box>
       <box paddingLeft={2} paddingBottom={1}>
-        <text fg={theme.textDim}>enter expand  tab cycle filters  ESC back</text>
+        <text fg={theme.textDim}>enter expand tab cycle filters ESC back</text>
       </box>
     </box>
   );

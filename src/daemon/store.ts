@@ -3,7 +3,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { categorizeFinding } from './categorize.js';
 import { openDatabase, type SqliteDatabase } from './db.js';
-import type { AgentUsage, DaemonFinding, DaemonFindingsFilter, DaemonStatsAggregation, TimeWindow } from './stats-types.js';
+import type {
+  AgentUsage,
+  DaemonFinding,
+  DaemonFindingsFilter,
+  DaemonStatsAggregation,
+  TimeWindow,
+} from './stats-types.js';
 
 // Logic inspired by and adapted from Roborev Storage
 
@@ -115,11 +121,16 @@ function mapReviewRow(row: ReviewRow): Review {
 
 function windowToSql(window: TimeWindow): string {
   switch (window) {
-    case '1h': return "datetime('now', '-1 hour')";
-    case '1d': return "datetime('now', '-1 day')";
-    case '7d': return "datetime('now', '-7 days')";
-    case '30d': return "datetime('now', '-30 days')";
-    case 'all': return "'1970-01-01'";
+    case '1h':
+      return "datetime('now', '-1 hour')";
+    case '1d':
+      return "datetime('now', '-1 day')";
+    case '7d':
+      return "datetime('now', '-7 days')";
+    case '30d':
+      return "datetime('now', '-30 days')";
+    case 'all':
+      return "'1970-01-01'";
   }
 }
 
@@ -348,63 +359,76 @@ export class DaemonStore {
     const windowSql = windowToSql(window);
 
     // 1. Overview counts
-    const overview = this.db.prepare(`
+    const overview = this.db
+      .prepare(`
       SELECT COUNT(*) as total,
              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
       FROM review_jobs WHERE created_at >= ${windowSql}
-    `).get() as { total: number; failed: number };
+    `)
+      .get() as { total: number; failed: number };
 
     // 2. Average duration (exclude auto-pass jobs)
-    const duration = this.db.prepare(`
+    const duration = this.db
+      .prepare(`
       SELECT AVG(CAST((julianday(rj.completed_at) - julianday(rj.claimed_at)) * 86400 AS REAL)) as avg_secs
       FROM review_jobs rj
       JOIN reviews r ON r.job_id = rj.id
       WHERE rj.created_at >= ${windowSql}
         AND rj.completed_at IS NOT NULL AND rj.claimed_at IS NOT NULL
         AND NOT (r.verdict = 'pass' AND (r.findings IS NULL OR r.findings = '[]'))
-    `).get() as { avg_secs: number | null };
+    `)
+      .get() as { avg_secs: number | null };
 
     // 3. Cost aggregation
-    const costRow = this.db.prepare(`
+    const costRow = this.db
+      .prepare(`
       SELECT SUM(cost_usd) as total_cost, SUM(input_tokens) as total_in,
              SUM(output_tokens) as total_out, COUNT(*) as with_cost
       FROM review_jobs
       WHERE created_at >= ${windowSql} AND cost_usd IS NOT NULL
-    `).get() as { total_cost: number | null; total_in: number | null; total_out: number | null; with_cost: number };
+    `)
+      .get() as { total_cost: number | null; total_in: number | null; total_out: number | null; with_cost: number };
 
-    const cost = costRow.with_cost > 0
-      ? {
-          totalCostUsd: costRow.total_cost!,
-          totalInputTokens: costRow.total_in!,
-          totalOutputTokens: costRow.total_out!,
-          avgCostPerReview: costRow.total_cost! / costRow.with_cost,
-          reviewsWithCostData: costRow.with_cost,
-        }
-      : null;
+    const cost =
+      costRow.with_cost > 0
+        ? {
+            totalCostUsd: costRow.total_cost!,
+            totalInputTokens: costRow.total_in!,
+            totalOutputTokens: costRow.total_out!,
+            avgCostPerReview: costRow.total_cost! / costRow.with_cost,
+            reviewsWithCostData: costRow.with_cost,
+          }
+        : null;
 
     // 4. By model
-    const byModelRows = this.db.prepare(`
+    const byModelRows = this.db
+      .prepare(`
       SELECT model, COUNT(*) as count, COALESCE(SUM(cost_usd), 0) as cost
       FROM review_jobs WHERE created_at >= ${windowSql} AND model IS NOT NULL
       GROUP BY model ORDER BY count DESC
-    `).all() as Array<{ model: string; count: number; cost: number }>;
+    `)
+      .all() as Array<{ model: string; count: number; cost: number }>;
 
     const byModel = byModelRows.map((r) => ({ model: r.model, count: r.count, costUsd: r.cost }));
 
     // 5. By repo (review counts)
-    const byRepoRows = this.db.prepare(`
+    const byRepoRows = this.db
+      .prepare(`
       SELECT rj.repo_path, COUNT(DISTINCT rj.id) as reviews
       FROM review_jobs rj
       WHERE rj.created_at >= ${windowSql}
       GROUP BY rj.repo_path ORDER BY reviews DESC
-    `).all() as Array<{ repo_path: string; reviews: number }>;
+    `)
+      .all() as Array<{ repo_path: string; reviews: number }>;
 
     // 6. JS-side post-processing — load all findings in window
-    const findingsRows = this.db.prepare(`
+    const findingsRows = this.db
+      .prepare(`
       SELECT r.findings, rj.repo_path FROM reviews r
       JOIN review_jobs rj ON r.job_id = rj.id
       WHERE rj.created_at >= ${windowSql} AND r.findings IS NOT NULL AND r.findings != '[]'
-    `).all() as Array<{ findings: string; repo_path: string }>;
+    `)
+      .all() as Array<{ findings: string; repo_path: string }>;
 
     let totalFindings = 0;
     let totalErrors = 0;
@@ -462,14 +486,16 @@ export class DaemonStore {
   getRecentFindings(window: TimeWindow, filters?: DaemonFindingsFilter): DaemonFinding[] {
     const windowSql = windowToSql(window);
 
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(`
       SELECT r.findings, rj.repo_path, r.created_at
       FROM reviews r
       JOIN review_jobs rj ON r.job_id = rj.id
       WHERE rj.created_at >= ${windowSql}
         AND r.verdict = 'fail' AND r.findings IS NOT NULL AND r.findings != '[]'
       ORDER BY r.created_at DESC
-    `).all() as Array<{ findings: string; repo_path: string; created_at: string }>;
+    `)
+      .all() as Array<{ findings: string; repo_path: string; created_at: string }>;
 
     const results: DaemonFinding[] = [];
 

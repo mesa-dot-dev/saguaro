@@ -28,9 +28,7 @@ function printOverview(stats: DaemonStatsAggregation, label: string): void {
 
   console.log(CLI_ACCENT(`\n  DAEMON REVIEW STATS (${label})`));
   console.log(chalk.gray('  ─────────────────────────────'));
-  console.log(
-    `  Reviews: ${totalReviews}  |  Findings: ${findings}  |  Hit rate: ${Math.round(hitRate)}%`
-  );
+  console.log(`  Reviews: ${totalReviews}  |  Findings: ${findings}  |  Hit rate: ${Math.round(hitRate)}%`);
   console.log(`  Errors: ${errors}  |  Warnings: ${warnings}  |  Failed: ${failedJobs}`);
   console.log(`  Avg review: ${Math.round(avgDurationSecs)}s`);
 }

@@ -28,22 +28,41 @@ afterEach(() => {
 
 function seedReviews(s: DaemonStore): void {
   // Job 1: done, fail verdict, 2 findings (1 error, 1 warning)
-  const j1 = s.queueJob({ sessionId: 's1', repoPath: '/tmp/repo-a', changedFiles: [{ path: 'a.ts', diff_hash: 'h1' }], agentSummary: null })!;
+  const j1 = s.queueJob({
+    sessionId: 's1',
+    repoPath: '/tmp/repo-a',
+    changedFiles: [{ path: 'a.ts', diff_hash: 'h1' }],
+    agentSummary: null,
+  })!;
   s.claimNextJob(1);
   s.completeJob(j1, 'done', 'sonnet', { costUsd: 0.05, inputTokens: 1000, outputTokens: 200, numTurns: 2 });
-  s.insertReview({ jobId: j1, verdict: 'fail', findings: [
-    { file: 'a.ts', line: 10, message: 'SQL injection vulnerability', severity: 'error' },
-    { file: 'a.ts', line: 20, message: 'Sequential awaits instead of Promise.all', severity: 'warning' },
-  ] });
+  s.insertReview({
+    jobId: j1,
+    verdict: 'fail',
+    findings: [
+      { file: 'a.ts', line: 10, message: 'SQL injection vulnerability', severity: 'error' },
+      { file: 'a.ts', line: 20, message: 'Sequential awaits instead of Promise.all', severity: 'warning' },
+    ],
+  });
 
   // Job 2: done, pass verdict, no findings
-  const j2 = s.queueJob({ sessionId: 's1', repoPath: '/tmp/repo-b', changedFiles: [{ path: 'b.ts', diff_hash: 'h2' }], agentSummary: null })!;
+  const j2 = s.queueJob({
+    sessionId: 's1',
+    repoPath: '/tmp/repo-b',
+    changedFiles: [{ path: 'b.ts', diff_hash: 'h2' }],
+    agentSummary: null,
+  })!;
   s.claimNextJob(2);
-  s.completeJob(j2, 'done', 'opus', { costUsd: 0.10, inputTokens: 2000, outputTokens: 400, numTurns: 5 });
+  s.completeJob(j2, 'done', 'opus', { costUsd: 0.1, inputTokens: 2000, outputTokens: 400, numTurns: 5 });
   s.insertReview({ jobId: j2, verdict: 'pass', findings: null });
 
   // Job 3: failed
-  const j3 = s.queueJob({ sessionId: 's1', repoPath: '/tmp/repo-a', changedFiles: [{ path: 'c.ts', diff_hash: 'h3' }], agentSummary: null })!;
+  const j3 = s.queueJob({
+    sessionId: 's1',
+    repoPath: '/tmp/repo-a',
+    changedFiles: [{ path: 'c.ts', diff_hash: 'h3' }],
+    agentSummary: null,
+  })!;
   s.claimNextJob(3);
   s.completeJob(j3, 'failed', 'sonnet');
   s.insertReview({ jobId: j3, verdict: 'pass', findings: null });
@@ -166,7 +185,12 @@ describe('getStats', () => {
     dbPath = makeDbPath();
     store = new DaemonStore(dbPath);
 
-    const j1 = store.queueJob({ sessionId: 's1', repoPath: '/tmp/r', changedFiles: [{ path: 'a.ts', diff_hash: 'h1' }], agentSummary: null })!;
+    const j1 = store.queueJob({
+      sessionId: 's1',
+      repoPath: '/tmp/r',
+      changedFiles: [{ path: 'a.ts', diff_hash: 'h1' }],
+      agentSummary: null,
+    })!;
     store.claimNextJob(1);
     store.completeJob(j1, 'done', 'sonnet');
     store.insertReview({ jobId: j1, verdict: 'pass', findings: null });

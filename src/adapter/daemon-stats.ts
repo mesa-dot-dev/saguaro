@@ -1,11 +1,6 @@
 // src/adapter/daemon-stats.ts
 
-import type {
-  DaemonFinding,
-  DaemonFindingsFilter,
-  DaemonStatsAggregation,
-  TimeWindow,
-} from '../daemon/stats-types.js';
+import type { DaemonFinding, DaemonFindingsFilter, DaemonStatsAggregation, TimeWindow } from '../daemon/stats-types.js';
 import { DaemonStore } from '../daemon/store.js';
 
 export type { DaemonFinding, DaemonFindingsFilter, TimeWindow };

@@ -59,7 +59,9 @@ describe('categorizeFinding', () => {
   });
 
   test('returns multiple categories when message matches several', () => {
-    const cats = categorizeFinding('Hardcoded 50ms sleep adds latency — a regression from the previous parallel approach');
+    const cats = categorizeFinding(
+      'Hardcoded 50ms sleep adds latency — a regression from the previous parallel approach'
+    );
     expect(cats.length).toBeGreaterThan(1);
     expect(cats).toContain('performance');
     expect(cats).toContain('regression');
