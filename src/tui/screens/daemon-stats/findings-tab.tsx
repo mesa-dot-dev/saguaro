@@ -174,7 +174,7 @@ export function FindingsTab({ result, timeWindow, focused }: FindingsTabProps) {
                       <text fg={theme.textDim}>Repo:     {finding.repoPath}</text>
                       <text fg={theme.textDim}>Model:    {finding.model ?? 'unknown'}</text>
                       <text fg={theme.textDim}>Job Cost: {finding.costUsd != null ? `$${finding.costUsd.toFixed(2)}` : '\u2014'}</text>
-                      <text fg={theme.textDim}>Reviewed: {finding.completedAt ?? finding.createdAt}</text>
+                      <text fg={theme.textDim}>Reviewed: {(finding.completedAt ?? finding.createdAt).slice(0, 16)} UTC</text>
                     </box>
                   )}
                 </box>

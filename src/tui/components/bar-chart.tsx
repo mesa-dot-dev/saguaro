@@ -25,14 +25,13 @@ export function BarChart({ items, maxBarWidth = 20, fillColor = theme.info, empt
         const filled = maxValue > 0 ? Math.round((item.value / maxValue) * maxBarWidth) : 0;
         const empty = maxBarWidth - filled;
         const label = item.label.padEnd(maxLabelLen);
-        const suffix = item.suffix ? `  ${item.suffix}` : '';
 
         return (
           <box key={item.label} flexDirection="row">
             <text fg={theme.textDim}>{label} </text>
             <text fg={fillColor}>{'\u2588'.repeat(filled)}</text>
             <text fg={emptyColor}>{'\u2591'.repeat(empty)}</text>
-            <text fg={theme.text}>  {item.value}{suffix}</text>
+            <text fg={theme.text}>  {item.suffix ?? item.value}</text>
           </box>
         );
       })}
