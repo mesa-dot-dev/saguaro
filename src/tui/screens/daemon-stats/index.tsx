@@ -3,6 +3,7 @@ import { useKeyboard } from '@opentui/react';
 import { useEffect, useState } from 'react';
 import type { DaemonStatsResult, TimeWindow } from '../../../adapter/daemon-stats.js';
 import { getDaemonStats } from '../../../adapter/daemon-stats.js';
+import { useInputBarContext } from '../../lib/input-bar-context.js';
 import { useRouter } from '../../lib/router.js';
 import { theme } from '../../lib/theme.js';
 import { CostTab } from './cost-tab.js';
@@ -36,11 +37,13 @@ const timeSelectColors = {
 
 export function DaemonStatsScreen() {
   const { goHome } = useRouter();
+  const { screenInput } = useInputBarContext();
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('7d');
   const [result, setResult] = useState<DaemonStatsResult | null>(null);
 
   useKeyboard((e) => {
+    if (screenInput) return;
     if (e.name === 'escape') goHome();
     if (e.name === '1') setActiveTab('overview');
     if (e.name === '2') setActiveTab('findings');

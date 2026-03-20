@@ -42,7 +42,7 @@ export function CostTab({ stats }: CostTabProps) {
               <BarChart
                 items={byModel.map((m) => ({
                   label: m.model,
-                  value: m.count,
+                  value: m.costUsd,
                   suffix: `$${m.costUsd.toFixed(2)}  (${m.count} reviews)`,
                 }))}
               />

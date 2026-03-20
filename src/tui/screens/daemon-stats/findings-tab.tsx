@@ -43,7 +43,7 @@ function buildCategoryOptions(result: DaemonStatsResult): SelectOption[] {
 function relativeTime(dateStr: string): string {
   const now = Date.now();
   const then = new Date(`${dateStr}Z`).getTime();
-  const diffMs = now - then;
+  const diffMs = Math.max(0, now - then);
   const diffMins = Math.floor(diffMs / 60000);
   if (diffMins < 1) return 'just now';
   if (diffMins < 60) return `${diffMins}m ago`;
