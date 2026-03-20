@@ -18,7 +18,15 @@ export interface AgentOutput {
 
 export function parseAgentJsonOutput(raw: string): AgentOutput {
   try {
-    const data = JSON.parse(raw);
+    let data = JSON.parse(raw);
+
+    // --verbose mode returns a JSON array of events; extract the "result" event
+    if (Array.isArray(data)) {
+      const resultEvent = data.findLast((e: Record<string, unknown>) => e.type === 'result');
+      if (!resultEvent) return { text: '' };
+      data = resultEvent;
+    }
+
     if (typeof data !== 'object' || data === null || typeof data.result !== 'string') {
       return { text: data?.result ?? '' };
     }
