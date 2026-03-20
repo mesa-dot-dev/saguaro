@@ -239,4 +239,41 @@ describe('getRecentFindings', () => {
     const findings = store.getRecentFindings('all', { repo: '/tmp/repo-b' });
     expect(findings.length).toBe(0);
   });
+
+  test('returns review context fields (model, costUsd, completedAt)', () => {
+    dbPath = makeDbPath();
+    store = new DaemonStore(dbPath);
+    seedReviews(store);
+
+    const findings = store.getRecentFindings('all');
+    expect(findings.length).toBe(2);
+    expect(findings[0].model).toBe('sonnet');
+    expect(findings[0].costUsd).toBe(0.05);
+    expect(findings[0].completedAt).toBeDefined();
+    expect(typeof findings[0].completedAt).toBe('string');
+  });
+
+  test('returns null model/cost when job has no usage data', () => {
+    dbPath = makeDbPath();
+    store = new DaemonStore(dbPath);
+
+    const j1 = store.queueJob({
+      sessionId: 's1',
+      repoPath: '/tmp/repo',
+      changedFiles: [{ path: 'x.ts', diff_hash: 'hx' }],
+      agentSummary: null,
+    })!;
+    store.claimNextJob(1);
+    store.completeJob(j1, 'done');
+    store.insertReview({
+      jobId: j1,
+      verdict: 'fail',
+      findings: [{ file: 'x.ts', line: 1, message: 'dead code found', severity: 'warning' }],
+    });
+
+    const findings = store.getRecentFindings('all');
+    expect(findings.length).toBe(1);
+    expect(findings[0].model).toBeNull();
+    expect(findings[0].costUsd).toBeNull();
+  });
 });
