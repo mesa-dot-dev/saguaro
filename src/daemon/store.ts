@@ -3,7 +3,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { categorizeFinding } from './categorize.js';
 import { openDatabase, type SqliteDatabase } from './db.js';
-import { estimateCost } from './estimated-cost.js';
 import type {
   AgentUsage,
   DaemonFinding,
@@ -401,41 +400,6 @@ export class DaemonStore {
           }
         : null;
 
-    // 3b. Token-only aggregation (for subscription users who have tokens but $0 cost)
-    const tokenRow = this.db
-      .prepare(`
-      SELECT SUM(input_tokens) as total_in, SUM(output_tokens) as total_out,
-             COUNT(*) as with_tokens
-      FROM review_jobs
-      WHERE created_at >= ${windowSql} AND input_tokens IS NOT NULL
-    `)
-      .get() as { total_in: number | null; total_out: number | null; with_tokens: number };
-
-    let tokenUsage: DaemonStatsAggregation['tokenUsage'] = null;
-    if (tokenRow.with_tokens > 0) {
-      const tokenByModelRows = this.db
-        .prepare(`
-        SELECT model, SUM(input_tokens) as total_in, SUM(output_tokens) as total_out
-        FROM review_jobs
-        WHERE created_at >= ${windowSql} AND input_tokens IS NOT NULL AND model IS NOT NULL
-        GROUP BY model
-      `)
-        .all() as Array<{ model: string; total_in: number; total_out: number }>;
-
-      let estimatedCostUsd = 0;
-      for (const row of tokenByModelRows) {
-        const est = estimateCost(row.model, row.total_in, row.total_out);
-        if (est !== null) estimatedCostUsd += est;
-      }
-
-      tokenUsage = {
-        totalInputTokens: tokenRow.total_in!,
-        totalOutputTokens: tokenRow.total_out!,
-        estimatedCostUsd,
-        reviewsWithTokenData: tokenRow.with_tokens,
-      };
-    }
-
     // 4. By model
     const byModelRows = this.db
       .prepare(`
@@ -513,7 +477,6 @@ export class DaemonStore {
         avgDurationSecs: duration.avg_secs ?? 0,
       },
       cost,
-      tokenUsage,
       byModel,
       byRepo,
       byCategory,
