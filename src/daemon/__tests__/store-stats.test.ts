@@ -199,6 +199,49 @@ describe('getStats', () => {
     expect(stats.cost).toBeNull();
   });
 
+  test('returns tokenUsage when reviews have tokens but $0 cost', () => {
+    dbPath = makeDbPath();
+    store = new DaemonStore(dbPath);
+
+    const j1 = store.queueJob({
+      sessionId: 's1',
+      repoPath: '/tmp/repo',
+      changedFiles: [{ path: 'a.ts', diff_hash: 'h1' }],
+      agentSummary: null,
+    })!;
+    store.claimNextJob(1);
+    store.completeJob(j1, 'done', 'sonnet', { costUsd: 0, inputTokens: 10000, outputTokens: 2000, numTurns: 3 });
+    store.insertReview({ jobId: j1, verdict: 'pass', findings: null });
+
+    const stats = store.getStats('all');
+    // cost aggregation will exist (costUsd=0 is still a number in the DB)
+    // but tokenUsage should also exist with estimated cost
+    expect(stats.tokenUsage).not.toBeNull();
+    expect(stats.tokenUsage!.totalInputTokens).toBe(10000);
+    expect(stats.tokenUsage!.totalOutputTokens).toBe(2000);
+    // sonnet: 10000/1M * $3 + 2000/1M * $15 = $0.03 + $0.03 = $0.06
+    expect(stats.tokenUsage!.estimatedCostUsd).toBeCloseTo(0.06);
+    expect(stats.tokenUsage!.reviewsWithTokenData).toBe(1);
+  });
+
+  test('returns null tokenUsage when no reviews have token data', () => {
+    dbPath = makeDbPath();
+    store = new DaemonStore(dbPath);
+
+    const j1 = store.queueJob({
+      sessionId: 's1',
+      repoPath: '/tmp/repo',
+      changedFiles: [{ path: 'a.ts', diff_hash: 'h1' }],
+      agentSummary: null,
+    })!;
+    store.claimNextJob(1);
+    store.completeJob(j1, 'done', 'sonnet');
+    store.insertReview({ jobId: j1, verdict: 'pass', findings: null });
+
+    const stats = store.getStats('all');
+    expect(stats.tokenUsage).toBeNull();
+  });
+
   test('empty DB returns zeroed stats', () => {
     dbPath = makeDbPath();
     store = new DaemonStore(dbPath);

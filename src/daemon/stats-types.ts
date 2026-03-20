@@ -24,6 +24,12 @@ export interface DaemonStatsAggregation {
     avgCostPerReview: number;
     reviewsWithCostData: number;
   } | null;
+  tokenUsage: {
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    estimatedCostUsd: number;
+    reviewsWithTokenData: number;
+  } | null;
   byModel: Array<{ model: string; count: number; costUsd: number }>;
   byRepo: Array<{ repo: string; reviews: number; findings: number }>;
   byCategory: Array<{ category: string; count: number }>;
