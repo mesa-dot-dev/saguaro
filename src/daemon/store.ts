@@ -488,14 +488,21 @@ export class DaemonStore {
 
     const rows = this.db
       .prepare(`
-      SELECT r.findings, rj.repo_path, r.created_at
+      SELECT r.findings, rj.repo_path, r.created_at, rj.model, rj.cost_usd, rj.completed_at
       FROM reviews r
       JOIN review_jobs rj ON r.job_id = rj.id
       WHERE rj.created_at >= ${windowSql}
         AND r.verdict = 'fail' AND r.findings IS NOT NULL AND r.findings != '[]'
       ORDER BY r.created_at DESC
     `)
-      .all() as Array<{ findings: string; repo_path: string; created_at: string }>;
+      .all() as Array<{
+      findings: string;
+      repo_path: string;
+      created_at: string;
+      model: string | null;
+      cost_usd: number | null;
+      completed_at: string | null;
+    }>;
 
     const results: DaemonFinding[] = [];
 
@@ -518,6 +525,9 @@ export class DaemonStore {
           categories,
           repoPath: row.repo_path,
           createdAt: row.created_at,
+          model: row.model ?? null,
+          costUsd: row.cost_usd ?? null,
+          completedAt: row.completed_at ?? null,
         });
       }
     }

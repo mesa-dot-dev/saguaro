@@ -18,19 +18,29 @@ export interface AgentOutput {
 
 export function parseAgentJsonOutput(raw: string): AgentOutput {
   try {
-    const data = JSON.parse(raw);
+    let data = JSON.parse(raw);
+
+    // --verbose mode returns a JSON array of events; extract the "result" event
+    if (Array.isArray(data)) {
+      const resultEvent = data.findLast((e: Record<string, unknown>) => e.type === 'result');
+      if (!resultEvent) return { text: '' };
+      data = resultEvent;
+    }
+
     if (typeof data !== 'object' || data === null || typeof data.result !== 'string') {
       return { text: data?.result ?? '' };
     }
-    const usage: AgentUsage | undefined =
-      typeof data.total_cost_usd === 'number'
-        ? {
-            costUsd: data.total_cost_usd,
-            inputTokens: data.usage?.input_tokens ?? 0,
-            outputTokens: data.usage?.output_tokens ?? 0,
-            numTurns: data.num_turns ?? 0,
-          }
-        : undefined;
+    const hasUsage =
+      typeof data.total_cost_usd === 'number' ||
+      (data.usage && (typeof data.usage.input_tokens === 'number' || typeof data.usage.output_tokens === 'number'));
+    const usage: AgentUsage | undefined = hasUsage
+      ? {
+          costUsd: typeof data.total_cost_usd === 'number' ? data.total_cost_usd : 0,
+          inputTokens: data.usage?.input_tokens ?? 0,
+          outputTokens: data.usage?.output_tokens ?? 0,
+          numTurns: data.num_turns ?? 0,
+        }
+      : undefined;
     return { text: data.result, usage };
   } catch {
     return { text: raw };

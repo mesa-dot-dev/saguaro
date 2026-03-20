@@ -37,6 +37,9 @@ export interface DaemonFinding {
   categories: string[];
   repoPath: string;
   createdAt: string;
+  model: string | null;
+  costUsd: number | null;
+  completedAt: string | null;
 }
 
 export interface DaemonFindingsFilter {
