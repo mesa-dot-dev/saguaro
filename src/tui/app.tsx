@@ -5,7 +5,7 @@ import { exitTui } from './lib/exit.js';
 import { InputBarProvider, useInputBarContext } from './lib/input-bar-context.js';
 import { RouterProvider, useRouter } from './lib/router.js';
 import { ConfigureScreen } from './screens/configure.js';
-import { DaemonStatsScreen } from './screens/daemon-stats.js';
+import { DaemonStatsScreen } from './screens/daemon-stats/index.js';
 import { HelpScreen } from './screens/help.js';
 import { HomeScreen } from './screens/home.js';
 import { HookScreen } from './screens/hook.js';
