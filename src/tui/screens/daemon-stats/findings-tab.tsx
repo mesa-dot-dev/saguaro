@@ -161,20 +161,28 @@ export function FindingsTab({ result, timeWindow, focused }: FindingsTabProps) {
                 <box key={`${finding.file}-${finding.line}-${i}`} flexDirection="column" paddingBottom={1}>
                   <box flexDirection="row">
                     <text fg={isFocused ? theme.text : theme.textDim}>{cursor} </text>
-                    <text fg={sevColor}>{sevIcon} {sevLabel}</text>
-                    <text fg={theme.text}>  {locationStr}</text>
-                    <text fg={theme.textDim}>  {timeAgo}</text>
+                    <text fg={sevColor}>
+                      {sevIcon} {sevLabel}
+                    </text>
+                    <text fg={theme.text}> {locationStr}</text>
+                    <text fg={theme.textDim}> {timeAgo}</text>
                   </box>
-                  <text fg={theme.textDim}>    {finding.categories.join(', ')}</text>
-                  <text fg={msgColor}>    {msg}</text>
+                  <text fg={theme.textDim}> {finding.categories.join(', ')}</text>
+                  <text fg={msgColor}> {msg}</text>
 
                   {isExpanded && (
                     <box flexDirection="column" paddingTop={1} paddingLeft={4}>
-                      <text fg={theme.border}>{'\u2500'.repeat(3)} Review Context {'\u2500'.repeat(23)}</text>
-                      <text fg={theme.textDim}>Repo:     {finding.repoPath}</text>
-                      <text fg={theme.textDim}>Model:    {finding.model ?? 'unknown'}</text>
-                      <text fg={theme.textDim}>Job Cost: {finding.costUsd != null ? `$${finding.costUsd.toFixed(2)}` : '\u2014'}</text>
-                      <text fg={theme.textDim}>Reviewed: {(finding.completedAt ?? finding.createdAt).slice(0, 16)} UTC</text>
+                      <text fg={theme.border}>
+                        {'\u2500'.repeat(3)} Review Context {'\u2500'.repeat(23)}
+                      </text>
+                      <text fg={theme.textDim}>Repo: {finding.repoPath}</text>
+                      <text fg={theme.textDim}>Model: {finding.model ?? 'unknown'}</text>
+                      <text fg={theme.textDim}>
+                        Job Cost: {finding.costUsd != null ? `$${finding.costUsd.toFixed(2)}` : '\u2014'}
+                      </text>
+                      <text fg={theme.textDim}>
+                        Reviewed: {(finding.completedAt ?? finding.createdAt).slice(0, 16)} UTC
+                      </text>
                     </box>
                   )}
                 </box>

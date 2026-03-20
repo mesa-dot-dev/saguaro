@@ -32,8 +32,7 @@ export function parseAgentJsonOutput(raw: string): AgentOutput {
     }
     const hasUsage =
       typeof data.total_cost_usd === 'number' ||
-      (data.usage &&
-        (typeof data.usage.input_tokens === 'number' || typeof data.usage.output_tokens === 'number'));
+      (data.usage && (typeof data.usage.input_tokens === 'number' || typeof data.usage.output_tokens === 'number'));
     const usage: AgentUsage | undefined = hasUsage
       ? {
           costUsd: typeof data.total_cost_usd === 'number' ? data.total_cost_usd : 0,

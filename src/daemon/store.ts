@@ -495,7 +495,14 @@ export class DaemonStore {
         AND r.verdict = 'fail' AND r.findings IS NOT NULL AND r.findings != '[]'
       ORDER BY r.created_at DESC
     `)
-      .all() as Array<{ findings: string; repo_path: string; created_at: string; model: string | null; cost_usd: number | null; completed_at: string | null }>;
+      .all() as Array<{
+      findings: string;
+      repo_path: string;
+      created_at: string;
+      model: string | null;
+      cost_usd: number | null;
+      completed_at: string | null;
+    }>;
 
     const results: DaemonFinding[] = [];
 

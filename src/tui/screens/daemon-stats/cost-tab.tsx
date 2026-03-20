@@ -22,17 +22,17 @@ export function CostTab({ stats }: CostTabProps) {
       <box flexDirection="column">
         {/* Spend */}
         <text fg={theme.accent}>SPEND</text>
-        <text fg={theme.text}>Total Cost        ${cost.totalCostUsd.toFixed(2)}</text>
-        <text fg={theme.text}>Avg / Review      ${cost.avgCostPerReview.toFixed(3)}</text>
-        <text fg={theme.text}>Reviews w/ Data   {cost.reviewsWithCostData}</text>
+        <text fg={theme.text}>Total Cost ${cost.totalCostUsd.toFixed(2)}</text>
+        <text fg={theme.text}>Avg / Review ${cost.avgCostPerReview.toFixed(3)}</text>
+        <text fg={theme.text}>Reviews w/ Data {cost.reviewsWithCostData}</text>
 
         {/* Tokens */}
         <box paddingTop={1}>
           <text fg={theme.accent}>TOKENS</text>
         </box>
-        <text fg={theme.text}>Input             {cost.totalInputTokens.toLocaleString()}</text>
-        <text fg={theme.text}>Output            {cost.totalOutputTokens.toLocaleString()}</text>
-        <text fg={theme.text}>Total             {(cost.totalInputTokens + cost.totalOutputTokens).toLocaleString()}</text>
+        <text fg={theme.text}>Input {cost.totalInputTokens.toLocaleString()}</text>
+        <text fg={theme.text}>Output {cost.totalOutputTokens.toLocaleString()}</text>
+        <text fg={theme.text}>Total {(cost.totalInputTokens + cost.totalOutputTokens).toLocaleString()}</text>
 
         {/* Cost by Model */}
         {byModel.length > 0 && (

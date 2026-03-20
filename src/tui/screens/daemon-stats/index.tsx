@@ -111,7 +111,12 @@ export function DaemonStatsScreen() {
 
       {/* Footer: time range + help */}
       <box paddingLeft={2} paddingBottom={1} flexDirection="row" gap={2}>
-        <tab-select focused={activeTab !== 'findings'} options={TIME_RANGES} {...timeSelectColors} onSelect={handleTimeRange} />
+        <tab-select
+          focused={activeTab !== 'findings'}
+          options={TIME_RANGES}
+          {...timeSelectColors}
+          onSelect={handleTimeRange}
+        />
       </box>
       <box paddingLeft={2} paddingBottom={1}>
         <text fg={theme.textDim}>1/2/3 switch view · ↑↓ scroll · enter expand · ESC back</text>

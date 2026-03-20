@@ -13,7 +13,12 @@ interface BarChartProps {
   emptyColor?: string;
 }
 
-export function BarChart({ items, maxBarWidth = 20, fillColor = theme.info, emptyColor = theme.border }: BarChartProps) {
+export function BarChart({
+  items,
+  maxBarWidth = 20,
+  fillColor = theme.info,
+  emptyColor = theme.border,
+}: BarChartProps) {
   if (items.length === 0) return null;
 
   const maxValue = Math.max(...items.map((i) => i.value));
@@ -31,7 +36,7 @@ export function BarChart({ items, maxBarWidth = 20, fillColor = theme.info, empt
             <text fg={theme.textDim}>{label} </text>
             <text fg={fillColor}>{'\u2588'.repeat(filled)}</text>
             <text fg={emptyColor}>{'\u2591'.repeat(empty)}</text>
-            <text fg={theme.text}>  {item.suffix ?? item.value}</text>
+            <text fg={theme.text}> {item.suffix ?? item.value}</text>
           </box>
         );
       })}
