@@ -288,6 +288,10 @@ Anthropic (Claude), OpenAI (GPT-4o, o3), and Google (Gemini).
 
 An optional async review system for long-running agent sessions. Runs classic (senior-engineer-style) reviews in parallel without blocking your agent. See [Background Daemon](#background-daemon).
 
+## Lorem Ipsum
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+
 ## License
 
 Apache-2.0.
